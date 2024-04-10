@@ -1,0 +1,966 @@
+<!-- 
+Author: Chao-Hsiung Hsu
+Version: 1.0
+Copyright: 2024/4/10, StainAI project, Molecular Imaging Laboratory, Howard University
+Contact: chaohsiung.hsu@howard.edu
+-->
+
+
+{% load static %}
+<!DOCTYPE html>
+
+
+<style>
+    .flex-container {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 20px;
+    }
+    .img-responsive {
+        max-width: 75%;
+        height: auto;
+        margin-right: auto;
+        display: block;
+    }
+    #iparameterSelect {
+        position: absolute;
+        right: 25%;
+        vertical-align: top;
+    }
+
+    .right-container {
+        position: absolute;
+        top: 50px;
+        right: 5px;
+        margin: 20px;
+    }
+    .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 50px;
+        margin-right: 20px;
+    }
+    .slider-with-values {
+        display: flex;
+        flex-direction: column;
+        width: 80%;  /* Adjust this value as needed */
+    }
+    .slider-values {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+    }
+    .value-box {
+        border: 1px solid #000;
+        padding: 10px;
+        margin-left: 10px;
+        width: 30px;  /* adjust as needed */
+        height: 20px;  /* adjust as needed */
+        text-align: center;
+    }
+
+    .carea-container0 {
+        margin-top: 380px;  /* Adjust this value as needed */
+    }
+    .carea-container1 {
+        margin-top: 380px;  /* Adjust this value as needed */
+    }
+    .carea-slider-values {
+        margin-top: 20px;  /* Adjust this value as needed */
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .carea-label-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 2px;  /* Adjust this value as needed */
+    }
+     #carea_value_box0 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+    #carea_value_box1 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+
+
+    .cpm-container0 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .cpm-container1 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .cpm-slider-values {
+        margin-top: 20px;  /* Adjust this value as needed */
+        display: flex;
+        justify-content: space-between;
+    }
+    .cpm-label-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;  /* Adjust this value as needed */
+    }
+
+    #cpm_value_box0 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+    #cpm_value_box1 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+
+    .chsr-container0 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .chsr-container1 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .chsr-slider-values {
+        margin-top: 20px;  /* Adjust this value as needed */
+        display: flex;
+        justify-content: space-between;
+    }
+    .chsr-label-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;  /* Adjust this value as needed */
+
+    }
+     #chsr_value_box0 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+    #chsr_value_box1 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+
+    .mds-container0 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .mds-container1 {
+        margin-top: 30px;  /* Adjust this value as needed */
+    }
+    .mds-slider-values {
+        margin-top: 20px;  /* Adjust this value as needed */
+        display: flex;
+        justify-content: space-between;
+    }
+    .mds-label-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;  /* Adjust this value as needed */
+    
+    }
+    #mds_value_box0 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+    #mds_value_box1 {
+        margin-bottom: 0px;  /* Adjust this value as needed */
+        margin-left: 10px;  /* Adjust this value as needed */
+    }
+
+    .chart-container {
+        position: absolute;
+        top: 0px;
+        right: 0;
+    }
+
+    .hist-container {
+        position: absolute;
+        top: 160px;
+        right: 0;
+    }
+
+    #imageTypeSelect, .checkbox-container {
+        display: inline-block;
+        vertical-align: top;
+    }
+    
+    .checkbox-container {
+        margin-left: 20px; /* Adjust this value to create more or less space between the menu and the checkboxes */
+    }
+
+    
+   
+
+    body {
+        font-family: "Times New Roman", Times, serif;
+
+    }
+
+</style>
+<head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+</head>
+
+<script>
+    Chart.defaults.font.family = 'Times New Roman';  // Set the default font
+    // Chart.defaults.font.family = 'Arial';  // Set the default font
+
+    let barChart = null;  // Initialize the bar chart variable 
+    let histChart = null;  // Initialize the histogram chart variable
+    var thresholds = [[], [], [], []];  // Initialize a 2D array to store the thresholds
+    var counts = [];
+    var sliderlimit1 = {{ sliderlimit1|safe }};  // Get the slider limit from the context
+    var sliderlimit0 = {{ sliderlimit0|safe }};  // Get the slider limit from the context
+    // console.log('Updating sliderlimit1 to', sliderlimit1);  // Log the new value
+    // console.log('Updating sliderlimit0 to', sliderlimit0);  // Log the new value
+    var isFirstLoad = true;
+    function someFunction() {
+        // Use isFirstLoad inside the function
+        if (isFirstLoad) {
+            loadImage(thresholds);
+            $('.carea-container1').show();
+            // console.log('Updating thresholds to', thresholds);  // Log the new value
+            isFirstLoad = false;
+        }
+        // rest of your code
+    }
+
+
+
+
+
+    $(document).ready(function() {     
+        someFunction();
+        if (barChart instanceof Chart) {
+            barChart.destroy();  // Destroy the existing chart
+        }
+        if (histChart instanceof Chart) {
+            histChart.destroy();  // Destroy the existing chart
+        }
+        
+        var ctx = document.getElementById('barChart').getContext('2d');
+        barChart = createBarChart(ctx);  // Removed the 'var' keyword
+
+        // When 'check_All' is checked or unchecked
+        $('#checkbox_All').change(function() {
+            // Check or uncheck all other checkboxes
+            $('#Checkbox_R, #Checkbox_B, #Checkbox_H, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', this.checked);
+            loadImage(thresholds);
+        });
+
+        // When any other checkbox is checked or unchecked
+        $('#Checkbox_R, #Checkbox_B, #Checkbox_H, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').change(function() {
+            if ($('#Checkbox_R:checked, #Checkbox_B:checked, #Checkbox_H:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked').length == 6) {
+                // Check 'check_All'
+                $('#checkbox_All').prop('checked', true);
+            } else {
+                // Otherwise, uncheck 'check_All'
+                $('#checkbox_All').prop('checked', false);
+            }
+            loadImage(thresholds);
+        });
+
+        // loadImage(thresholds);
+        
+        // loadImage({{ sliderlimit }});
+        // call loadImage when the selected image or image type changes
+        $('#imageSelect').on('change', function() {
+            var selectedImage = $(this).val();
+            if (selectedImage.includes('demo_Ctrl.jpg')) {
+                // Show container 1, hide container 0
+                $('.carea-container0').hide();
+                $('.carea-container1').show();
+                thresholds[0] = $("#carea_slider_with_values1").slider("values");
+                $('.cpm-container0').hide();
+                $('.cpm-container1').show();
+                thresholds[1] = $("#cpm_slider_with_values1").slider("values");
+                $('.chsr-container0').hide();
+                $('.chsr-container1').show();
+                thresholds[2] = $("#chsr_slider_with_values1").slider("values");
+                $('.mds-container0').hide();
+                $('.mds-container1').show();
+                thresholds[3] = $("#mds_slider_with_values1").slider("values");
+
+            } else if (selectedImage.includes('demo_CA.jpg')) {
+                // Show container 0, hide container 1
+                $('.carea-container1').hide();
+                $('.carea-container0').show();
+                thresholds[0] = $("#carea_slider_with_values0").slider("values");
+                $('.cpm-container1').hide();
+                $('.cpm-container0').show();
+                thresholds[1] = $("#cpm_slider_with_values0").slider("values");
+                $('.chsr-container1').hide();
+                $('.chsr-container0').show();
+                thresholds[2] = $("#chsr_slider_with_values0").slider("values");
+                $('.mds-container1').hide();
+                $('.mds-container0').show();
+                thresholds[3] = $("#mds_slider_with_values0").slider("values");
+            }
+            loadImage(thresholds);
+            // console.log('Updating thresholds to', thresholds);  // Log the new value
+        });
+        
+        // call loadImage when the selected image or image type changes
+        $('#fm_slider').on('change', function() {
+            updateValue(this.value);
+            loadImage(thresholds);
+        });
+    
+
+        $('#iparameterSelect').on('change', function() {
+            loadImage(thresholds);
+        });
+        
+        $('#carea_slider_with_values0').on('slidechange', function(event, ui) {
+            thresholds[0][0] = ui.values[0];
+            thresholds[0][1] = ui.values[1];
+            loadImage(thresholds);
+        });
+        $('#carea_slider_with_values1').on('slidechange', function(event, ui) {
+            thresholds[0][0] = ui.values[0];
+            thresholds[0][1] = ui.values[1];
+            loadImage(thresholds);
+        });
+  
+        $('#cpm_slider_with_values0').on('slidechange', function(event, ui) {
+            thresholds[1][0] = ui.values[0];
+            thresholds[1][1] = ui.values[1];
+            loadImage(thresholds);
+        });
+        $('#cpm_slider_with_values1').on('slidechange', function(event, ui) {
+            thresholds[1][0] = ui.values[0];
+            thresholds[1][1] = ui.values[1];
+            loadImage(thresholds);
+        });
+
+        $('#chsr_slider_with_values0').on('slidechange', function(event, ui) {
+            thresholds[2][0] = ui.values[0].toFixed(2);
+            thresholds[2][1] = ui.values[1].toFixed(2);
+            loadImage(thresholds);
+        });
+        $('#chsr_slider_with_values1').on('slidechange', function(event, ui) {
+            thresholds[2][0] = ui.values[0].toFixed(2);
+            thresholds[2][1] = ui.values[1].toFixed(2);
+            loadImage(thresholds);
+        });
+
+        $('#mds_slider_with_values0').on('slidechange', function(event, ui) {
+            thresholds[3][0] = ui.values[0].toFixed(1);
+            thresholds[3][1] = ui.values[1].toFixed(1);
+            loadImage(thresholds);
+        });
+        $('#mds_slider_with_values1').on('slidechange', function(event, ui) {
+            thresholds[3][0] = ui.values[0].toFixed(1);
+            thresholds[3][1] = ui.values[1].toFixed(1);
+            loadImage(thresholds);
+        });
+
+        $('#imageTypeSelect').change(function() {
+            if ($(this).val() == 'parameterMap') {
+                $('#iparameterSelect').show();
+            } else {
+                $('#iparameterSelect').hide();
+            }
+            loadImage(thresholds);
+        });
+
+
+        barChart.canvas.onclick = function(event) {
+            // Get the clicked bar
+            var activePoints = barChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (activePoints.length > 0) {
+                // Get the label of the clicked bar
+                var clickedLabel = barChart.data.labels[activePoints[0].index];
+        
+                // If the clicked bar is one of 'R', 'B', 'H', 'A', 'RD', 'HR'
+                if (['R', 'B', 'H', 'A', 'RD', 'HR'].includes(clickedLabel)) {
+                    // Check if the corresponding checkbox is checked
+                    if ($('#Checkbox_' + clickedLabel).prop('checked')) {
+                        // Uncheck the corresponding checkbox
+                        $('#Checkbox_' + clickedLabel).prop('checked', false);
+                        // Uncheck the 'All' checkbox
+                        $('#Checkbox_all').prop('checked', false);
+                    } else {
+                        // Check the corresponding checkbox
+                        $('#Checkbox_' + clickedLabel).prop('checked', true);
+                        // If all other checkboxes are checked
+                        if ($('#Checkbox_R:checked, #Checkbox_B:checked, #Checkbox_H:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked').length == 6) {
+                            // Check 'check_All'
+                            $('#Checkbox_all').prop('checked', true);
+                        }
+                    }
+                }
+            }
+            loadImage(thresholds);
+        };
+    });
+
+    function updateValue(value) {
+        var fm_threshold = document.getElementById('fm_slider').value;
+        // console.log('updateValue called');
+        // console.log('value:', value);
+        $('#current_value_box').text(value);
+    }
+
+    $(function() {
+        $("#carea_slider_with_values0").slider({
+            range: true,
+            min: {{ sliderlimit0.0.0 }},
+            max: {{ sliderlimit0.0.1 }},
+            values: [{{ sliderlimit0.0.0 }}, {{ sliderlimit0.0.1 }}],
+            slide: function(event, ui) {
+                $("#carea_value_box0").text(ui.values[0] + ' - ' + ui.values[1]);
+                thresholds[0] = $("#carea_slider_with_values0").slider("values");
+            }
+        });
+        $("#carea_slider_with_values1").slider({
+            range: true,
+            min: {{ sliderlimit1.0.0 }},
+            max: {{ sliderlimit1.0.1 }},
+            values: [{{ sliderlimit1.0.0 }}, {{ sliderlimit1.0.1 }}],
+            slide: function(event, ui) {
+                $("#carea_value_box1").text(ui.values[0] + ' - ' + ui.values[1]);
+                thresholds[0] = $("#carea_slider_with_values1").slider("values");
+            }
+        });
+    }); 
+
+        
+    
+    $(function() {
+        $("#cpm_slider_with_values0").slider({
+            range: true,
+            min: {{ sliderlimit0.1.0 }},
+            max: {{ sliderlimit0.1.1 }},
+            values: [{{ sliderlimit0.1.0 }}, {{ sliderlimit0.1.1 }}],
+            slide: function(event, ui) {
+                $("#cpm_value_box0").text(ui.values[0] + ' - ' + ui.values[1]);
+                thresholds[1] = $("#cpm_slider_with_values0").slider("values");
+            }
+        });
+    });
+        
+    $(function() {
+        $("#cpm_slider_with_values1").slider({
+            range: true,
+            min: {{ sliderlimit1.1.0 }},
+            max: {{ sliderlimit1.1.1 }},
+            values: [{{ sliderlimit1.1.0 }}, {{ sliderlimit1.1.1 }}],
+            slide: function(event, ui) {
+                $("#cpm_value_box1").text(ui.values[0] + ' - ' + ui.values[1]);
+                thresholds[1] = $("#cpm_slider_with_values1").slider("values");
+            }
+        });
+    });
+
+    $(function() {
+        $("#chsr_slider_with_values0").slider({
+            range: true,
+            min: {{ sliderlimit0.2.0 }},
+            max: {{ sliderlimit0.2.1 }},
+            values: [{{ sliderlimit0.2.0 }}, {{ sliderlimit0.2.1 }}],
+            step: 0.01,
+            slide: function(event, ui) {
+                $("#chsr_value_box0").text(ui.values[0].toFixed(2) + ' - ' + ui.values[1].toFixed(2));
+                thresholds[2] = $("#chsr_slider_with_values0").slider("values");
+            }
+        });
+    });
+        
+    $(function() {
+        $("#chsr_slider_with_values1").slider({
+            range: true,
+            min: {{ sliderlimit1.2.0 }},
+            max: {{ sliderlimit1.2.1 }},
+            values: [{{ sliderlimit1.2.0 }}, {{ sliderlimit1.2.1 }}],
+            step: 0.01,
+            slide: function(event, ui) {
+                $("#chsr_value_box1").text(ui.values[0].toFixed(2) + ' - ' + ui.values[1].toFixed(2));
+                thresholds[2] = $("#chsr_slider_with_values1").slider("values");
+            }
+        });
+    });
+    
+    $(function() {
+        $("#mds_slider_with_values0").slider({
+            range: true,
+            min: {{ sliderlimit0.3.0 }},
+            max: {{ sliderlimit0.3.1 }},
+            values: [{{ sliderlimit0.3.0 }}, {{ sliderlimit0.3.1 }}],
+            step: 0.1,
+            slide: function(event, ui) {
+                $("#mds_value_box0").text(ui.values[0].toFixed(1) + ' - ' + ui.values[1].toFixed(1));
+                thresholds[3] = $("#mds_slider_with_values0").slider("values");
+            }
+        });
+    });
+        
+    $(function() {
+        $("#mds_slider_with_values1").slider({
+            range: true,
+            min: {{ sliderlimit1.3.0 }},
+            max: {{ sliderlimit1.3.1 }},
+            values: [{{ sliderlimit1.3.0 }}, {{ sliderlimit1.3.1 }}],
+            step: 0.1,
+            slide: function(event, ui) {
+                $("#mds_value_box1").text(ui.values[0].toFixed(1) + ' - ' + ui.values[1].toFixed(1));
+                thresholds[3] = $("#mds_slider_with_values1").slider("values");
+            }
+        });
+    });
+
+    function createBarChart(ctx) {
+        return new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['R', 'H', 'B', 'A', 'RD', 'HR', '< FM'],
+                datasets: [{
+                    label: 'Counts',
+                    data: [],
+                    backgroundColor: ['rgb(102, 204, 0)', 'rgb(204, 204, 0)', 'rgb(220, 112, 0)', 'rgb(204, 0, 0)', 'rgb(0, 210, 210)', 'rgb(0, 0, 204)', 'rgb(80, 80, 80)'],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: false,
+                    },
+                    datalabels: {
+                        align: 'end',
+                        anchor: 'end',
+                        formatter: (value, context) => {
+                            return context.chart.data.datasets[context.datasetIndex].data[context.dataIndex];
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        afterDataLimits: function(scale) {
+                            scale.max *= 1.05;
+                        },
+                        title: {
+                            display: true,
+                            text: 'Counts',
+                            font: {
+                                size: 14
+                            }
+                        },
+                        beginAtZero: true,
+                      }
+                }
+            },
+            plugins: [{
+                id: 'labelsOnTop',
+                afterDraw: chart => {
+                    var ctx = chart.ctx;
+                    chart.data.datasets.forEach((dataset, i) => {
+                        chart.getDatasetMeta(i).data.forEach((bar, index) => {
+                            ctx.fillStyle = 'black';
+                            var data = dataset.data[index];
+                            var textWidth = ctx.measureText(data).width;
+                            ctx.fillText(data, bar.x- textWidth / 2, bar.y - 5);
+                        });
+                    });
+                }
+            }],
+
+        });
+    }
+       
+    function createHistChart(ctx, data, backgroundColor, newLabel) {
+        return new Chart(ctx, {
+            type: 'bar',
+            data: {
+                datasets: [{
+                    label: 'Counts',
+                    data: data,
+                    backgroundColor: backgroundColor,
+                    barPercentage: 1,
+                    categoryPercentage: 1,
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'linear',
+                        offset: false,
+                        grid: {
+                            offset: false
+                        },
+                        ticks: {
+                            stepSize: 1
+                        },
+                        title: {
+                            display: true,
+                            text: newLabel,
+                            font: {
+                                size: 14
+                            }
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Counts',
+                            font: {
+                                size: 14
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (items) => {
+                                if (!items.length) {
+                                    return '';
+                                }
+                                const item = items[0];
+                                const x = item.parsed.x;
+                                const min = (x - 0.5).toFixed(2);
+                                const max = (x + 0.5).toFixed(2);
+                                return `${min} - ${max}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+
+
+    function loadImage(thresholds) {
+        var selectedImage = $('#imageSelect').val();
+        var filename = selectedImage.split('/').pop();
+        var imageType = $('#imageTypeSelect').val();
+        var iparameter = $('#iparameterSelect').val();
+        var fm_threshold = $('#fm_slider').val();
+        var checkBox_All  = $('#checkbox_All').prop('checked');
+        var checkBox_R = $('#Checkbox_R').prop('checked');
+        var checkBox_H = $('#Checkbox_H').prop('checked');
+        var checkBox_B = $('#Checkbox_B').prop('checked');
+        var checkBox_A = $('#Checkbox_A').prop('checked');
+        var checkBox_RD = $('#Checkbox_RD').prop('checked');
+        var checkBox_HR = $('#Checkbox_HR').prop('checked');
+
+
+   
+        // console.log('check R', checkBox_R);  // Log the new value
+     
+        
+
+
+        //if (imageType === 'original') {
+        //    $('#displayedImage').attr('src', selectedImage);
+        //    $('#displayedImage').show();  // Show the image
+        //} else if (imageType === 'morphological' || imageType === 'parameterMap') {
+            $.ajax({
+                url: '/show_mmap/',  // Update this to the URL of your show_mmap view
+                data: {
+                    'filename': filename,
+                    'type': imageType,
+                    'iparameter': iparameter,
+                    'fm_threshold': fm_threshold,
+                    'carea_minth': thresholds[0][0],
+                    'carea_maxth': thresholds[0][1],
+                    'cpm_minth': thresholds[1][0],
+                    'cpm_maxth': thresholds[1][1],
+                    'chsr_minth': thresholds[2][0],
+                    'chsr_maxth': thresholds[2][1],
+                    'mds_minth': thresholds[3][0],
+                    'mds_maxth': thresholds[3][1],
+                    'checkBox_All': checkBox_All,
+                    'checkBox_R': checkBox_R,
+                    'checkBox_H': checkBox_H,
+                    'checkBox_B': checkBox_B,
+                    'checkBox_A': checkBox_A,
+                    'checkBox_RD': checkBox_RD,
+                    'checkBox_HR': checkBox_HR,
+                },
+                success: function(response) {
+
+                    if (response.error) {
+                        alert(response.error);
+                    } else {
+
+                        if (iparameter === 'CArea') {
+                            var newLabel = 'CArea (µm²)';
+                        } else if (iparameter === 'CPM') {
+                            var newLabel = 'CPM (µm)';
+                        } else if (iparameter === 'CHSR') {
+                            var newLabel = 'CHSR';
+                        } else if (iparameter === 'mDS') {
+                            var newLabel = 'mDS (µm)';
+                        }
+
+                        $('#displayedImage').attr('src', 'data:image/jpeg;base64,' + response.image);
+                 
+                        // Handle the counts data
+                        counts = response.counts;
+                        // $('#countsDisplay').text('Counts: ' + counts);
+                        // For example, update the bar chart data
+                        // barChart.data.datasets[0].data = counts;
+                        // barChart.update();
+
+                        if (barChart) {
+                            barChart.destroy();  // Destroy the existing chart
+                        }
+
+                        // Check if barChart exists and create it if it doesn't
+                        var ctx = document.getElementById('barChart').getContext('2d');
+                        barChart = createBarChart(ctx);  // Removed the 'var' keyword
+                        // Update the bar chart's data                     
+                        barChart.data.datasets[0].data = counts;  // Wrap counts in an array
+                        barChart.update();
+                        
+                        histdata = response.histdata;
+                        if (histChart) {
+                            histChart.destroy();  // Destroy the existing chart
+                        }
+                        // Create data points with x as bin position and y as count
+                        var dataPoints = histdata.bins.map((bin, i) => ({
+                            x: bin,
+                            y: histdata.counts[i]
+                        }));
+
+                        const x_vals = histdata.bins;
+                        const y_vals = histdata.counts;
+                        const data = x_vals.map((k, i) => ({x: k, y: y_vals[i]}));
+
+                        // var backgroundColor = histdata.colors.map(color => `rgb(${color[0]}, ${color[1]}, ${color[2]})`);  // Colors from histdata.colors
+                        var backgroundColor = histdata.colors.map(color => `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3]})`);  // Colors from histdata.colors
+  
+                        // console.log(backgroundColor[backgroundColor.length - 1]);
+                        // console.log(histdata.colors[histdata.colors.length - 1]);
+                        // console.log('Updating color to', histdata.colors);  // Log the new value
+
+                        var ctx = document.getElementById('histChart').getContext('2d');
+                        histChart = createHistChart(ctx, data, backgroundColor, newLabel);
+                        
+                    
+
+                    }
+                }
+            });  // Closing for $.ajax
+
+        //}
+    }  // Closing for loadImage function
+
+
+           // {% for image in image_files %}
+       // <option value="{% static 'myapp/'|add:image %}" {% if image == 'demo_Ctrl.jpg' %}selected{% endif %}>{{ image }}</option>
+       // {% endfor %}
+
+
+       //<option value="original">Original Image</option>
+       //       <input type="checkbox" id="checkbox_All" check>
+
+</script>
+
+
+<body>
+<div class="menu-container">
+    <select id="imageSelect">
+        <option value="{% static 'myapp/demo_Ctrl.jpg'%}" selected>demo_Ctrl</option>
+        <option value="{% static 'myapp/demo_CA.jpg'%}">demo_CA</option>
+    </select>
+
+    <select id="imageTypeSelect">
+        
+        <option value="morphological">Morphotype</option>
+        <option value="parameterMap">Morphometrics</option>
+    </select>
+
+    <select id="iparameterSelect" style="display: none;">
+        <option value="CArea">Cell Area [CArea]</option>
+        <option value="CPM">Cell Perimeter [CPM]</option>
+        <option value="CHSR">convex hull span ratio [CHSR]</option>
+        <option value="mDS">mean distance between soma [mDS]</option>
+    </select>
+    <div class="checkbox-container">
+        <input type="checkbox" id="checkbox_All">
+        <label for="checkbox_All">All</label>
+    
+        <input type="checkbox" id="Checkbox_R">
+        <label for="Checkbox_R">R</label>
+    
+        <input type="checkbox" id="Checkbox_H">   
+        <label for="Checkbox_H">H</label>
+    
+        <input type="checkbox" id="Checkbox_B">
+        <label for="Checkbox_B">B</label>
+    
+        <input type="checkbox" id="Checkbox_A">
+        <label for="Checkbox_A">A</label>
+    
+        <input type="checkbox" id="Checkbox_RD">
+        <label for="Checkbox_RD">RD</label>
+    
+        <input type="checkbox" id="Checkbox_HR">
+        <label for="Checkbox_HR">HR</label>
+    </div>
+</div>
+    
+</div>
+
+<div class="flex-container">
+    <img id="displayedImage" class="img-responsive" src="" alt="Displayed Image">
+
+        <!-- Add a canvas element for the bar chart              <div id="countsDisplay"></div>
+
+ -->
+        <div class="right-container">
+            <div class="chart-container">
+                <canvas id="barChart"> style="width 70%;"</canvas>
+            </div>
+            <div class="hist-container">
+                <canvas id="histChart"> style="width 70%;"</canvas>
+            </div>
+ 
+
+            <div class="carea-container0" style="display: none;">
+                <div class="carea-label-container">
+                    <div style="margin-bottom: 7px;">CArea (µm<sup>2</sup>):</div>
+                    <div id="carea_value_box0" class="carea-value-box">{{ sliderlimit0.0.0 }} {{ sliderlimit0.0.1 }}</div>
+                </div>
+                <div id="carea_slider_with_values0">
+                    <div class="carea-slider-values">
+                        <span id="min_value">{{ sliderlimit0.0.0 }}</span>
+                        <span id="max_value">{{ sliderlimit0.0.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="carea-container1" style="display: none;">
+                <div class="carea-label-container">
+                    <div style="margin-bottom: 7px;">CArea (µm<sup>2</sup>):</div>
+                    <div id="carea_value_box1" class="carea-value-box">{{ sliderlimit1.0.0 }} {{ sliderlimit1.0.1 }}</div>
+                </div>
+                <div id="carea_slider_with_values1">
+                    <div class="carea-slider-values">
+                        <span id="min_value">{{ sliderlimit1.0.0 }}</span>
+                        <span id="max_value">{{ sliderlimit1.0.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cpm-container0" style="display: none;">
+                <div class="cpm-label-container">
+                    <div>CPM (µm):</div>
+                    <div id="cpm_value_box0" class="cpm-value-box">{{ sliderlimit0.1.0 }} {{ sliderlimit0.1.1 }}</div>
+                </div>
+                <div id="cpm_slider_with_values0">
+                    <div class="cpm-slider-values">
+                        <span id="min_value">{{ sliderlimit0.1.0 }}</span>
+                        <span id="max_value">{{ sliderlimit0.1.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cpm-container1">
+                <div class="cpm-label-container">
+                    <div>CPM (µm):</div>
+                    <div id="cpm_value_box1" class="cpm-value-box">{{ sliderlimit1.1.0 }} {{ sliderlimit1.1.1 }}</div>
+                </div>
+                <div id="cpm_slider_with_values1">
+                    <div class="cpm-slider-values">
+                        <span id="min_value">{{ sliderlimit1.1.0 }}</span>
+                        <span id="max_value">{{ sliderlimit1.1.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chsr-container0" style="display: none;">
+                <div class="chsr-label-container">
+                    <div>CHSR:</div>
+                    <div id="chsr_value_box0" class="chsr-value-box">{{ sliderlimit0.2.0 }} {{ sliderlimit0.2.1 }}</div>
+                </div>
+                <div id="chsr_slider_with_values0">
+                    <div class="chsr-slider-values">
+                        <span id="min_value">{{ sliderlimit0.2.0 }}</span>
+                        <span id="max_value">{{ sliderlimit0.2.1 }}</span>
+                    </div>
+                </div>
+            </div>
+                
+            <div class="chsr-container1">
+                <div class="chsr-label-container">
+                    <div>CHSR:</div>
+                    <div id="chsr_value_box1" class="chsr-value-box">{{ sliderlimit1.2.0 }} {{ sliderlimit1.2.1 }}</div>
+                </div>
+                <div id="chsr_slider_with_values1" aria-labelledby="chsr_label">
+                    <div class="chsr-slider-values">
+                        <span id="min_value">{{ sliderlimit1.2.0 }}</span>
+                        <span id="max_value">{{ sliderlimit1.2.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="mds-container0" style="display: none;">
+                <div class="mds-label-container">
+                    <div>mDS:</div>
+                    <div id="mds_value_box0" class="mds-value-box">{{ sliderlimit0.3.0 }} {{ sliderlimit0.3.1 }}</div>
+                </div>
+                <div id="mds_slider_with_values0">
+                    <div class="mds-slider-values">
+                        <span id="min_value">{{ sliderlimit0.3.0 }}</span>
+                        <span id="max_value">{{ sliderlimit0.3.1 }}</span>
+                    </div>
+                </div>
+            </div>
+                
+                <div class="mds-container1">
+                <div class="mds-label-container">
+                    <div>mDS:</div>
+                    <div id="mds_value_box1" class="mds-value-box">{{ sliderlimit1.3.0 }} {{ sliderlimit1.3.1 }}</div>
+                </div>
+                <div id="mds_slider_with_values1" aria-labelledby="mds_label">
+                    <div class="mds-slider-values">
+                        <span id="min_value">{{ sliderlimit1.3.0 }}</span>
+                        <span id="max_value">{{ sliderlimit1.3.1 }}</span>
+                    </div>
+                </div>
+            </div>
+
+
+            
+            <div class="slider-container">
+                <label for="fm_slider">FM:</label>
+                <div id="current_value_box" class="value-box">{{ min_fm }}</div>
+                <div class="slider-with-values">
+                    <input type="range" min="{{ min_fm }}" max="{{ max_fm }}" value="{{ min_fm }}" id="fm_slider" oninput="updateValue(this.value)">
+                    <div class="slider-values">
+                        <span id="min_value">{{ min_fm }}</span>
+                        <span id="max_value">{{ max_fm }}</span>
+                    </div>
+                </div>
+            </div>
+
+  
+            
+        
+
+         </div>
+       
+
+</div>
+
+<body>
+
+
