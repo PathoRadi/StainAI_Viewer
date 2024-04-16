@@ -281,8 +281,18 @@ Contact: chaohsiung.hsu@howard.edu
             histChart.destroy();  // Destroy the existing chart
         }
         
-        var ctx = document.getElementById('barChart').getContext('2d');
-        barChart = createBarChart(ctx);  // Removed the 'var' keyword
+        // var ctx = document.getElementById('barChart').getContext('2d');
+
+
+        var data = {
+            labels: ['R', 'H', 'B', 'A', 'RD', 'HR', '< FM'],
+            datasets: [{
+                label: 'Counts',
+                data: [], // replace with your actual data
+                backgroundColor: ['rgb(102, 204, 0)', 'rgb(204, 204, 0)', 'rgb(220, 112, 0)', 'rgb(204, 0, 0)', 'rgb(0, 210, 210)', 'rgb(0, 0, 204)', 'rgb(80, 80, 80)'],
+            }]
+        };
+        barChart = createBarChart(data);  // Removed the 'var' keyword
 
         createMenu();
         
@@ -424,14 +434,14 @@ Contact: chaohsiung.hsu@howard.edu
                         // Uncheck the corresponding checkbox
                         $('#Checkbox_' + clickedLabel).prop('checked', false);
                         // Uncheck the 'All' checkbox
-                        $('#Checkbox_all').prop('checked', false);
+                        $('#checkbox_All').prop('checked', false);
                     } else {
                         // Check the corresponding checkbox
                         $('#Checkbox_' + clickedLabel).prop('checked', true);
                         // If all other checkboxes are checked
                         if ($('#Checkbox_R:checked, #Checkbox_B:checked, #Checkbox_H:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked').length == 6) {
                             // Check 'check_All'
-                            $('#Checkbox_all').prop('checked', true);
+                            $('#checkbox_All').prop('checked', true);
                         }
                     }
                 }
@@ -583,7 +593,9 @@ Contact: chaohsiung.hsu@howard.edu
         });
     });
 
-    function createBarChart(ctx) {
+    
+    function createBarChart(data) {
+        var ctx = document.getElementById('barChart').getContext('2d');
         return new Chart(ctx, {
             type: 'bar',
             data: {
@@ -592,8 +604,12 @@ Contact: chaohsiung.hsu@howard.edu
                     label: 'Counts',
                     data: [],
                     backgroundColor: ['rgb(102, 204, 0)', 'rgb(204, 204, 0)', 'rgb(220, 112, 0)', 'rgb(204, 0, 0)', 'rgb(0, 210, 210)', 'rgb(0, 0, 204)', 'rgb(80, 80, 80)'],
-                    borderColor: 'transparent',
-                    borderWidth: 1
+                    borderColor: function(context) {
+                        var index = context.dataIndex;
+                        var value = context.dataset.data[index];
+                        return value > 0 ? getBorderColor(index) : 'transparent';
+                    },
+                    borderWidth: 3
                 }]
             },
             options: {
@@ -625,7 +641,7 @@ Contact: chaohsiung.hsu@howard.edu
                             }
                         },
                         beginAtZero: true,
-                      }
+                    }
                 }
             },
             plugins: [{
@@ -637,15 +653,27 @@ Contact: chaohsiung.hsu@howard.edu
                             ctx.fillStyle = 'black';
                             var data = dataset.data[index];
                             var textWidth = ctx.measureText(data).width;
-                            ctx.fillText(data, bar.x- textWidth / 2, bar.y - 5);
+                            ctx.fillText(data, bar.x - textWidth / 2, bar.y - 5);
                         });
                     });
                 }
             }],
-
         });
     }
-       
+    
+    function getBorderColor(index) {
+        var colors = {
+            0: $('#Checkbox_R').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent',
+            1: $('#Checkbox_H').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent',
+            2: $('#Checkbox_B').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent',
+            3: $('#Checkbox_A').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent',
+            4: $('#Checkbox_RD').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent',
+            5: $('#Checkbox_HR').prop('checked') ? 'rgba(76, 0, 153, 1)' : 'transparent'
+        };
+    
+        return colors[index] || 'transparent';
+    }
+
     function createHistChart(ctx, data, backgroundColor, newLabel) {
         return new Chart(ctx, {
             type: 'bar',
@@ -790,8 +818,18 @@ Contact: chaohsiung.hsu@howard.edu
                         }
 
                         // Check if barChart exists and create it if it doesn't
-                        var ctx = document.getElementById('barChart').getContext('2d');
-                        barChart = createBarChart(ctx);  // Removed the 'var' keyword
+                        // var ctx = document.getElementById('barChart').getContext('2d');
+
+                        var chatdata = {
+                            labels: ['R', 'H', 'B', 'A', 'RD', 'HR', '< FM'],
+                            datasets: [{
+                                label: 'Counts',
+                                data: [], // replace with your actual data
+                                backgroundColor: ['rgb(102, 204, 0)', 'rgb(204, 204, 0)', 'rgb(220, 112, 0)', 'rgb(204, 0, 0)', 'rgb(0, 210, 210)', 'rgb(0, 0, 204)', 'rgb(80, 80, 80)'],
+                            }]
+                        };
+
+                        barChart = createBarChart(chatdata);  // Removed the 'var' keyword
                         // Update the bar chart's data                     
                         barChart.data.datasets[0].data = counts;  // Wrap counts in an array
                         barChart.update();
