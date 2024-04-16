@@ -147,23 +147,33 @@ def show_mmap(request):
     if iparameter == 'CArea':
         minth = carea_minth
         maxth = carea_maxth
-        dvalues = df['CArea']
+        # dvalues = df['CArea']
+        idth2 = ((df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth) | (df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
+        dvalues = df.loc[~idth2, 'CArea']
     elif iparameter == 'CPM':
         minth = cpm_minth
         maxth = cpm_maxth
-        dvalues = df['CPM']
+        # dvalues = df['CPM']
+        idth2 = ((df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
+        dvalues = df.loc[~idth2, 'CPM']
     elif iparameter == 'CHSR':
         minth = chsr_minth
         maxth = chsr_maxth
-        dvalues = df['CHSR']
+        # dvalues = df['CHSR']
+        idth2 = ((df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
+        dvalues = df.loc[~idth2, 'CHSR']
+
     elif iparameter == 'mDS':
         minth = mds_minth
         maxth = mds_maxth
-        dvalues = df['mDS']
+        # dvalues = df['mDS']
+        idth2 = ((df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) & (df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth))
+        dvalues = df.loc[~idth2, 'mDS']
 
+    idth3 = ~idth2
+    idth3=df[idth3].index.tolist()   
     # Define the color for FM values below the threshold
     below_threshold_color = (80, 80, 80, 129)  # 40% transparent gray
-
     # indicesFMGt = df.loc[df['FM'] > 500].index
     # indicesFMLe = df.loc[df['FM'] <= 500].index
     histdata = {
@@ -172,6 +182,7 @@ def show_mmap(request):
         'widths': [],
         'colors': [],
     }
+    
 
     if imageType == 'morphological':
         colors = {
@@ -196,12 +207,13 @@ def show_mmap(request):
             # Check if the FM value is below the threshold
             if row['FM'] < fm_threshold:
                 color = below_threshold_color
+                draw.rectangle([left, upper, right, lower], outline=color, fill=color)
             else:
                 color = colors.get(row['C50'], (0, 255, 0, 128))  # Use green as the default color
                 if checkBox_All or (checkBox_R and row['C50'] == 'R') or (checkBox_B and row['C50'] == 'B') or (checkBox_H and row['C50'] == 'H') or (checkBox_A and row['C50'] == 'A') or (checkBox_RD and row['C50'] == 'RD') or (checkBox_HR and row['C50'] == 'HR'):
                     draw.rectangle([left, upper, right, lower], outline=color, fill=color)
 
-            # draw.rectangle([left, upper, right, lower], outline=color, fill=color)
+            
    
         img_with_boxes = Image.alpha_composite(img.convert('RGBA'), overlay)
         
@@ -213,10 +225,8 @@ def show_mmap(request):
         df['value_normalized'] = (dvalues- minth) / (maxth - minth)
         df['value_clipped'] = dvalues.clip(minth, maxth)
         df['value_normalized'] = (df['value_clipped'] - minth) / (maxth - minth)
-        # df['CArea_normalized'] = (df['CArea'] - df['CArea'].min()) / (df['CArea'].max() - df['CArea'].min())
- 
 
-        for i, row in df.iterrows():
+        for i, row in df.loc[idth3].iterrows():  #in df.iterrows():
             bbox = bbox_values[i]
             bbox = bbox.strip('[]')
             bbox2 = [float(num_str) for num_str in bbox.split()]
@@ -229,6 +239,7 @@ def show_mmap(request):
             # Check if the FM value is below the threshold
             if row['FM'] < fm_threshold:
                 color = below_threshold_color
+                draw.rectangle([left, upper, right, lower], outline=color, fill=color)
             else:
                 # Map the normalized CArea value to a color in the colormap
                 color = cmap(row['value_normalized'])
@@ -237,7 +248,7 @@ def show_mmap(request):
 
                 if checkBox_All or (checkBox_R and row['C50'] == 'R') or (checkBox_B and row['C50'] == 'B') or (checkBox_H and row['C50'] == 'H') or (checkBox_A and row['C50'] == 'A') or (checkBox_RD and row['C50'] == 'RD') or (checkBox_HR and row['C50'] == 'HR'):
                     draw.rectangle([left, upper, right, lower], outline=color, fill=color)
-            # draw.rectangle([left, upper, right, lower], outline=color, fill=color)
+            
    
         img_with_boxes = Image.alpha_composite(img.convert('RGBA'), overlay)
     
@@ -311,6 +322,8 @@ def show_mmap(request):
 
     df_above_threshold = df.loc[idth1][df.loc[idth1, 'FM'] >= fm_threshold]
     df_below_threshold = df.loc[idth1][df.loc[idth1, 'FM'] < fm_threshold]
+    
+       
     # Count the occurrences of each value in the 'C50' column for rows above the threshold
     counts_above_threshold = Counter(df_above_threshold['C50'])
 

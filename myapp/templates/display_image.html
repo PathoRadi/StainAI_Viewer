@@ -19,16 +19,22 @@ Contact: chaohsiung.hsu@howard.edu
         gap: 20px;
     }
     .img-responsive {
-        max-width: 75%;
+        width: calc(100vw - 355px);  /* width of the viewport minus 315px */
+        max-width: none;  /* override the previous max-width */
         height: auto;
         margin-right: auto;
         display: block;
     }
     #iparameterSelect {
         position: absolute;
-        right: 25%;
+        right: 355px;  /* aligns the element 315px from the right */
         vertical-align: top;
     }
+
+    #imageTypeSelect, #iparameterSelect {
+        margin-top: 2px;  /* adjust this value as needed */
+    }
+
 
     .right-container {
         position: absolute;
@@ -51,22 +57,27 @@ Contact: chaohsiung.hsu@howard.edu
     .slider-values {
         display: flex;
         justify-content: space-between;
-        width: 100%;
+        width: 110%;
     }
     .value-box {
         border: 1px solid #000;
-        padding: 10px;
-        margin-left: 10px;
-        width: 30px;  /* adjust as needed */
-        height: 20px;  /* adjust as needed */
+        padding: 0px;
+        margin-left: 0px;
+        margin-top: -20px;  /* moves the box 20px higher */
+        width: 50px;  /* adjust as needed */
+        height: 25px;  /* adjust as needed */
         text-align: center;
     }
 
+    .slider-container label {
+        margin-bottom: 25px;  /* moves the label 20px higher */
+    }
+
     .carea-container0 {
-        margin-top: 380px;  /* Adjust this value as needed */
+        margin-top: 60px;  /* Adjust this value as needed */
     }
     .carea-container1 {
-        margin-top: 380px;  /* Adjust this value as needed */
+        margin-top: 60px;  /* Adjust this value as needed */
     }
     .carea-slider-values {
         margin-top: 20px;  /* Adjust this value as needed */
@@ -168,15 +179,24 @@ Contact: chaohsiung.hsu@howard.edu
     }
 
     .chart-container {
+        width: 305px; /* adjust this value as needed */
+        height: 200px
         position: absolute;
         top: 0px;
-        right: 0;
+        right: 20px;
     }
 
     .hist-container {
+        width: 305px; /* adjust this value as needed */
+        height: 400px
         position: absolute;
-        top: 160px;
+        top: 180px;
         right: 0;
+    }
+
+    
+    .histlabel-container {
+        margin-top: 0px;
     }
 
     #imageTypeSelect, .checkbox-container {
@@ -188,13 +208,19 @@ Contact: chaohsiung.hsu@howard.edu
         margin-left: 20px; /* Adjust this value to create more or less space between the menu and the checkboxes */
     }
 
-    
+    #paramenu {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    #label {
+        padding: 0 10px;
+    }
+
    
 
-    body {
-        font-family: "Times New Roman", Times, serif;
 
-    }
 
 </style>
 <head>
@@ -205,9 +231,20 @@ Contact: chaohsiung.hsu@howard.edu
     <script src="https://code.jquery.com/jquery-1.12.4.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src="https://d3js.org/d3.v5.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: 'Times New Roman', fallback, sans-serif;
+        }
+</style>
 </head>
 
 <script>
+    //<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+//     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+// 
+
     Chart.defaults.font.family = 'Times New Roman';  // Set the default font
     // Chart.defaults.font.family = 'Arial';  // Set the default font
 
@@ -247,6 +284,8 @@ Contact: chaohsiung.hsu@howard.edu
         var ctx = document.getElementById('barChart').getContext('2d');
         barChart = createBarChart(ctx);  // Removed the 'var' keyword
 
+        createMenu();
+        
         // When 'check_All' is checked or unchecked
         $('#checkbox_All').change(function() {
             // Check or uncheck all other checkboxes
@@ -430,9 +469,38 @@ Contact: chaohsiung.hsu@howard.edu
             }
         });
     }); 
+   
 
-        
+    function createMenu() {
+        var selectElement = document.getElementById('iparameterSelect');
+        var parameters = Array.from(selectElement.options).map(option => option.value);
+        var units = [" (µm<sup>2</sup>)", " (µm)", "", " (µm)"]; // adjust this array based on your needs
+        var index = 0;
     
+        // Update the label when the dropdown changes
+        selectElement.addEventListener('change', function() {
+            index = selectElement.selectedIndex;
+            document.getElementById('label').innerHTML = parameters[index] + units[index];
+            loadImage(thresholds); // call loadImage with the thresholds
+        });
+    
+        document.getElementById('next').addEventListener('click', function() {
+            index = (index + 1) % parameters.length;
+            selectElement.selectedIndex = index; // change the selected option in the dropdown
+            document.getElementById('label').innerHTML = parameters[index] + units[index];
+            // console.log('Next clicked, new value:', parameters[index]);
+            loadImage(thresholds); // call loadImage with the thresholds
+        });
+    
+        document.getElementById('prev').addEventListener('click', function() {
+            index = (index - 1 + parameters.length) % parameters.length;
+            selectElement.selectedIndex = index; // change the selected option in the dropdown
+            document.getElementById('label').innerHTML = parameters[index] + units[index];
+            // console.log('Prev clicked, new value:', parameters[index]);
+            loadImage(thresholds); // call loadImage with the thresholds
+        });
+    }
+
     $(function() {
         $("#cpm_slider_with_values0").slider({
             range: true,
@@ -524,7 +592,7 @@ Contact: chaohsiung.hsu@howard.edu
                     label: 'Counts',
                     data: [],
                     backgroundColor: ['rgb(102, 204, 0)', 'rgb(204, 204, 0)', 'rgb(220, 112, 0)', 'rgb(204, 0, 0)', 'rgb(0, 210, 210)', 'rgb(0, 0, 204)', 'rgb(80, 80, 80)'],
-                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderColor: 'transparent',
                     borderWidth: 1
                 }]
             },
@@ -601,13 +669,13 @@ Contact: chaohsiung.hsu@howard.edu
                         ticks: {
                             stepSize: 1
                         },
-                        title: {
-                            display: true,
-                            text: newLabel,
-                            font: {
-                                size: 14
-                            }
-                        }
+                    //    title: {
+                    //        display: true,
+                    //        text: newLabel,
+                    //        font: {
+                    //            size: 14
+                    //        }
+                    //    }
                     },
                     y: {
                         title: {
@@ -781,7 +849,6 @@ Contact: chaohsiung.hsu@howard.edu
     </select>
 
     <select id="imageTypeSelect">
-        
         <option value="morphological">Morphotype</option>
         <option value="parameterMap">Morphometrics</option>
     </select>
@@ -830,9 +897,20 @@ Contact: chaohsiung.hsu@howard.edu
             </div>
             <div class="hist-container">
                 <canvas id="histChart"> style="width 70%;"</canvas>
-            </div>
- 
 
+            </div>
+
+            <div class="histlabel-container">
+                <div id="paramenu">
+                    <button id="prev" class="btn btn-primary btn-sm">
+                        <i class="fas fa-chevron-left"></i> 
+                    </button>
+                    <span id="label">CArea (µm<sup>2</sup>)</span>
+                    <button id="next" class="btn btn-primary btn-sm">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
             <div class="carea-container0" style="display: none;">
                 <div class="carea-label-container">
                     <div style="margin-bottom: 7px;">CArea (µm<sup>2</sup>):</div>
