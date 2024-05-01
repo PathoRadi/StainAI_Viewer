@@ -26,7 +26,13 @@ def display_image(request):
     excel_files = [f for f in os.listdir(static_dir) if f.endswith('.xls')]
     df1 = pd.read_excel(os.path.join(static_dir, excel_files[1]))
     df0 = pd.read_excel(os.path.join(static_dir, excel_files[0]))
- 
+    
+    
+    columns_to_convert = ['CArea', 'FM', 'CPM', 'CHSR','mDS']  # Replace ... with other column names
+    df1[columns_to_convert] = df1[columns_to_convert].astype('float16')
+    df0[columns_to_convert] = df0[columns_to_convert].astype('float16')
+
+    print(df1.dtypes)
     fm_threshold = int(request.GET.get('fm_threshold', 0))  # Use 0 as the default value
     min_fm = 200 #df['FM'].min()
     max_fm = 1200 #df['FM'].max()
@@ -118,6 +124,10 @@ def show_mmap(request):
     excel_filename = os.path.splitext(filename)[0] + '.xls'
     excel_path = os.path.join(static_dir, excel_filename)
     df = pd.read_excel(excel_path)
+    columns_to_convert = ['CArea', 'FM', 'CPM', 'CHSR','mDS']  # Replace ... with other column names
+    df[columns_to_convert] = df[columns_to_convert].astype('float16')
+    # df = df.astype('float16')
+
     # print(df['CArea'].max())
     
     carea_minth = float(request.GET.get('carea_minth',df['CArea'].min()))
@@ -193,16 +203,31 @@ def show_mmap(request):
             'RD': (0, 210, 210, 128),
             'HR': (0, 0, 204, 128)
         }
-#        for i, row in df.iterrows():
+        # Convert 'bbox' values to lists of floats
+        bbox_values = pd.Series(bbox_values)
+        bbox_values = bbox_values.str.strip('[]').str.split().apply(lambda x: [float(num_str) for num_str in x])
+
+        # Calculate 'left', 'upper', 'right', and 'lower'
+        df['left'] = bbox_values.apply(lambda x: x[0])
+        df['upper'] = bbox_values.apply(lambda x: x[1])
+        df['right'] = df['left'] + bbox_values.apply(lambda x: x[2])
+        df['lower'] = df['upper'] + bbox_values.apply(lambda x: x[3])
+
+
         for i, row in df.loc[idth1].iterrows():
-            bbox = bbox_values[i]
-            bbox = bbox.strip('[]')
-            bbox2 = [float(num_str) for num_str in bbox.split()]
-            x, y, dx, dy = bbox2
-            left = x
-            upper = y
-            right = x + dx
-            lower = y + dy
+            #bbox = bbox_values[i]
+            #bbox = bbox.strip('[]')
+            #bbox2 = [float(num_str) for num_str in bbox.split()]
+            #x, y, dx, dy = bbox2
+            #left = x
+            #upper = y
+            #right = x + dx
+            #lower = y + dy
+            
+            left = row['left']
+            upper = row['upper']
+            right = row['right']
+            lower = row['lower']
 
             # Check if the FM value is below the threshold
             if row['FM'] < fm_threshold:
@@ -225,16 +250,29 @@ def show_mmap(request):
         df['value_normalized'] = (dvalues- minth) / (maxth - minth)
         df['value_clipped'] = dvalues.clip(minth, maxth)
         df['value_normalized'] = (df['value_clipped'] - minth) / (maxth - minth)
+        
+        bbox_values = pd.Series(bbox_values)
+        bbox_values = bbox_values.str.strip('[]').str.split().apply(lambda x: [float(num_str) for num_str in x])
+        # Calculate 'left', 'upper', 'right', and 'lower'
+        df['left'] = bbox_values.apply(lambda x: x[0])
+        df['upper'] = bbox_values.apply(lambda x: x[1])
+        df['right'] = df['left'] + bbox_values.apply(lambda x: x[2])
+        df['lower'] = df['upper'] + bbox_values.apply(lambda x: x[3])
 
         for i, row in df.loc[idth3].iterrows():  #in df.iterrows():
-            bbox = bbox_values[i]
-            bbox = bbox.strip('[]')
-            bbox2 = [float(num_str) for num_str in bbox.split()]
-            x, y, dx, dy = bbox2
-            left = x
-            upper = y
-            right = x + dx
-            lower = y + dy
+            #bbox = bbox_values[i]
+            #bbox = bbox.strip('[]')
+            #bbox2 = [float(num_str) for num_str in bbox.split()]
+            #x, y, dx, dy = bbox2
+            #left = x
+            #upper = y
+            #right = x + dx
+            #lower = y + dy
+            
+            left = row['left']
+            upper = row['upper']
+            right = row['right']
+            lower = row['lower']
     
             # Check if the FM value is below the threshold
             if row['FM'] < fm_threshold:
