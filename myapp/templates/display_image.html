@@ -9,7 +9,7 @@ Contact: chaohsiung.hsu@howard.edu
 <!DOCTYPE html>
 
 <head>
-    <link rel="stylesheet" href="{% static 'myapp/Style.css' %}">
+    <link rel="stylesheet" href="{% static 'Style.css' %}">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
@@ -32,7 +32,7 @@ Contact: chaohsiung.hsu@howard.edu
         <!--app-title is the title of this app-->
         <div class="title-container">
             <h1 class="app-title">STAIN.AI VIEWER</h1>
-            <img class="app-logo" src="{% static 'myapp/logo.png' %}" alt="">
+            <img class="app-logo" src="{% static 'logo.png' %}" alt="">
         </div>
         
 
@@ -49,8 +49,8 @@ Contact: chaohsiung.hsu@howard.edu
                     <div class="sub-input-element-container", id="imageSelect-container">
                         <h5 class="input-element-title">IMAGE</h5>
                         <select class="input-element" id="imageSelect" onchange="onImageSelect()">
-                            <option value="{% static 'myapp/demo_Ctrl.jpg'%}">demo_Ctrl</option>
-                            <option value="{% static 'myapp/demo_CA.jpg'%}">demo_CA</option>
+                            <option value="{% static 'demo_Ctrl.jpg'%}">demo_Ctrl</option>
+                            <option value="{% static 'demo_CA.jpg'%}">demo_CA</option>
                         </select>
                     </div>
 
@@ -295,7 +295,7 @@ Contact: chaohsiung.hsu@howard.edu
         id: "displayedImage",
         tileSources: {
             type: 'image',
-            url: '{% static "myapp/demo_Ctrl.jpg" %}',
+            url: '{% static "demo_Ctrl.jpg" %}',
             buildPyramid: false
         },
         prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/2.4.2/images/",
@@ -308,7 +308,7 @@ Contact: chaohsiung.hsu@howard.edu
     let new_bbox_data = []; // initialize bbox data here
 
     // initially load bbox data and draw bbox for demo_Ctrl(default)
-    loadBoxesData('{% static "myapp/demo_Ctrl.json" %}')
+    loadBoxesData('{% static "demo_Ctrl.json" %}')
         .then(data => {
             new_bbox_data = data;
             console.log(new_bbox_data);
@@ -330,9 +330,9 @@ Contact: chaohsiung.hsu@howard.edu
         // Fetch and replace bounding box data based on the selected image
         let jsonPath;
         if (selectedImage.includes('demo_Ctrl.jpg')) {
-            jsonPath = '{% static "myapp/demo_Ctrl.json" %}';
+            jsonPath = '{% static "demo_Ctrl.json" %}';
         } else if (selectedImage.includes('demo_CA.jpg')) {
-            jsonPath = '{% static "myapp/demo_CA.json" %}';
+            jsonPath = '{% static "demo_CA.json" %}';
         }
 
         // Replace old data with new and draw new boxes

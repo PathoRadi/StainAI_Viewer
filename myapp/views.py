@@ -19,7 +19,7 @@ import math
 
 def display_image(request):
     current_dir = os.path.dirname(__file__)
-    static_dir = os.path.join(current_dir,  'static', 'myapp')
+    static_dir = os.path.join(current_dir,  'static')
     
     #static_dir = os.path.join('myapp', 'static', 'myapp')  # <-- Update this line
     image_files = [f for f in os.listdir(static_dir) if f.endswith('.jpg')]
@@ -110,7 +110,7 @@ def show_mmap(request):
         return JsonResponse({'error': 'No filename provided'}, status=400)
 
     current_dir = os.path.dirname(__file__)
-    static_dir = os.path.join(current_dir,  'static', 'myapp')
+    static_dir = os.path.join(current_dir,  'static')
     image_path = os.path.join(static_dir, filename)
     
     
