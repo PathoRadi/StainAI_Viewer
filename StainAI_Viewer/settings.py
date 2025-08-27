@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-!x%ed1b=0sr!#@wln(01vec%rrvl23*jaadib+s0l_-=t89swy'
 # don't run with debug turned on in production!
 DEBUG = True
-# Add your domain names or IP addresses here when deploying
+# Add your domain names or IP addresses here when deploying aaa
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.azurewebsites.net']
 
 ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.130.4']
