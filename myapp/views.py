@@ -1,4 +1,4 @@
-# myapp/views.py  —— Azure 安全版（lazy import + headless 友善）
+# myapp/views.py
 import os
 import json
 import re
