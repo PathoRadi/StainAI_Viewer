@@ -214,29 +214,73 @@ class YOLOPipeline:
 
     def annotate_large_image(self, bbox, labels, alpha=0.3):
         """
-        Draw semi-transparent boxes on the full image and save to annotated directory.
+        Draw semi-transparent boxes on the full image and save to annotated directory. (Pillow version)
         """
-        img = cv2.imread(self.large_img_path)
-        if img is None:
+        from PIL import Image, ImageDraw  # 這裡就地匯入，避免頂層相依
+        try:
+            base_img = Image.open(self.large_img_path).convert("RGBA")
+        except Exception:
             print(f"Cannot read {self.large_img_path}")
             return
 
-        overlay = img.copy()
+        # 建一層全透明疊圖，畫半透明框在這層
+        overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        W, H = base_img.size
+        a255 = max(0, min(255, int(round(alpha * 255))))  # alpha (0~1) → 0~255
 
         for box, lbl in zip(bbox, labels):
-            # FIX: ensure all coords are ints (was passing floats → OpenCV complained)
             x1, y1, x2, y2 = map(int, box)
-            color = self.class_mapping[lbl][1]
-            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness=-1)
 
-        # blend overlay
-        cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+            # 邊界保護
+            x1 = max(0, min(x1, W)); x2 = max(0, min(x2, W))
+            y1 = max(0, min(y1, H)); y2 = max(0, min(y2, H))
+            if x2 <= x1 or y2 <= y1:
+                continue
 
-        # save result
-        out_name       = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
+            # 你的 class_mapping 顏色是給 OpenCV（BGR），Pillow 需要 RGB → 轉換 (b,g,r)→(r,g,b)
+            color_bgr = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
+            b, g, r = color_bgr
+            fill_rgba = (r, g, b, a255)
+
+            # 畫「填滿」的半透明矩形（若只要描邊可改用 outline=...）
+            draw.rectangle([x1, y1, x2, y2], fill=fill_rgba)
+
+        # 疊合：base ⊕ overlay → 轉回 RGB 存 JPG
+        annotated = Image.alpha_composite(base_img, overlay).convert("RGB")
+        os.makedirs(self.annotated_dir, exist_ok=True)
+        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
         annotated_path = os.path.join(self.annotated_dir, out_name)
-        cv2.imwrite(annotated_path, img)
+        annotated.save(annotated_path, format="JPEG", quality=90, optimize=True, progressive=True)
+
         print(f"Annotated image saved at {annotated_path}")
+
+    # def annotate_large_image(self, bbox, labels, alpha=0.3):
+    #     """
+    #     Draw semi-transparent boxes on the full image and save to annotated directory.
+    #     """
+    #     img = cv2.imread(self.large_img_path)
+    #     if img is None:
+    #         print(f"Cannot read {self.large_img_path}")
+    #         return
+
+    #     overlay = img.copy()
+
+    #     for box, lbl in zip(bbox, labels):
+    #         # FIX: ensure all coords are ints (was passing floats → OpenCV complained)
+    #         x1, y1, x2, y2 = map(int, box)
+    #         color = self.class_mapping[lbl][1]
+    #         cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness=-1)
+
+    #     # blend overlay
+    #     cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+
+    #     # save result
+    #     out_name       = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
+    #     annotated_path = os.path.join(self.annotated_dir, out_name)
+    #     cv2.imwrite(annotated_path, img)
+    #     print(f"Annotated image saved at {annotated_path}")
 
 
 
