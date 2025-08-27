@@ -15,11 +15,7 @@ SECRET_KEY = 'django-insecure-!x%ed1b=0sr!#@wln(01vec%rrvl23*jaadib+s0l_-=t89swy
 DEBUG = True
 # Add your domain names or IP addresses here when deploying
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.azurewebsites.net']
-azure_host = os.environ.get('WEBSITE_HOSTNAME')  # 例如 yourapp.azurewebsites.net
-if azure_host:
-    ALLOWED_HOSTS.append(azure_host)
 
-# 可選：靜音內部健康檢查的 Host
 ALLOWED_HOSTS += ['169.254.130.2']
 
 
