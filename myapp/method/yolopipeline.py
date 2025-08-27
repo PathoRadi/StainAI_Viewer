@@ -5,8 +5,6 @@ import torch
 import numpy as np
 import nibabel as nib
 from PIL import Image
-from natsort import natsorted
-from numba import prange
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .bounding_box_filter import BoundingBoxFilter
 
