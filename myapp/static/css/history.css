@@ -1,0 +1,120 @@
+/* static/css/history.css */
+
+/* ------- History Stack ------- */
+#history-container {
+    margin: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+.file_icon {
+    width: 14px;
+    height: 20px;
+    margin: 0 15px 0 0;
+}
+.history-item {
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    padding: 8px 36px 8px 12px;
+    background: var(--bg-history-item);
+    border: none;
+    border-radius: 15px;
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+.history-menu-btn {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--bg-history-menu-btn);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+.history-item:hover {
+    background: var(--bg-history-item-hover);
+}
+.history-item.selected {
+    background: var(--bg-history-item-hover);
+}
+.history-item:hover .history-menu-btn {
+    display: block;
+}
+.history-action-menu {
+    position: absolute;
+    transform: none !important;
+    margin: 0 !important;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    min-width: 140px;
+    display: none;
+    z-index: 1000;
+}
+.history-action-menu button {
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+}
+.history-action-menu button:hover {
+    background: var(--bg-history-action-menu-button-hover);
+}
+
+/* Page That Shows If Deleting History Item */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+.modal-box {
+    background: var(--bg-modal-box);
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+    color: var(--text-modal-box);
+}
+.modal-box p {
+    margin-bottom: 16px;
+    font-size: 1.2rem;
+}
+.modal-actions button {
+    margin: 0 8px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #fff;
+}
+#modal-cancel {
+    background: rgb(100,100,100);
+}
+#modal-delete {
+    background: rgb(204,0,0);
+}
+#modal-delete:hover {
+    background: rgb(255,0,0);
+}

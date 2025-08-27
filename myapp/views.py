@@ -1,401 +1,440 @@
-# Author: Chao-Hsiung Hsu
-# Version: 1.0
-# Copyright: 2024/4/10, StainAI project, Molecular Imaging Laboratory, Howard University
-# Contact: chaohsiung.hsu@howard.edu
-
-
-from django.shortcuts import render
 import os
-import pandas as pd
-from django.http import JsonResponse
-from PIL import Image, ImageDraw
+import json
+import cv2
+import shutil
+import zipfile
+import tempfile
+import re
 import numpy as np
-import base64
+
+from PIL import Image
 from io import BytesIO
-from collections import Counter
-import matplotlib.pyplot as plt
-from matplotlib.cm import get_cmap
-import math
+from django.conf import settings
+from django.shortcuts import render
+from django.http import JsonResponse, HttpResponseNotAllowed, FileResponse, HttpResponseNotFound, HttpResponseBadRequest
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST, require_GET
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tifffile import TiffWriter
 
+from ultralytics import YOLO
+
+from .method.image_resizer import ImageResizer
+from .method.grayscale import GrayScaleImage
+from .method.cut_image import CutImage
+from .method.yolopipeline import YOLOPipeline
+
+# Load YOLO model once
+MODEL = YOLO(os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt'))
+
+# Render main page
 def display_image(request):
-    current_dir = os.path.dirname(__file__)
-    static_dir = os.path.join(current_dir,  'static', 'myapp')
-    
-    #static_dir = os.path.join('myapp', 'static', 'myapp')  # <-- Update this line
-    image_files = [f for f in os.listdir(static_dir) if f.endswith('.jpg')]
-    excel_files = [f for f in os.listdir(static_dir) if f.endswith('.xls')]
-    df1 = pd.read_excel(os.path.join(static_dir, excel_files[1]))
-    df0 = pd.read_excel(os.path.join(static_dir, excel_files[0]))
-    
-    
-    columns_to_convert = ['CArea', 'FM', 'CPM', 'CHSR','mDS']  # Replace ... with other column names
-    df1[columns_to_convert] = df1[columns_to_convert].astype('float16')
-    df0[columns_to_convert] = df0[columns_to_convert].astype('float16')
+    return render(request, 'display_image.html')
 
-    print(df1.dtypes)
-    fm_threshold = int(request.GET.get('fm_threshold', 0))  # Use 0 as the default value
-    min_fm = 200 #df['FM'].min()
-    max_fm = 1200 #df['FM'].max()
-    
-   
-    # Filter the data based on the fm_threshold
-    df_above_threshold = df1[df1['FM'] >= fm_threshold]
-    df_below_threshold = df1[df1['FM'] < fm_threshold]
-
-    # Count the occurrences of each value in the 'C50' column for rows above the threshold
-    counts_above_threshold = Counter(df_above_threshold['C50'])
-
-    # Only keep the counts for the specified values
-    values = ['R', 'H', 'B', 'A', 'RD', 'HR']
-    counts_above_threshold = {key: counts_above_threshold[key] for key in values}
-
-    # Count the total number of rows below the threshold
-    total_below_threshold = len(df_below_threshold)
-
-    # Add the total count below the threshold as the 7th bar
-    counts_above_threshold['< FM'] = total_below_threshold
-    # Create a list of counts and a list of colors
-    counts = list(counts_above_threshold.values())
-        
-                      
-    # Initialize slidelimit as a list of lists
-    sliderlimit1 = [[0, 0], [0, 0], [0, 0], [0, 0]]  #1 for ctrl, 0 for ca
-    sliderlimit1[0][0] = math.floor(df1['CArea'].min())
-    sliderlimit1[0][1] = math.ceil(df1['CArea'].max())     
-    sliderlimit1[1][0] = math.floor(df1['CPM'].min())
-    sliderlimit1[1][1] = math.ceil(df1['CPM'].max())              
-    sliderlimit1[2][0] = math.floor(df1['CHSR'].min())
-    sliderlimit1[2][1] = math.ceil(df1['CHSR'].max())            
-    sliderlimit1[3][0] = math.floor(df1['mDS'].min())
-    sliderlimit1[3][1] = math.ceil(df1['mDS'].max())   
-           
-    sliderlimit0 = [[0, 0], [0, 0], [0, 0], [0, 0]]  # 0 for ca
-    sliderlimit0[0][0] = math.floor(df0['CArea'].min())
-    sliderlimit0[0][1] = math.ceil(df0['CArea'].max())     
-    sliderlimit0[1][0] = math.floor(df0['CPM'].min())
-    sliderlimit0[1][1] = math.ceil(df0['CPM'].max()) 
-    sliderlimit0[2][0] = math.floor(df0['CHSR'].min())
-    sliderlimit0[2][1] = math.ceil(df0['CHSR'].max())            
-    sliderlimit0[3][0] = math.floor(df0['mDS'].min())
-    sliderlimit0[3][1] = math.ceil(df0['mDS'].max())   
-               
-    context = {
-        'image_files': image_files,
-        'excel_files': excel_files,
-        'min_fm': int(min_fm),
-        'max_fm': int(max_fm),
-        'counts': counts,
-        'sliderlimit1': sliderlimit1,
-        'sliderlimit0': sliderlimit0,
-    }
-    return render(request, 'display_image.html', context)
-
-def show_mmap(request):
-    filename = request.GET.get('filename')
-    imageType = request.GET.get('type')
-    iparameter = request.GET.get('iparameter')
-    fm_threshold = int(request.GET.get('fm_threshold', 0))  # Use 0 as the default value
-    
-    checkBox_R = request.GET.get('checkBox_R', 'false') == 'true'
-    checkBox_H = request.GET.get('checkBox_H', 'false') == 'true'
-    checkBox_B = request.GET.get('checkBox_B', 'false') == 'true'
-    checkBox_A = request.GET.get('checkBox_A', 'false') == 'true'
-    checkBox_RD = request.GET.get('checkBox_RD', 'false') == 'true'
-    checkBox_HR = request.GET.get('checkBox_HR', 'false') == 'true'
-    checkBox_All = request.GET.get('checkBox_All', 'false') == 'true'
-    
-    
-      
-    if not filename:
-        return JsonResponse({'error': 'No filename provided'}, status=400)
-
-    current_dir = os.path.dirname(__file__)
-    static_dir = os.path.join(current_dir,  'static', 'myapp')
-    image_path = os.path.join(static_dir, filename)
-    
-    
-    try:
-        # Open the image file
-        # img = Image.open(image_path).convert('L')  # Convert to grayscale
-        img = Image.open(image_path)
-    except IOError:
-        return JsonResponse({'error': 'Failed to open image file'}, status=500)
-   
-    excel_filename = os.path.splitext(filename)[0] + '.xls'
-    excel_path = os.path.join(static_dir, excel_filename)
-    df = pd.read_excel(excel_path)
-    columns_to_convert = ['CArea', 'FM', 'CPM', 'CHSR','mDS']  # Replace ... with other column names
-    df[columns_to_convert] = df[columns_to_convert].astype('float16')
-    # df = df.astype('float16')
-
-    # print(df['CArea'].max())
-    
-    carea_minth = float(request.GET.get('carea_minth',df['CArea'].min()))
-    carea_maxth = float(request.GET.get('carea_maxth',df['CArea'].max()))
-    # print(carea_minth, carea_maxth)
-    cpm_minth = float(request.GET.get('cpm_minth',df['CPM'].min()))
-    cpm_maxth = float(request.GET.get('cpm_maxth',df['CPM'].max()))
-    
-    chsr_minth = float(request.GET.get('chsr_minth',df['CHSR'].min()))
-    chsr_maxth = float(request.GET.get('chsr_maxth',df['CHSR'].max()))
-    
-    mds_minth = float(request.GET.get('mds_minth',df['mDS'].min()))
-    mds_maxth = float(request.GET.get('mds_maxth',df['mDS'].max()))
-    # print(cpm_minth, cpm_maxth)
-    # print(iparameter)
-    # print(chsr_maxth)
-    
-    idth0 = (df['CArea'].between(carea_minth, carea_maxth)) & (df['CPM'].between(cpm_minth, cpm_maxth)) & (df['CHSR'].between(chsr_minth, chsr_maxth)) & (df['mDS'].between(mds_minth, mds_maxth))
-    idth1 = df[idth0].index.tolist()
-    bbox_values = df['bbox'].values
-    # img.show()
-    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
-
-    draw = ImageDraw.Draw(overlay)
-
-    # indices = df.groupby('C50').indices
-    if iparameter == 'CArea':
-        minth = carea_minth
-        maxth = carea_maxth
-        # dvalues = df['CArea']
-        idth2 = ((df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth) | (df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
-        dvalues = df.loc[~idth2, 'CArea']
-    elif iparameter == 'CPM':
-        minth = cpm_minth
-        maxth = cpm_maxth
-        # dvalues = df['CPM']
-        idth2 = ((df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
-        dvalues = df.loc[~idth2, 'CPM']
-    elif iparameter == 'CHSR':
-        minth = chsr_minth
-        maxth = chsr_maxth
-        # dvalues = df['CHSR']
-        idth2 = ((df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) | (df['mDS'] < mds_minth) | (df['mDS'] > mds_maxth))
-        dvalues = df.loc[~idth2, 'CHSR']
-
-    elif iparameter == 'mDS':
-        minth = mds_minth
-        maxth = mds_maxth
-        # dvalues = df['mDS']
-        idth2 = ((df['CPM'] < cpm_minth) | (df['CPM'] > cpm_maxth) | (df['CArea'] < carea_minth) | (df['CArea'] > carea_maxth) & (df['CHSR'] < chsr_minth) | (df['CHSR'] > chsr_maxth))
-        dvalues = df.loc[~idth2, 'mDS']
-
-    idth3 = ~idth2
-    idth3=df[idth3].index.tolist()   
-    # Define the color for FM values below the threshold
-    below_threshold_color = (80, 80, 80, 129)  # 40% transparent gray
-    # indicesFMGt = df.loc[df['FM'] > 500].index
-    # indicesFMLe = df.loc[df['FM'] <= 500].index
-    histdata = {
-        'bins': [],
-        'counts': [],
-        'widths': [],
-        'colors': [],
-    }
-    
-
-    if imageType == 'morphological':
-        colors = {
-            'R': (102, 204, 0, 128),
-            'H': (204, 204, 0, 128),
-            'B': (220, 112, 0, 128),
-            'A': (204, 0, 0, 128),
-            'RD': (0, 210, 210, 128),
-            'HR': (0, 0, 204, 128)
-        }
-        # Convert 'bbox' values to lists of floats
-        bbox_values = pd.Series(bbox_values)
-        bbox_values = bbox_values.str.strip('[]').str.split().apply(lambda x: [float(num_str) for num_str in x])
-
-        # Calculate 'left', 'upper', 'right', and 'lower'
-        df['left'] = bbox_values.apply(lambda x: x[0])
-        df['upper'] = bbox_values.apply(lambda x: x[1])
-        df['right'] = df['left'] + bbox_values.apply(lambda x: x[2])
-        df['lower'] = df['upper'] + bbox_values.apply(lambda x: x[3])
+@csrf_exempt
+def upload_image(request):
+    """
+    Handle the image upload:
+      • save under MEDIA_ROOT/<imagename>/
+      • return MEDIA_URL/<imagename>/<filename>
+    """
+    if request.method=='POST' and request.FILES.get('image'):
+        """ 1) create project directory """
+        img = request.FILES['image']
+        # image_name: image name without extension
+        # example: image.jpg -> image
+        image_name = os.path.splitext(img.name)[0]
+        # project_dir: a directory with image name > media/{image_name}/
+        # create project directory
+        project_dir = os.path.join(settings.MEDIA_ROOT, image_name)
+        os.makedirs(project_dir, exist_ok=True)
 
 
-        for i, row in df.loc[idth1].iterrows():
-            #bbox = bbox_values[i]
-            #bbox = bbox.strip('[]')
-            #bbox2 = [float(num_str) for num_str in bbox.split()]
-            #x, y, dx, dy = bbox2
-            #left = x
-            #upper = y
-            #right = x + dx
-            #lower = y + dy
-            
-            left = row['left']
-            upper = row['upper']
-            right = row['right']
-            lower = row['lower']
+        """ 2) save original image in oringinal directory """
+        # original_image_dir: a directory that contains original image > media/{image_name}/original
+        # create original image directory
+        original_image_dir = os.path.join(project_dir, 'original')
+        os.makedirs(original_image_dir, exist_ok=True)
 
-            # Check if the FM value is below the threshold
-            if row['FM'] < fm_threshold:
-                color = below_threshold_color
-                draw.rectangle([left, upper, right, lower], outline=color, fill=color)
-            else:
-                color = colors.get(row['C50'], (0, 255, 0, 128))  # Use green as the default color
-                if checkBox_All or (checkBox_R and row['C50'] == 'R') or (checkBox_B and row['C50'] == 'B') or (checkBox_H and row['C50'] == 'H') or (checkBox_A and row['C50'] == 'A') or (checkBox_RD and row['C50'] == 'RD') or (checkBox_HR and row['C50'] == 'HR'):
-                    draw.rectangle([left, upper, right, lower], outline=color, fill=color)
+        # original_image_path: a path to save original image > media/{image_name}/original/<img.name>
+        original_image_path = os.path.join(original_image_dir, img.name)
+        with open(original_image_path,'wb+') as f:
+            for chunk in img.chunks():
+                f.write(chunk)
 
-            
-   
-        img_with_boxes = Image.alpha_composite(img.convert('RGBA'), overlay)
-        
-    elif imageType == 'parameterMap':
-        # Create a colormap
-        cmap = plt.cm.jet
-   
-        # Normalize the CArea values to the range [0, 1]
-        df['value_normalized'] = (dvalues- minth) / (maxth - minth)
-        df['value_clipped'] = dvalues.clip(minth, maxth)
-        df['value_normalized'] = (df['value_clipped'] - minth) / (maxth - minth)
-        
-        bbox_values = pd.Series(bbox_values)
-        bbox_values = bbox_values.str.strip('[]').str.split().apply(lambda x: [float(num_str) for num_str in x])
-        # Calculate 'left', 'upper', 'right', and 'lower'
-        df['left'] = bbox_values.apply(lambda x: x[0])
-        df['upper'] = bbox_values.apply(lambda x: x[1])
-        df['right'] = df['left'] + bbox_values.apply(lambda x: x[2])
-        df['lower'] = df['upper'] + bbox_values.apply(lambda x: x[3])
 
-        for i, row in df.loc[idth3].iterrows():  #in df.iterrows():
-            #bbox = bbox_values[i]
-            #bbox = bbox.strip('[]')
-            #bbox2 = [float(num_str) for num_str in bbox.split()]
-            #x, y, dx, dy = bbox2
-            #left = x
-            #upper = y
-            #right = x + dx
-            #lower = y + dy
-            
-            left = row['left']
-            upper = row['upper']
-            right = row['right']
-            lower = row['lower']
-    
-            # Check if the FM value is below the threshold
-            if row['FM'] < fm_threshold:
-                color = below_threshold_color
-                draw.rectangle([left, upper, right, lower], outline=color, fill=color)
-            else:
-                # Map the normalized CArea value to a color in the colormap
-                color = cmap(row['value_normalized'])
-                # Convert the color from RGBA float (range [0, 1]) to RGBA integer (range [0, 255])
-                color = tuple(int(c * 255) for c in color[:3]) + (128,)  # Add 50% transparency                #color = colors.get(row['C50'], (0, 255, 0, 128))  # Use green as the default color
+        """ 
+            3) resize original image to half size (if h or w > 20000) 
+               and return resized or original image path
+        """
+        # get height and width of the original image
+        h, w = cv2.imread(original_image_path).shape[:2]
+        # if h or w > 20000, resize the image to half size
+        # else, keep the original image size
+        if h >20000 or w > 20000:
+            # create resized and saved in media/{image_name}/resized
+            # don't have to create resized directory, because it will be created in ImageResizer class
+            resized_path = ImageResizer(original_image_path, project_dir).resize()
+            # relpath gets relative path from MEDIA_ROOT, but return will not contain MEDIA_URL
+            resized_path = os.path.relpath(resized_path, settings.MEDIA_ROOT).replace('\\','/')
+            resized_path = os.path.join(settings.MEDIA_URL, resized_path)
 
-                if checkBox_All or (checkBox_R and row['C50'] == 'R') or (checkBox_B and row['C50'] == 'B') or (checkBox_H and row['C50'] == 'H') or (checkBox_A and row['C50'] == 'A') or (checkBox_RD and row['C50'] == 'RD') or (checkBox_HR and row['C50'] == 'HR'):
-                    draw.rectangle([left, upper, right, lower], outline=color, fill=color)
-           
-   
-        img_with_boxes = Image.alpha_composite(img.convert('RGBA'), overlay)
-    
-    elif imageType == 'original':
-            img_with_boxes = img  # Use the original image without overlay
-        
-       
-            
-   # Get the checkboxes that are checked
-    checked_boxes = [box for box in ['R', 'H', 'B', 'A', 'RD', 'HR'] if request.GET.get(f'checkBox_{box}', 'false') == 'true']
-
-    # Filter the DataFrame based on the checkboxes
-    # if checked_boxes:
-        # dvalues = dvalues[df['C50'].isin(checked_boxes)]         
-    
-    # Filter the DataFrame based on the checkboxes and FM threshold
-    if checked_boxes:
-        dvalues = dvalues[(df['C50'].isin(checked_boxes)) & (df['FM'] > fm_threshold)]
-    else:
-        dvalues = dvalues[df['FM'] > fm_threshold]
-    
-    # Get the jet colormap
-    jet = get_cmap('jet',200)
-    
-  
-    # Define a custom function to map values to colors
-    def map_values_to_colors(dvalues):
-        if dvalues < minth:
-            return (0, 0, 0.5, 1)   # jet(0)   
-        elif dvalues > maxth:
-            return (0.5, 0, 0, 1)  # Return red color
+            return JsonResponse({'image_url': resized_path})
         else:
-            # Normalize the value to the range [0, 1]
-            normalized_value = (dvalues - minth) / (maxth - minth)
-            return jet(normalized_value)
+            # relpath gets relative path from MEDIA_ROOT, but return will not contain MEDIA_URL
+            original_image_path = os.path.relpath(original_image_path, settings.MEDIA_ROOT).replace('\\','/')
+            original_image_path = os.path.join(settings.MEDIA_URL, original_image_path)
+
+            return JsonResponse({'image_url': original_image_path})
+
+    return JsonResponse({'error':'Invalid upload'}, status=400)
+
+@csrf_exempt
+def detect_image(request):
+    """
+    On 'Start Detection' click:
+      • image_path now points to the already-made grayscale image
+      1) cut → 2) YOLO pipeline → 3) return boxes
+    """
+    if request.method == 'POST':
+        body = json.loads(request.body)
+        # get project name and project directory
+        project_name = body.get('image_path').split('/')[2]
+        project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+        # get detection image name and path (use original image for detection)
+        detection_image_name = os.listdir(os.path.join(
+            settings.MEDIA_ROOT, project_name, 'original')
+        )[0]
+        detection_image_path = os.path.join(
+            settings.MEDIA_ROOT, project_name, 'original', detection_image_name
+        )
+        # get height and width of the original image
+        orig_h, orig_w = cv2.imread(detection_image_path).shape[:2]
+
+        # if resized image exists, use it for detection
+        if os.path.isdir(os.path.join(settings.MEDIA_ROOT, project_name, 'resized')):
+            # get resized image name
+            resized_image_name = os.listdir(
+                os.path.join(settings.MEDIA_ROOT, project_name, 'resized')
+            )
+            # get resized image path
+            resized_image_path = os.path.join(
+                settings.MEDIA_ROOT, project_name, 'resized', resized_image_name[0]
+            )
+            # create directory to save display image
+            os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'display'), exist_ok=True)
+            # copy resized image to display directory
+            shutil.copy(resized_image_path, os.path.join(settings.MEDIA_ROOT, project_name, 'display'))
+        else:
+            # create display directory to save the gray image for display
+            os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'display'), exist_ok=True)
+            # copy the original image to display directory
+            shutil.copy(detection_image_path, os.path.join(settings.MEDIA_ROOT, project_name, 'display'))
+
+
+        """ 1) Turn Detection Image to GrayScale """
+        GrayScaleImage(detection_image_path, project_dir).rgb_to_gray()
+
+        """ 2) cut the gray image into patches """
+        gray_dir = os.path.join(project_dir, 'gray')
+        gray_image_name = os.listdir(gray_dir)[0]
+        gray_image_path = os.path.join(gray_dir, gray_image_name)
+        CutImage(gray_image_path, project_dir).cut()
+
+        """ 3) run your existing pipeline on those patches """
+        patches_dir = os.path.join(project_dir, 'patches')
+        pipeline    = YOLOPipeline(MODEL, patches_dir, detection_image_path, gray_image_path, project_dir)
+        detections  = pipeline.run()
+
+        """ 4) Get display image size """
+        display_image_name = os.listdir(os.path.join(settings.MEDIA_ROOT, project_name, 'display'))[0]
+        display_image_path = os.path.join(settings.MEDIA_ROOT, project_name, 'display', display_image_name)
+        disp_h, disp_w = cv2.imread(display_image_path).shape[:2]
+        print("finished getting display image size")
+
+        """ 5) generate tif. for original image and mmap"""
+        # list of paths to original annotated and original images
+        oringal_mmap_paths = [
+            os.path.join(settings.MEDIA_ROOT, project_name, 'original', detection_image_name),
+            os.path.join(settings.MEDIA_ROOT, project_name, 'annotated', project_name + '_annotated.jpg')
+        ]
+        # create directory to save original mmap
+        os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'original_mmap'), exist_ok=True)
+        # Baseline
+        original_mmap_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'original_mmap')
+
+        # # Professional
+        # combine_to_tiff(
+        #     oringal_mmap_paths, original_mmap_dir,
+        #     compat_mode=False,                 # 預設
+        #     tile=(512,512), compression='zstd', compression_level=8, bigtiff=True
+        # )
+
+        # combine original annotated and original images to a single tif.
+        combine_to_tiff(oringal_mmap_paths, original_mmap_dir, compat_mode=True)
+        print("finished generating original mmap paths")
+
+        """ 6) Delete fm_images and patches directories """
+        fm_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'fm_images')
+        patches_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'patches')
+        shutil.rmtree(fm_dir)
+        shutil.rmtree(patches_dir)
+        print("finished deleting fm_images and patches directories")
+
+        return JsonResponse({
+            'boxes': detections,
+            'orig_size': [orig_h, orig_w],
+            'display_size': [disp_h, disp_w],
+            'display_url': os.path.join(settings.MEDIA_URL, project_name, 'display', display_image_name)
+        })
+
+    return JsonResponse({'error': 'Invalid detect'}, status=400)
+
+@csrf_exempt
+def reset_media(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+    root = settings.MEDIA_ROOT
+    for child in os.listdir(root):
+        path = os.path.join(root, child)
+        try:
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except Exception:
+            pass
+    return JsonResponse({'ok': True})
+
+@csrf_exempt
+def delete_project(request):
+    if request.method == 'POST':
+        body = json.loads(request.body)
+        project_name = body.get('project_name')
+        project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+        if os.path.isdir(project_dir):
+            shutil.rmtree(project_dir)
+            return JsonResponse({'success': True})
+        else:
+            return JsonResponse({'error': 'Not found'}, status=404)
+    return JsonResponse({'error': 'Invalid request'}, status=400)
+
+@require_GET
+def download_project(request):
+    project_name = request.GET.get('project_name')
+    project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)
+    if not os.path.isdir(project_dir):
+        return HttpResponseNotFound('Project not found')
+
+    # Create zip in memory
+    s = BytesIO()
+    with zipfile.ZipFile(s, 'w', zipfile.ZIP_DEFLATED) as z:
+        for sub in ('original_mmap', 'qmap'):
+            folder = os.path.join(project_dir, sub)
+            if os.path.isdir(folder):
+                for root, _, files in os.walk(folder):
+                    for fn in files:
+                        path = os.path.join(root, fn)
+                        # store files under <sub>/... in the ZIP
+                        arcname = os.path.join(project_name, fn)
+                        z.write(path, arcname)
+    s.seek(0)
+    return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
+
+# ------ Helper Functions for Downlaod Project ------
+@csrf_exempt
+def _read_one(path):
+    """OpenCV 直讀（快），回傳 (ndarray, photometric)"""
+    arr = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if arr is None:
+        raise ValueError(f"Cannot read image: {path}")
+    # 灰階 / 彩色處理
+    if arr.ndim == 2:
+        return arr, 'minisblack'
+    if arr.shape[2] == 3:
+        return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB), 'rgb'
+    if arr.shape[2] == 4:
+        return cv2.cvtColor(arr, cv2.COLOR_BGRA2RGB), 'rgb'
+    return arr, 'minisblack'
+
+@csrf_exempt
+def combine_to_tiff(img_paths, output_dir,
+                    *,                      # 之後參數請用具名呼叫
+                    compat_mode=False,      # ← 新增：True 則輸出 Windows 相片可開
+                    tile=(512, 512),
+                    compression='zstd',
+                    compression_level=10,   # zstd 等級（3~10）
+                    predictor=None,         # LZW/Deflate 建議 2（horizontal）
+                    bigtiff=True,
+                    read_workers=None):
+    """
+    把多張影像合成多頁 TIFF。
+    compat_mode=True  → strip + LZW + predictor=2 + 避免 BigTIFF（Windows 相片相容）
+    compat_mode=False → tile + zstd + BigTIFF（效能最佳）
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    out_path = os.path.join(output_dir, "Original_Mmap.tiff")
+
+    # 1) 併發讀圖（保留輸入順序）
+    read_workers = read_workers or max(4, (os.cpu_count() or 8))
+    pages = [None] * len(img_paths)
+    with ThreadPoolExecutor(max_workers=read_workers) as ex:
+        futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
+        for fu in as_completed(futs):
+            pages[futs[fu]] = fu.result()   # 放回正確索引
+
+    # 2) 相容模式覆寫參數（Windows 相片支援）
+    if compat_mode:
+        tile = None                 # ← strip（不要 tile）
+        compression = 'lzw'         # 或 'deflate'
+        predictor = 2               # 對 LZW/Deflate 推薦
+        bigtiff = False             # 能不用就不用（必要時會自動開）
+
+    # 3) 若缺 imagecodecs，zstd 改 LZW（避免寫檔錯）
+    if compression == 'zstd':
+        try:
+            import imagecodecs  # noqa
+        except Exception:
+            compression = 'lzw'
+            predictor = 2
+            compression_level = None
+
+    # 4) >4GB 才強制 BigTIFF（Windows 相片大多不支援 BigTIFF）
+    est_bytes = sum(arr.nbytes for (arr, _) in pages)
+    need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
+
+    # 5) 寫多頁 TIFF
+    comp_args = None
+    if compression == 'zstd' and compression_level is not None:
+        comp_args = dict(level=int(compression_level))
+
+    with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
+        for (arr, photometric) in pages:
+            kwargs = dict(
+                photometric=photometric,
+                compression=compression,
+                metadata=None
+            )
+            if comp_args:
+                kwargs['compressionargs'] = comp_args
+            if compression in ('lzw', 'deflate') and predictor:
+                kwargs['predictor'] = int(predictor)
+            if tile is not None:            # compat_mode=False 才會加 tile
+                kwargs['tile'] = tile
+            tw.write(arr, **kwargs)
+
+    print(f"[TIFF] saved → {out_path} (compat_mode={compat_mode})")
+
+@csrf_exempt
+@require_POST
+def download_project_with_rois(request):
+    """
+    Backend directly generates <project>.zip with the following structure:
+      <project_name>/
+        Original_Mmap.tiff (or your actual file)
+        qmap.nii           (or your actual file)
+        rois.zip           ← inner zip containing all *.roi
+
+    POST (form or JSON):
+      - project_name: str
+      - rois: [{ "name": str, "points": [{"x":float/int, "y":float/int}, ...] }, ...]
+              (form can send JSON string)
+    """
+    # Parse payload (support form and JSON)
+    if request.content_type and request.content_type.startswith("application/json"):
+        payload = json.loads(request.body or "{}")
+        project_name = payload.get("project_name")
+        rois = payload.get("rois") or []
+    else:
+        project_name = request.POST.get("project_name")
+        rois_raw = request.POST.get("rois")
+        try:
+            rois = json.loads(rois_raw) if rois_raw else []
+        except Exception:
+            rois = []
+
+    if not project_name:
+        return HttpResponseBadRequest("project_name required")
+
+    project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+    if not os.path.isdir(project_dir):
+        return HttpResponseNotFound("Project not found")
+
+    # Use a temporary file to write the main ZIP (avoids memory usage; will be cleaned up after response)
+    tmpf = tempfile.TemporaryFile()
+
+    def _compress_type_for(fn: str):
+        # 這些通常已壓縮或壓不太動，直接存放即可
+        return zipfile.ZIP_STORED if fn.lower().endswith(('.tif', '.tiff', '.nii', '.zip')) \
+                                else zipfile.ZIP_DEFLATED
     
-    # Map the values to colors
-    colors = [map_values_to_colors(dvalues) for dvalues in dvalues]
-        
-    # print(df['CArea'].max())
-    # Calculate the histogram
-    hist_counts, bins = np.histogram(dvalues, bins=jet.N)
-    # Map the bin edges to colors in the colormap
-    bin_colors = [map_values_to_colors(bin) for bin in bins]
-    # Convert bin_colors to the range [0, 255] and keep only RGB components
-    binRGB_colors = [(int(c[0]*255), int(c[1]*255), int(c[2]*255), c[3]) for c in bin_colors]
-      
-    # Calculate the width of each bin
-    widths = np.diff(bins)
-    # plt.clf() 
-    # Create a bar plot
-    # plt.bar(bins[:-1], hist_counts, width=widths, color=bin_colors[:-1])
+    with zipfile.ZipFile(tmpf, "w") as main_zip:
+        for sub in ("original_mmap", "qmap"):
+            folder = os.path.join(project_dir, sub)
+            if os.path.isdir(folder):
+                for root, _, files in os.walk(folder):
+                    for fn in files:
+                        src = os.path.join(root, fn)
+                        arc = os.path.join(project_name, fn)
+                        ctype = _compress_type_for(fn)
+                        # Python 3.8+ 可指定 compresslevel；存放則不用
+                        main_zip.write(src, arcname=arc, compress_type=ctype,
+                                    compresslevel=0 if ctype==zipfile.ZIP_DEFLATED else None)
 
-    # Show the plot
-    # plt.show()
+        # 2) First zip all ROIs into an "inner rois.zip", then add it to the main ZIP
+        if rois:
+            roi_buf = BytesIO()
+            with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
+                for r in rois:
+                    name = safe_filename(r.get("name"))
+                    pts  = r.get("points") or []
+                    rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
+            main_zip.writestr(os.path.join(project_name, "rois.zip"), roi_buf.getvalue())
 
-    histdata = {
-        'bins': bins[:-1].tolist(),
-        'counts': hist_counts.tolist(),
-        'widths': widths.tolist(),
-        'colors': binRGB_colors,
-    }
-
-
-    # Filter the data based on the fm_threshold
-    # df_above_threshold = df[df['FM'] >= fm_threshold]
-    # df_below_threshold = df[df['FM'] < fm_threshold]
-    # Filter the data based on the fm_threshold and the range of idth1
-    # df_above_threshold = df.loc[idth1][df['FM'] >= fm_threshold]
-    # df_below_threshold = df.loc[idth1][df['FM'] < fm_threshold]
-
-    df_above_threshold = df.loc[idth1][df.loc[idth1, 'FM'] >= fm_threshold]
-    df_below_threshold = df.loc[idth1][df.loc[idth1, 'FM'] < fm_threshold]
-    
-       
-    # Count the occurrences of each value in the 'C50' column for rows above the threshold
-    counts_above_threshold = Counter(df_above_threshold['C50'])
-
-    # Only keep the counts for the specified values
-    values = ['R', 'H', 'B', 'A', 'RD', 'HR']
-    counts_above_threshold = {key: counts_above_threshold[key] for key in values}
-
-    # Count the total number of rows below the threshold
-    total_below_threshold = len(df_below_threshold)
-
-    # Add the total count below the threshold as the 7th bar
-    counts_above_threshold['< FM'] = total_below_threshold
-    # Create a list of counts and a list of colors
-    counts = list(counts_above_threshold.values())
+    # Return as stream (Save As dialog will pop up)
+    tmpf.seek(0)
+    filename = f"{project_name}.zip"
+    return FileResponse(tmpf, as_attachment=True, filename=filename, content_type="application/zip")
 
 
-    # Convert the image to a base64 string
-    buffered = BytesIO()
-    img_with_boxes_rgb = img_with_boxes.convert('RGB')
-    img_with_boxes_rgb.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
+def safe_filename(name: str) -> str:
+    """Remove illegal characters to avoid invalid filenames"""
+    name = (name or "ROI").strip() or "ROI"
+    return re.sub(r'[\\/:*?"<>|]+', "_", name)
 
-   
-   # Initialize slidelimit as a list of lists
-   # sliderlimit = [[0, 0], [0, 0], [0, 0], [0, 0]]
-   # sliderlimit[0][0] = math.floor(df['CArea'].min())
-   # sliderlimit[0][1] = math.ceil(df['CArea'].max())     
-   # sliderlimit[1][0] = math.floor(df['CPM'].min())
-   # sliderlimit[1][1] = math.ceil(df['CPM'].max())   
-                 
 
-    return JsonResponse({'counts': counts,
-                         'image': img_str, 
-                         'histdata': histdata, 
-                         }, safe=False)
-    # return JsonResponse({'counts': counts,'image': img_str}, safe=False)
-    # return JsonResponse({'image': img_str, 'min_fm': min_fm, 'max_fm': max_fm}, safe=False)
+def make_imagej_roi_bytes(points):
+    """
+    Convert [{'x':..., 'y':...}, ...] to ImageJ .roi (polygon) binary content.
+    Reference: ImageJ ROI format: header 64 bytes + relative coordinate arrays.
+    """
+    if not points:
+        return b""
+
+    xs = [int(round(p.get("x", 0))) for p in points]
+    ys = [int(round(p.get("y", 0))) for p in points]
+    if not xs or not ys:
+        return b""
+
+    top, left, bottom, right = min(ys), min(xs), max(ys), max(xs)
+    n = len(xs)
+
+    # 64-byte header
+    header = bytearray(64)
+    header[0:4]  = b"Iout"                  # magic
+    header[4:6]  = (218).to_bytes(2, "big") # version (<= 218)
+    header[6:8]  = (0).to_bytes(2, "big")   # roiType = 0 (polygon)
+    header[8:10] = top.to_bytes(2, "big")
+    header[10:12]= left.to_bytes(2, "big")
+    header[12:14]= bottom.to_bytes(2, "big")
+    header[14:16]= right.to_bytes(2, "big")
+    header[16:18]= n.to_bytes(2, "big")     # number of coordinates
+
+    buf = bytearray(header)
+    # x/y are stored as 2-byte big-endian integers relative to the top-left corner
+    for x in xs:
+        buf += (x - left).to_bytes(2, "big", signed=True)
+    for y in ys:
+        buf += (y - top).to_bytes(2, "big", signed=True)
+
+    return bytes(buf)

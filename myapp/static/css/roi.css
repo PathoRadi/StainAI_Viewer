@@ -1,0 +1,119 @@
+/* static/css/roi.css */
+
+.roi-container {
+    display: flex;
+    flex-direction: column;
+    width: 130px;
+    height: 211px;
+    max-height: 211px;
+    overflow-y: auto;
+    margin: 15px 0px 15px 30px;
+    background: var(--bg-roi-container);
+    border-radius: 15px;
+}
+.roi-item {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  font-size: 14px;
+  width: 105px !important;
+  height: 30px !important;
+  padding: 0 0 0 10px;
+  margin: 5px 5px 5px 5px;
+  background: var(--bg-roi-item);
+  color: var(--text-roi-item);
+  border: none;
+  border-radius: 15px;
+  cursor: pointer;
+}
+.roi-rename-input{
+  font: inherit;
+  width: 100%;
+  padding: 2px 6px;
+  margin: 0;                   
+  background: transparent;
+  color: var(--text-roi-item);
+  border: none;
+  caret-color: currentColor;
+}
+.roi-item.editing{
+  cursor: text;
+  background: var(--bg-roi-item-hover);
+}
+.roi-item .roi-label{
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.roi-item:hover {
+  background: var(--bg-roi-item-hover);
+}
+.roi-item-selected{
+  background: var(--bg-roi-item-hover) !important;
+}
+.roi-entry {
+  position: relative;
+}
+.roi-menu-btn {
+  position: absolute;
+  right: 20px;           
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 2;
+  color: var(--text-roi-menu-btn); 
+}
+.roi-action-menu {
+  position: absolute;
+  background: var(--bg-roi-action-menu);
+  border-radius: 6px;
+  box-shadow: 0px 2px 6px rgba(0,0,0,0.25);
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 120px;
+}
+.roi-action-menu button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  text-align: left;
+  color: var(--text-roi-action-menu);
+}
+.roi-action-menu button:hover {
+  background: var(--bg-roi-action-menu-hover);
+}
+/* --- Scrollbar --- */
+/* Firefox */
+.roi-container {
+  /* thumb color / track color */
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;                 /* auto | thin | none */
+  overflow-y: auto;
+  scrollbar-gutter: stable;        /* Keep scrollbar space stable to prevent layout shift when scrollbar appears/disappears */
+  --sbw: 10px;                     /* Scrollbar width, should match the webkit setting */
+}
+
+/* Chrome / Edge / Safari */
+.roi-container::-webkit-scrollbar {
+  width: 10px;
+  width: var(--sbw);           
+}
+.roi-container::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);    
+  border-radius: 10px;
+}
+.roi-container::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 10px;
+  border: 2px solid var(--scrollbar-track);
+}
+.roi-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+.roi-container::-webkit-scrollbar-button {
+  display: none;
+}

@@ -1,0 +1,235 @@
+/* static/css/mainContainer.css */
+
+/* Dark Mode */
+:root {
+  /* ----- Left Container ----- */
+  --bg-left:             rgb(23,23,23);
+  --bg-left-bottom:        rgb(23,23,23);
+  --text-app-title:      rgb(255, 255, 255);
+  --bg-upload-new-img-btn: rgb(23,23,23);
+  --text-upload-new-img-btn: rgb(255, 255, 255);
+  --border-upload-new-img-btn: 1px solid rgb(255, 255, 255);
+  /* History Item */
+  --bg-history-item: none;
+  --bg-history-item-hover: rgb(100,100,100);
+  --text-history-item: rgb(255,255,255);
+  --bg-history-menu-btn: rgb(255,255,255);
+  --bg-history-action-menu: rgb(47,47,47);
+  --text-history-action-menu-button:rgb(255,255,255);
+  --bg-history-action-menu-button-hover: rgb(80,80,80);
+  /* Model Box */
+  --bg-modal-box: rgb(34,34,34);
+  --text-modal-box: rgb(255,255,255);
+
+
+
+  /* Drop Zone */
+  --bg-drop-zone:        rgb(34,34,34);
+  --bg-drop-zone-hover: rgb(51,51,51);
+  --text-drop-zone:     rgb(255,255,255);
+  --bg-drop-upload-btn: rgb(23,23,23);
+  --text-drop-upload-btn: rgb(255, 255, 255);
+  --border-drop-upload-btn: 1px solid rgb(255, 255, 255);
+  --bg-start-detect-btn: rgb(23,23,23);
+  --text-start-detect-btn: rgb(255,255,255);
+  --border-start-detect-btn: 1px solid rgb(255, 255, 255);
+
+
+
+  /* Main Container */
+  --bg-main:             rgb(23,23,23);
+  --bg-right:            rgb(33,33,33);
+  --bg-vis:              rgb(23,23,23);
+  --border-vis:          1px solid rgba(255, 255, 255, 0.1);
+  --shadow-vis:          inset 0 0 10px rgba(255, 255, 255, 0.1), 0 0px 15px rgba(255, 255, 255, 0.4);
+  --backdrop-filter-vis:     blur(10px);
+  --transition-vis:       all 0.3s ease;
+
+
+
+  /* Image */
+  --bg-display-wrapper:  rgb(23,23,23);
+  --icon-inactive-filter: grayscale(1) contrast(.42) brightness(1.2);
+  --text-screenshot-menu-btn: rgb(255,255,255);
+  --bg-screenshot-dropdown: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn-hover: rgba(200, 200, 200, 0.95);
+  --text-take-screenshot-btn: rgb(0,0,0);
+
+
+  /* Bar Chart buttons */
+  --bg-btn-container:    none;
+  --bg-addChartBtn:      rgb(23,23,23);
+  --text-addChartBtn:    rgb(255,255,255);
+  --border-addChartBtn: 1px solid rgb(255, 255, 255);
+  --bg-filterBtn:      rgb(47,47,47);
+  --text-filterBtn:    rgb(255,255,255);
+  --bg-filterMenu:    rgb(47,47,47);
+  --checkbox-label: rgb(255,255,255);
+  --bg-checkbox-label-before: rgb(60,60,60);
+  --bg-checkbox-checked-label-before: rgb(255,255,255);
+
+
+
+  /* Bar Chart */
+  --bg-chart-container: rgb(33,33,33);
+  --bg-barchart-wrapper: rgb(23,23,23);
+  --border-barchart-wrapper: 1px solid rgba(255, 255, 255, 0.1);
+  --shadow-barchart-wrapper: inset 0 0 10px rgba(255, 255, 255, 0.1), 0 0px 15px rgba(255, 255, 255, 0.4);
+  --backdrop-filter-barchart-wrapper:blur(10px);
+  --transition-barchart-wrapper: all 0.3s ease;
+  --bg-roi-container:   rgb(23,23,23);
+  --bg-roi-item: rgb(120,120,120);
+  --bg-roi-item-hover: rgb(70,70,70);
+  --text-roi-item: rgb(255,255,255);
+  --text-roi-menu-btn: rgb(255,255,255);
+  --bg-roi-action-menu: rgb(120,120,120);
+  --bg-roi-action-menu-hover: rgb(70,70,70);
+  --text-roi-action-menu: rgb(255,255,255);
+  --scrollbar-track: rgba(255,255,255,0.08);
+  --scrollbar-thumb: rgba(255,255,255,0.35);
+  --scrollbar-thumb-hover: rgba(255,255,255,0.55);
+  /* chart labels */
+  --chart-tick-color:    rgb(255, 255, 255);
+}
+/* ----- Light mode ----- */
+[data-theme="light"] {
+  /* Left Container */
+  --bg-left:            linear-gradient(to bottom, rgb(74, 106, 118), rgb(40, 39, 40));
+  --bg-left-bottom:     rgb(40, 39, 40);
+  --text-app-title:      rgb(47, 47, 47);
+  --bg-upload-new-img-btn: rgb(97, 136, 155);
+  --text-upload-new-img-btn: rgb(255, 255, 255);
+  --border-upload-new-img-btn: none;
+  /* History Item */
+  --bg-history-item: none;
+  --bg-history-item-hover: rgba(74, 106, 118, 0.6);
+  --text-history-item: rgb(255,255,255);
+  --bg-history-menu-btn: rgb(255,255,255);
+  --bg-history-action-menu: rgb(74, 106, 118);
+  --text-history-action-menu-button:rgb(255,255,255);
+  --bg-history-action-menu-button-hover: rgb(97, 136, 155);
+  /* Model Box */
+  --bg-modal-box: rgb(190,190,190);
+  --text-modal-box: rgb(0,0,0);
+
+
+
+  /* Drop Zone */
+  --bg-drop-zone:        rgb(255,255,255);
+  --bg-drop-zone-hover: rgb(200,200,200);
+  --text-drop-zone:     rgb(0,0,0);
+  --bg-drop-upload-btn: rgb(97, 136, 155);
+  --text-drop-upload-btn: rgb(255, 255, 255);
+  --border-drop-upload-btn: none;
+  --bg-start-detect-btn: rgb(97, 136, 155);
+  --text-start-detect-btn: rgb(255, 255, 255);
+  --border-start-detect-btn: none;
+
+
+
+  /* Main Container */
+  --bg-main:             rgb(250,250,250);
+  --bg-right:            rgb(255,255,255);
+  --bg-vis:              rgb(255,255,255);
+  --border-vis:          none;
+  --shadow-vis:          0 4px 20px rgba(0, 0, 0, 0.5);
+  --backdrop-filter-vis: none;
+  --transition-vis:      none;
+
+
+  
+  /* Image */
+  --bg-display-wrapper:  rgb(255,255,255);
+  --icon-inactive-filter: grayscale(1) contrast(2) brightness(1);
+  --text-screenshot-menu-btn: rgb(0,0,0);
+  --bg-screenshot-dropdown: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn-hover: rgba(200, 200, 200, 0.95);
+  --text-take-screenshot-btn: rgb(0,0,0);
+
+
+
+  /* Bar Chart buttons */
+  --bg-btn-container:    none;
+  --bg-addChartBtn:      rgb(97, 136, 155);
+  --text-addChartBtn:    rgb(255,255,255);
+  --border-addChartBtn: none;
+  --bg-filterBtn:      rgb(230,230,230);
+  --text-filterBtn:    rgb(0,0,0);
+  --bg-filterMenu:    rgb(230,230,230);
+  --checkbox-label: rgb(97, 136, 155);
+  --bg-checkbox-label-before: rgb(255,255,255);
+  --bg-checkbox-checked-label-before: rgb(60,60,60);
+  
+
+
+  /* Bar Chart */
+  --bg-chart-container: rgb(255,255,255);
+  --bg-barchart-wrapper: rgb(255,255,255);
+  --border-barchart-wrapper: none;
+  --shadow-barchart-wrapper: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --backdrop-filter-barchart-wrapper: none;
+  --transition-barchart-wrapper: none;
+  --bg-roi-container:   rgb(255,255,255);
+  --bg-roi-item: rgb(225,225,225);
+  --bg-roi-item-hover: rgb(180,180,180);
+  --text-roi-item: rgb(0,0,0);
+  --text-roi-menu-btn: rgb(0,0,0);
+  --bg-roi-action-menu: rgb(225,225,225);
+  --bg-roi-action-menu-hover: rgb(180,180,180);
+  --text-roi-action-menu: rgb(0,0,0);
+  --scrollbar-track: rgba(0,0,0,0.08);
+  --scrollbar-thumb: rgba(0,0,0,0.30);
+  --scrollbar-thumb-hover: rgba(0,0,0,0.45);
+
+  /* chart labels */
+  --chart-tick-color:    rgb(0, 0, 0);
+}
+/* icon dark/light switch */
+.logo-light { display: none; }
+.logo-dark  { display: block; }
+[data-theme="light"] .logo-light { display: block; }
+[data-theme="light"] .logo-dark  { display: none; }
+/* icon dark/light switch non-draw-icon & clear-icon */
+.non-draw-icon.logo-light,
+.clear-icon.logo-light {
+  display: none;
+}
+[data-theme="light"] .non-draw-icon.logo-light,
+[data-theme="light"] .clear-icon.logo-light {
+  display: block;
+}
+[data-theme="light"] .non-draw-icon.logo-dark,
+[data-theme="light"] .clear-icon.logo-dark {
+  display: none;
+}
+
+
+
+/* no outline  */
+:focus {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+
+
+/* right container */
+.main-container {
+    display: flex;
+    flex-direction: row;
+    position: absolute;
+    top: 0;
+    left: 200px;
+    width: 1720px;
+    height: 911px;
+    background: var(--bg-main);
+}
+.right-container {
+    display: flex;
+    flex-direction: row;
+    width: 1720px;
+    height: 911px;
+    background: var(--bg-right);
+}

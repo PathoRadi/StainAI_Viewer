@@ -1,0 +1,395 @@
+/* static/css/visualization.css */
+
+#konva-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    cursor: crosshair;
+}
+.visualization-title {
+    color: white;
+    font-family: "Nunito Sans", sans-serif;
+    font-size: 25px;
+    margin: 25px;
+}
+.visualization-container {
+    display: flex;
+    flex-direction: column;
+    border: var(--border-vis);
+    border-radius: 15px;
+    background: var(--bg-vis);
+    box-shadow: var(--shadow-vis);                          /* inner shadow, outer shadow */
+    backdrop-filter: var(--backdrop-filter-vis);            /* frosted glass blur */
+    -webkit-backdrop-filter: var(--backdrop-filter-vis);    /* shiny thin border */
+}
+.button-container {
+    display: flex;
+    flex-direction: row;
+    border-radius: 15px;
+    background: var(--bg-btn-container);
+}
+
+
+/* ------- image ------- */
+#image-container {
+    width: 1000px;
+    height: 836px;
+    margin: 60px 0px 15px 15px;
+}
+#displayedImage-wrapper {
+    position: relative;
+    width: 950px;
+    height: 761px;
+    margin: 0 25px 25px 25px;
+    border-radius: 15px;
+    overflow: hidden;
+    background: var(--bg-display-wrapper);
+}
+#displayedImage {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+/* ROI Toolbox */
+.roi-toolbar-container {
+    display: flex;
+    flex-direction: row;
+    width: 965px;
+    height: 60px;
+    margin: 20px 10px 10px 25px;
+}
+.konva-controls {
+    width: 400px;
+    display: flex;
+    gap: 10px;
+    margin: 0 0 0 35px;
+}
+.tooltip-parent {
+    position: relative;
+}
+.tooltip-text {
+    position: absolute;
+    bottom: -15px;
+    left: 50%;
+    transform: translateY(50%);
+    background-color: rgba(255, 255, 255, 0.95);
+    color: black;
+    padding: 4px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    font-size: 12px;
+    font-family: 'PingFangHKWeb', sans-serif;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.25);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 999;
+}
+.tooltip-parent:hover .tooltip-text {
+    opacity: 1;
+}
+.zoom-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    filter: var(--icon-inactive-filter);
+    transition: filter 0.2s ease;
+}
+#zoom-in-btn, #zoom-out-btn, #zoom-home-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+#non-draw-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.non-draw-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+}
+#polygon-draw-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.polygon-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+#freehand-draw-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.freehand-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+.non-draw-icon,
+.polygon-icon,
+.freehand-icon {
+    /* Default is inactive: grayscale + slight brightness/contrast adjustment, to match the effect in your second image */
+    filter: var(--icon-inactive-filter);
+    transition: filter .2s ease;   /* Smooth transition */
+}
+/* When active, restore color (remove grayscale) */
+#non-draw-btn.active .non-draw-icon,
+#polygon-draw-btn.active .polygon-icon,
+#freehand-draw-btn.active .freehand-icon {
+    filter: none;
+}
+#show-all-roi-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.show-all-roi-icon {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+}
+#clear-draw-btn {
+    width: 40px !important;
+    height: 40px !important;
+    background: none;
+    padding: 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.clear-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    filter: var(--icon-inactive-filter);
+    transition: filter .2s ease;
+}
+.color-picker-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 40px !important;
+    height: 40px !important;
+    }
+#color-picker {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+}
+.color-picker-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+}
+.color-picker-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: var(--icon-inactive-filter);
+    transition: filter .2s ease;
+}
+/* class checkbox */
+.checkbox-container-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 305px;
+    height: 60px;
+    margin: 0 45px 0 150px;
+}
+.checkbox-label {
+    color: var(--checkbox-label);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 15px;
+    text-align: right;
+    margin: 0 0 2px 0;
+}
+.checkbox-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+.hidden-checkbox {
+    display: none;
+}
+.checkbox-icon-label {
+    display: inline-block;
+    cursor: pointer;
+    width: 35px;
+    height: 35px;
+    margin: 0 0 0 0;
+}
+.checkbox-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.checkbox-icon-label .icon-unchecked { display: inline-block; }
+.checkbox-icon-label .icon-checked   { display: none; }
+
+.hidden-checkbox:checked + .checkbox-icon-label .icon-unchecked { display: none; }
+.hidden-checkbox:checked + .checkbox-icon-label .icon-checked   { display: inline-block; }
+/* Screen Shot */
+.screenshot-menu-wrapper {
+    width: 30px;
+    height: 30px;
+    position: relative;
+    margin-left: auto;
+    align-self: flex-start;
+}
+.screenshot-menu-btn {
+    width: 30px;
+    height: 30px;
+    color: var(--text-screenshot-menu-btn);
+    background: none;
+    border: none;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.screenshot-dropdown {
+    width: 150px;
+    height: 60px;
+    font-size: 20px;
+    display: none; 
+    position: absolute;
+    top: 100%;
+    right: 0;
+    border-radius: 8px;
+    background: var(--bg-screenshot-dropdown);
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.25);
+    z-index: 1000;
+    overflow: hidden;
+}
+#screenshot-dropdown0 {
+    height: 30px;
+}
+#screenshot-dropdown1 {
+    height: 30px;
+}
+.take-screenshot-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 30px;
+    background: var(--bg-take-screenshot-btn);
+    color: var(--text-take-screenshot-btn);
+    font-size: 18px;
+    border: none;
+}
+.take-screenshot-btn:hover {
+    background: var(--bg-take-screenshot-btn-hover);
+}
+
+
+
+/* addChartBtn */
+#addChartBtn {
+    position: relative;
+    display: inline-block;
+    font-size: 15px;
+    width: 100px;
+    height: 36px;
+    margin: 15px 0px 7.5px 15px;
+    border: var(--border-addChartBtn);
+    border-radius: 15px;
+    background: var(--bg-addChartBtn);
+    color: var(--text-addChartBtn);
+    cursor: pointer;
+    font-family: 'PingFangHKWeb', sans-serif;
+}
+
+
+
+
+/* ------- Chart ------- */
+#chart-container {
+    display: flex;
+    flex-direction: column;
+    width: 675px;
+    height: 836px;
+    margin: 60px 15px 15px 15px;
+    border: none;
+    border-radius: 15px;
+    box-shadow: none;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none; 
+}
+.barChart-wrapper {
+    display: flex;                  
+    flex-direction: row;
+    position: relative;
+    width: 645px;
+    height: 241px;
+    margin: 15px 15px 15px 15px;
+    border: var(--border-barchart-wrapper);
+    border-radius: 15px;
+    background: var(--bg-barchart-wrapper);
+    box-shadow: var(--shadow-barchart-wrapper);                     /* inner shadow, outer shadow */
+    backdrop-filter: var(--backdrop-filter-barchart-wrapper);       /* frosted glass blur */
+    -webkit-backdrop-filter: var(--transition-barchart-wrapper);    /* shiny thin border */
+}
+.barChart {
+    width: 400px !important;
+    height: 200px !important;
+    margin: 20px 15px 15px 15px;
+}
+
+/* Transparent click shield used to close menus without interacting with canvas */
+.menu-click-shield {
+    position: fixed;
+    inset: 0;            /* top:0; right:0; bottom:0; left:0 */
+    background: transparent;
+    z-index: 1500;       /* Lower than menu's z-index, but higher than Konva/OSD */
+}

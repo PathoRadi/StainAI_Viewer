@@ -1,0 +1,241 @@
+/* static/css/leftContainer.css */
+
+.left-container {
+    display: flex;
+    flex-direction: column;
+    position:absolute;
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 911px;
+    background: var(--bg-left);
+    border-top-left-radius: 0x;
+    border-bottom-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+.left-container-header {
+    display: flex;
+    flex-direction: column;
+    position:absolute;
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 711px;
+    background: var(--bg-left);
+    border-top-left-radius: 0x;
+    border-bottom-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+.left-container-bottom {
+    display: flex;
+    flex-direction: column;
+    position:absolute;
+    top: 711px;
+    left: 0;
+    width: 200px;
+    height: 200px;
+    background: var(--bg-left-bottom);
+    border-top-left-radius: 0x;
+    border-bottom-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-right-radius: 0px;
+}
+
+
+
+
+/* -----App Logo----- */
+.logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    height: 78px;
+}
+.app-logo {
+    width: 148px;
+    height: 36px;
+    margin: 18px 18px 18px 18px;
+}
+
+
+
+/* -----Upload Image & Start Detection Button----- */
+#upload-new-img-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 160px;
+    height: 35px;
+    margin: 20px;
+    background: var(--bg-upload-new-img-btn);
+    color: var(--text-upload-new-img-btn);
+    border: var(--border-upload-new-img-btn);
+    border-radius: 15px;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+/* ReadMe Page */
+.readme-btn {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 160px;
+    height: 40px;
+    margin: 0px 20px 99px 15px;
+    background: none;
+    border: none;
+}
+.readme-btn-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+.readme-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0,0,0,0.6);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    z-index: 9999;
+    overflow: auto;
+}
+.readme-header {
+    position: sticky;
+    top: 0;
+    width: 90vw; 
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px;
+    background: white;
+    z-index: 10001;
+}
+.readme-box {
+    background: white;
+    padding: 0px 20px 20px 20px;
+    max-width: 90vw;
+    max-height: none;
+    overflow: auto;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    margin-top: 0px;
+}
+.readme-content {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+#readme-close-btn {
+    background: #444;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    font-size: 16px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#readme-close-btn:hover {
+    background: white;
+    color: black;
+    border: 1px solid #444;
+}
+#readme-popout-btn {
+    background: #444;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    font-size: 16px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+#readme-popout-btn:hover {
+    background: white;
+    color: black;
+    border: 1px solid #444;
+}
+
+
+/* -----Dark/Light Mode Toggle----- */
+.theme-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    width: 200px;
+    height: 61px;
+    margin: 0px;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 15px;
+    color: white;
+}
+#theme-mode-text {
+    width: 100px;
+    height: 20px;
+    font-weight: 500;
+    text-align: center;
+}
+.theme-switch {
+    display: inline-block;
+    width: 70px;   height: 34px;
+    position: relative;
+    margin: 0px 0px 0px 0px;
+}
+.theme-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+.slider {
+    display: block;
+    width: 100%;   height: 100%;
+    background: rgb(60, 179, 113);
+    border-radius: 34px;
+    transition: background 0.3s;
+    position: relative;
+    cursor: pointer;
+}
+.slider::before {
+    content: "";
+    position: absolute;
+    width: 26px;   height: 26px;
+    left: 4px;     top: 4px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.3s;
+}
+.icon-moon,
+.icon-sun {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 16px;
+    pointer-events: none;
+    transition: opacity 0.3s;
+}
+.icon-moon { left: 8px;  opacity: 0; }
+.icon-sun  { right: 8px; opacity: 1; }
+.theme-switch input:checked + .slider {
+    background: rgb(60, 179, 113);
+}
+.theme-switch input:checked + .slider::before {
+    transform: translateX(36px);
+}
+.theme-switch input:checked + .slider .icon-moon {
+    opacity: 1;
+}
+.theme-switch input:checked + .slider .icon-sun {
+    opacity: 0;
+}
