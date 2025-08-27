@@ -1,7 +1,7 @@
 # myapp/views.py
 import os
-import json
 import re
+import json
 import shutil
 import zipfile
 import tempfile
@@ -21,7 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 from tifffile import TiffWriter
 
-# 你的 method/ pipeline
+# 你的 method / pipeline（這些檔案我們已將 cv2 改為 PIL 或延遲載入）
 from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayScaleImage
 from .method.cut_image import CutImage
@@ -30,31 +30,19 @@ from .method.yolopipeline import YOLOPipeline
 logger = logging.getLogger(__name__)
 
 # ---------------------------
-# Lazy loaders (cv2 / YOLO)
+# Lazy loader for YOLO
 # ---------------------------
-_CV2 = None
-def get_cv2():
-    """Import cv2 only when needed; cache the module."""
-    global _CV2
-    if _CV2 is None:
-        try:
-            import cv2  # 建議 requirements: opencv-python-headless
-            _CV2 = cv2
-        except Exception as e:
-            logger.exception("Failed to import cv2")
-            raise
-    return _CV2
-
 _YOLO_MODEL = None
 def get_yolo_model():
-    """Lazily load YOLO weights and cache them."""
+    """Lazily load YOLO weights and cache them (避免啟動時載入失敗讓整站 500)。"""
     global _YOLO_MODEL
     if _YOLO_MODEL is None:
         try:
-            from ultralytics import YOLO  # 需要時才 import（避免啟動炸掉）
+            # 注意：Ultralytics 載入時會 import cv2，所以環境需安裝 opencv-python-headless
+            from ultralytics import YOLO
             weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
             _YOLO_MODEL = YOLO(weight_path)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to load YOLO model")
             raise
     return _YOLO_MODEL
@@ -63,12 +51,12 @@ def get_yolo_model():
 # Helpers
 # ---------------------------
 def _image_size_wh(path: str):
-    """用 Pillow 讀圖片尺寸，不動用 cv2。回傳 (w, h)。"""
+    """用 Pillow 讀圖片尺寸。回傳 (w, h)。"""
     with Image.open(path) as im:
         return im.width, im.height
 
 def _to_media_url(abs_path: str) -> str:
-    """把絕對路徑轉成可直接回前端用的 MEDIA URL。"""
+    """把絕對路徑轉成前端可用的 MEDIA URL。"""
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
 
@@ -81,8 +69,8 @@ def display_image(request):
 @csrf_exempt
 def upload_image(request):
     """
-    接收上傳，存到 media/<image_name>/original/，若寬或高>20000 就做 half resize。
-    回傳可直接顯示的 MEDIA URL。
+    接收上傳，存到 media/<image_name>/original/，
+    若邊長>20000 則做 half resize；回傳可直接顯示的 MEDIA URL。
     """
     if request.method == 'POST' and request.FILES.get('image'):
         img = request.FILES['image']
@@ -98,8 +86,8 @@ def upload_image(request):
             for chunk in img.chunks():
                 f.write(chunk)
 
-        # 2) 如果邊長大於 20000，做 half resize（ImageResizer 內部若用 cv2，會在用到時才 import）
-        w, h = _image_size_wh(original_path)   # Pillow 讀尺寸（避免 cv2）
+        # 2) 是否需要縮半
+        w, h = _image_size_wh(original_path)
         if h > 20000 or w > 20000:
             resized_path = ImageResizer(original_path, project_dir).resize()
             return JsonResponse({'image_url': _to_media_url(resized_path)})
@@ -111,11 +99,13 @@ def upload_image(request):
 @csrf_exempt
 def detect_image(request):
     """
-    Start Detection:
-      1) 建立 display 影像（等於原圖或縮圖）
-      2) 轉灰階 → 切 patch
-      3) 跑 YOLO pipeline
-      4) 回傳 bounding boxes + 原圖/顯示圖尺寸 + 顯示圖 URL
+    Start Detection 流程：
+      1) 準備 display 影像（使用 resized 或原圖）
+      2) 灰階 → 切 patch（PIL 版）
+      3) YOLO 推論（lazy import）
+      4) 回傳 boxes + 尺寸 + display 圖 URL
+      5) 產生 Original_Mmap.tiff（相容模式）
+      6) 清理暫存
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid detect'}, status=400)
@@ -133,7 +123,7 @@ def detect_image(request):
         orig_dir  = os.path.join(project_dir, 'original')
         orig_name = os.listdir(orig_dir)[0]
         orig_path = os.path.join(orig_dir, orig_name)
-        ow, oh = _image_size_wh(orig_path)  # Pillow 讀尺寸
+        ow, oh = _image_size_wh(orig_path)  # w, h
 
         # --- 準備 display 圖（有 resized 就用 resized，否則用原圖） ---
         display_dir = os.path.join(project_dir, 'display')
@@ -146,10 +136,10 @@ def detect_image(request):
             src = orig_path
         shutil.copy(src, display_dir)
 
-        # --- 1) 轉灰階 ---
+        # --- 1) 轉灰階（PIL 版） ---
         GrayScaleImage(orig_path, project_dir).rgb_to_gray()
 
-        # --- 2) 切 patch ---
+        # --- 2) 切 patch（PIL 版） ---
         gray_dir = os.path.join(project_dir, 'gray')
         gray_name = os.listdir(gray_dir)[0]
         gray_path = os.path.join(gray_dir, gray_name)
@@ -164,7 +154,7 @@ def detect_image(request):
         # --- 4) 顯示圖尺寸與 URL ---
         disp_name = os.listdir(display_dir)[0]
         disp_path = os.path.join(display_dir, disp_name)
-        dw, dh = _image_size_wh(disp_path)   # Pillow 讀尺寸
+        dw, dh = _image_size_wh(disp_path)   # w, h
 
         # --- 5) 產生 Original_Mmap.tiff（相容模式，Windows 相片可開） ---
         original_mmap_dir = os.path.join(project_dir, 'original_mmap')
@@ -175,20 +165,19 @@ def detect_image(request):
             original_mmap_inputs.append(annotated_jpg)
         combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
 
-        # --- 6) 清理暫存 ---
+        # --- 6) 清理暫存（忽略不存在） ---
         for folder in ('fm_images', 'patches'):
             p = os.path.join(project_dir, folder)
-            if os.path.isdir(p):
-                shutil.rmtree(p, ignore_errors=True)
+            shutil.rmtree(p, ignore_errors=True)
 
         return JsonResponse({
             'boxes': detections,
-            'orig_size': [oh, ow],          # 與前端相容：H, W
+            'orig_size': [oh, ow],          # 前端原本使用 H,W
             'display_size': [dh, dw],
             'display_url': _to_media_url(disp_path),
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception("detect_image failed")
         return HttpResponseServerError("detect failed; see server logs")
 
@@ -239,35 +228,35 @@ def download_project(request):
                 for root, _, files in os.walk(folder):
                     for fn in files:
                         path = os.path.join(root, fn)
-                        arcname = os.path.join(project_name, fn)  # 放在 zip 根/<project>/<file>
+                        arcname = os.path.join(project_name, fn)  # zip 根/<project>/<file>
                         z.write(path, arcname)
     s.seek(0)
     return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
 
-# ------ Helper Functions for Download with ROIs ------
+# ------ TIFF helpers（Pillow 讀檔，不用 cv2） ------
 
 def _read_one(path):
     """
-    讀一張圖：優先用 cv2（快），失敗時以 Pillow 後備。
+    讀一張圖，以 Pillow 讀進 numpy 陣列。
     回傳 (ndarray, photometric)
     """
-    try:
-        cv2 = get_cv2()
-        arr = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-        if arr is None:
-            raise ValueError(f"Cannot read image: {path}")
-        if arr.ndim == 2:
+    with Image.open(path) as im:
+        mode = im.mode
+        if mode == 'L':
+            arr = np.asarray(im)  # (H, W)
             return arr, 'minisblack'
-        if arr.shape[2] == 3:
-            return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB), 'rgb'
-        if arr.shape[2] == 4:
-            return cv2.cvtColor(arr, cv2.COLOR_BGRA2RGB), 'rgb'
-        return arr, 'minisblack'
-    except Exception:
-        # Pillow 後備（避免因為 cv2 問題整站不能用）
-        with Image.open(path) as im:
-            im = im.convert('RGB')
-            return np.asarray(im), 'rgb'
+        elif mode in ('RGB',):
+            arr = np.asarray(im)  # (H, W, 3)
+            return arr, 'rgb'
+        elif mode in ('RGBA', 'LA', 'P'):
+            im2 = im.convert('RGB')
+            arr = np.asarray(im2)
+            return arr, 'rgb'
+        else:
+            # 其他模式直接轉 RGB
+            im2 = im.convert('RGB')
+            arr = np.asarray(im2)
+            return arr, 'rgb'
 
 def combine_to_tiff(
     img_paths, output_dir, *,
@@ -339,6 +328,8 @@ def combine_to_tiff(
 
     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
     return out_path
+
+# ------ 下載含 ROI 的 zip（不動 cv2） ------
 
 @csrf_exempt
 @require_POST
@@ -441,197 +432,199 @@ def make_imagej_roi_bytes(points):
     return bytes(buf)
 
 
+# # myapp/views.py
 # import os
 # import json
-# import cv2
+# import re
 # import shutil
 # import zipfile
 # import tempfile
-# import re
-# import numpy as np
-
-# from PIL import Image
+# import logging
 # from io import BytesIO
+# from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# import numpy as np
+# from PIL import Image
 # from django.conf import settings
 # from django.shortcuts import render
-# from django.http import JsonResponse, HttpResponseNotAllowed, FileResponse, HttpResponseNotFound, HttpResponseBadRequest
+# from django.http import (
+#     JsonResponse, FileResponse, HttpResponseNotFound,
+#     HttpResponseBadRequest, HttpResponseServerError, HttpResponseNotAllowed
+# )
 # from django.views.decorators.csrf import csrf_exempt
 # from django.views.decorators.http import require_POST, require_GET
-# from concurrent.futures import ThreadPoolExecutor, as_completed
 # from tifffile import TiffWriter
 
-# from ultralytics import YOLO
-
+# # 你的 method/ pipeline
 # from .method.image_resizer import ImageResizer
 # from .method.grayscale import GrayScaleImage
 # from .method.cut_image import CutImage
 # from .method.yolopipeline import YOLOPipeline
 
-# # Load YOLO model once
-# MODEL = YOLO(os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt'))
+# logger = logging.getLogger(__name__)
 
-# # Render main page
+# # ---------------------------
+# # Lazy loaders (cv2 / YOLO)
+# # ---------------------------
+# _CV2 = None
+# def get_cv2():
+#     """Import cv2 only when needed; cache the module."""
+#     global _CV2
+#     if _CV2 is None:
+#         try:
+#             import cv2  # 建議 requirements: opencv-python-headless
+#             _CV2 = cv2
+#         except Exception as e:
+#             logger.exception("Failed to import cv2")
+#             raise
+#     return _CV2
+
+# _YOLO_MODEL = None
+# def get_yolo_model():
+#     """Lazily load YOLO weights and cache them."""
+#     global _YOLO_MODEL
+#     if _YOLO_MODEL is None:
+#         try:
+#             from ultralytics import YOLO  # 需要時才 import（避免啟動炸掉）
+#             weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
+#             _YOLO_MODEL = YOLO(weight_path)
+#         except Exception as e:
+#             logger.exception("Failed to load YOLO model")
+#             raise
+#     return _YOLO_MODEL
+
+# # ---------------------------
+# # Helpers
+# # ---------------------------
+# def _image_size_wh(path: str):
+#     """用 Pillow 讀圖片尺寸，不動用 cv2。回傳 (w, h)。"""
+#     with Image.open(path) as im:
+#         return im.width, im.height
+
+# def _to_media_url(abs_path: str) -> str:
+#     """把絕對路徑轉成可直接回前端用的 MEDIA URL。"""
+#     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
+#     return os.path.join(settings.MEDIA_URL, rel)
+
+# # ---------------------------
+# # Views
+# # ---------------------------
 # def display_image(request):
 #     return render(request, 'display_image.html')
 
 # @csrf_exempt
 # def upload_image(request):
 #     """
-#     Handle the image upload:
-#       • save under MEDIA_ROOT/<imagename>/
-#       • return MEDIA_URL/<imagename>/<filename>
+#     接收上傳，存到 media/<image_name>/original/，若寬或高>20000 就做 half resize。
+#     回傳可直接顯示的 MEDIA URL。
 #     """
-#     if request.method=='POST' and request.FILES.get('image'):
-#         """ 1) create project directory """
+#     if request.method == 'POST' and request.FILES.get('image'):
 #         img = request.FILES['image']
-#         # image_name: image name without extension
-#         # example: image.jpg -> image
 #         image_name = os.path.splitext(img.name)[0]
-#         # project_dir: a directory with image name > media/{image_name}/
-#         # create project directory
 #         project_dir = os.path.join(settings.MEDIA_ROOT, image_name)
 #         os.makedirs(project_dir, exist_ok=True)
 
-
-#         """ 2) save original image in oringinal directory """
-#         # original_image_dir: a directory that contains original image > media/{image_name}/original
-#         # create original image directory
-#         original_image_dir = os.path.join(project_dir, 'original')
-#         os.makedirs(original_image_dir, exist_ok=True)
-
-#         # original_image_path: a path to save original image > media/{image_name}/original/<img.name>
-#         original_image_path = os.path.join(original_image_dir, img.name)
-#         with open(original_image_path,'wb+') as f:
+#         # 1) 存原檔
+#         original_dir = os.path.join(project_dir, 'original')
+#         os.makedirs(original_dir, exist_ok=True)
+#         original_path = os.path.join(original_dir, img.name)
+#         with open(original_path, 'wb+') as f:
 #             for chunk in img.chunks():
 #                 f.write(chunk)
 
+#         # 2) 如果邊長大於 20000，做 half resize（ImageResizer 內部若用 cv2，會在用到時才 import）
+#         w, h = _image_size_wh(original_path)   # Pillow 讀尺寸（避免 cv2）
+#         if h > 20000 or w > 20000:
+#             resized_path = ImageResizer(original_path, project_dir).resize()
+#             return JsonResponse({'image_url': _to_media_url(resized_path)})
 
-#         """ 
-#             3) resize original image to half size (if h or w > 20000) 
-#                and return resized or original image path
-#         """
-#         # get height and width of the original image
-#         h, w = cv2.imread(original_image_path).shape[:2]
-#         # if h or w > 20000, resize the image to half size
-#         # else, keep the original image size
-#         if h >20000 or w > 20000:
-#             # create resized and saved in media/{image_name}/resized
-#             # don't have to create resized directory, because it will be created in ImageResizer class
-#             resized_path = ImageResizer(original_image_path, project_dir).resize()
-#             # relpath gets relative path from MEDIA_ROOT, but return will not contain MEDIA_URL
-#             resized_path = os.path.relpath(resized_path, settings.MEDIA_ROOT).replace('\\','/')
-#             resized_path = os.path.join(settings.MEDIA_URL, resized_path)
+#         return JsonResponse({'image_url': _to_media_url(original_path)})
 
-#             return JsonResponse({'image_url': resized_path})
-#         else:
-#             # relpath gets relative path from MEDIA_ROOT, but return will not contain MEDIA_URL
-#             original_image_path = os.path.relpath(original_image_path, settings.MEDIA_ROOT).replace('\\','/')
-#             original_image_path = os.path.join(settings.MEDIA_URL, original_image_path)
-
-#             return JsonResponse({'image_url': original_image_path})
-
-#     return JsonResponse({'error':'Invalid upload'}, status=400)
+#     return JsonResponse({'error': 'Invalid upload'}, status=400)
 
 # @csrf_exempt
 # def detect_image(request):
 #     """
-#     On 'Start Detection' click:
-#       • image_path now points to the already-made grayscale image
-#       1) cut → 2) YOLO pipeline → 3) return boxes
+#     Start Detection:
+#       1) 建立 display 影像（等於原圖或縮圖）
+#       2) 轉灰階 → 切 patch
+#       3) 跑 YOLO pipeline
+#       4) 回傳 bounding boxes + 原圖/顯示圖尺寸 + 顯示圖 URL
 #     """
-#     if request.method == 'POST':
-#         body = json.loads(request.body)
-#         # get project name and project directory
-#         project_name = body.get('image_path').split('/')[2]
-#         project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
-#         # get detection image name and path (use original image for detection)
-#         detection_image_name = os.listdir(os.path.join(
-#             settings.MEDIA_ROOT, project_name, 'original')
-#         )[0]
-#         detection_image_path = os.path.join(
-#             settings.MEDIA_ROOT, project_name, 'original', detection_image_name
-#         )
-#         # get height and width of the original image
-#         orig_h, orig_w = cv2.imread(detection_image_path).shape[:2]
+#     if request.method != 'POST':
+#         return JsonResponse({'error': 'Invalid detect'}, status=400)
 
-#         # if resized image exists, use it for detection
-#         if os.path.isdir(os.path.join(settings.MEDIA_ROOT, project_name, 'resized')):
-#             # get resized image name
-#             resized_image_name = os.listdir(
-#                 os.path.join(settings.MEDIA_ROOT, project_name, 'resized')
-#             )
-#             # get resized image path
-#             resized_image_path = os.path.join(
-#                 settings.MEDIA_ROOT, project_name, 'resized', resized_image_name[0]
-#             )
-#             # create directory to save display image
-#             os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'display'), exist_ok=True)
-#             # copy resized image to display directory
-#             shutil.copy(resized_image_path, os.path.join(settings.MEDIA_ROOT, project_name, 'display'))
+#     try:
+#         body = json.loads(request.body or "{}")
+#         image_url = body.get('image_path')  # e.g. /media/<project>/...
+#         if not image_url:
+#             return HttpResponseBadRequest("image_path required")
+
+#         project_name = image_url.strip('/').split('/')[1]  # /media/<project>/...
+#         project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)
+
+#         # --- 取原圖檔 ---
+#         orig_dir  = os.path.join(project_dir, 'original')
+#         orig_name = os.listdir(orig_dir)[0]
+#         orig_path = os.path.join(orig_dir, orig_name)
+#         ow, oh = _image_size_wh(orig_path)  # Pillow 讀尺寸
+
+#         # --- 準備 display 圖（有 resized 就用 resized，否則用原圖） ---
+#         display_dir = os.path.join(project_dir, 'display')
+#         os.makedirs(display_dir, exist_ok=True)
+
+#         resized_dir = os.path.join(project_dir, 'resized')
+#         if os.path.isdir(resized_dir) and os.listdir(resized_dir):
+#             src = os.path.join(resized_dir, os.listdir(resized_dir)[0])
 #         else:
-#             # create display directory to save the gray image for display
-#             os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'display'), exist_ok=True)
-#             # copy the original image to display directory
-#             shutil.copy(detection_image_path, os.path.join(settings.MEDIA_ROOT, project_name, 'display'))
+#             src = orig_path
+#         shutil.copy(src, display_dir)
 
+#         # --- 1) 轉灰階 ---
+#         GrayScaleImage(orig_path, project_dir).rgb_to_gray()
 
-#         """ 1) Turn Detection Image to GrayScale """
-#         GrayScaleImage(detection_image_path, project_dir).rgb_to_gray()
-
-#         """ 2) cut the gray image into patches """
+#         # --- 2) 切 patch ---
 #         gray_dir = os.path.join(project_dir, 'gray')
-#         gray_image_name = os.listdir(gray_dir)[0]
-#         gray_image_path = os.path.join(gray_dir, gray_image_name)
-#         CutImage(gray_image_path, project_dir).cut()
+#         gray_name = os.listdir(gray_dir)[0]
+#         gray_path = os.path.join(gray_dir, gray_name)
+#         CutImage(gray_path, project_dir).cut()
 
-#         """ 3) run your existing pipeline on those patches """
+#         # --- 3) YOLO pipeline（lazy load model） ---
+#         model = get_yolo_model()
 #         patches_dir = os.path.join(project_dir, 'patches')
-#         pipeline    = YOLOPipeline(MODEL, patches_dir, detection_image_path, gray_image_path, project_dir)
-#         detections  = pipeline.run()
+#         pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
+#         detections = pipeline.run()
 
-#         """ 4) Get display image size """
-#         display_image_name = os.listdir(os.path.join(settings.MEDIA_ROOT, project_name, 'display'))[0]
-#         display_image_path = os.path.join(settings.MEDIA_ROOT, project_name, 'display', display_image_name)
-#         disp_h, disp_w = cv2.imread(display_image_path).shape[:2]
-#         print("finished getting display image size")
+#         # --- 4) 顯示圖尺寸與 URL ---
+#         disp_name = os.listdir(display_dir)[0]
+#         disp_path = os.path.join(display_dir, disp_name)
+#         dw, dh = _image_size_wh(disp_path)   # Pillow 讀尺寸
 
-#         """ 5) generate tif. for original image and mmap"""
-#         # list of paths to original annotated and original images
-#         oringal_mmap_paths = [
-#             os.path.join(settings.MEDIA_ROOT, project_name, 'original', detection_image_name),
-#             os.path.join(settings.MEDIA_ROOT, project_name, 'annotated', project_name + '_annotated.jpg')
-#         ]
-#         # create directory to save original mmap
-#         os.makedirs(os.path.join(settings.MEDIA_ROOT, project_name, 'original_mmap'), exist_ok=True)
-#         # Baseline
-#         original_mmap_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'original_mmap')
+#         # --- 5) 產生 Original_Mmap.tiff（相容模式，Windows 相片可開） ---
+#         original_mmap_dir = os.path.join(project_dir, 'original_mmap')
+#         os.makedirs(original_mmap_dir, exist_ok=True)
+#         annotated_jpg = os.path.join(project_dir, 'annotated', project_name + '_annotated.jpg')
+#         original_mmap_inputs = [orig_path]
+#         if os.path.exists(annotated_jpg):
+#             original_mmap_inputs.append(annotated_jpg)
+#         combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
 
-#         # # Professional
-#         # combine_to_tiff(
-#         #     oringal_mmap_paths, original_mmap_dir,
-#         #     compat_mode=False,                 # 預設
-#         #     tile=(512,512), compression='zstd', compression_level=8, bigtiff=True
-#         # )
-
-#         # combine original annotated and original images to a single tif.
-#         combine_to_tiff(oringal_mmap_paths, original_mmap_dir, compat_mode=True)
-#         print("finished generating original mmap paths")
-
-#         """ 6) Delete fm_images and patches directories """
-#         fm_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'fm_images')
-#         patches_dir = os.path.join(settings.MEDIA_ROOT, project_name, 'patches')
-#         shutil.rmtree(fm_dir)
-#         shutil.rmtree(patches_dir)
-#         print("finished deleting fm_images and patches directories")
+#         # --- 6) 清理暫存 ---
+#         for folder in ('fm_images', 'patches'):
+#             p = os.path.join(project_dir, folder)
+#             if os.path.isdir(p):
+#                 shutil.rmtree(p, ignore_errors=True)
 
 #         return JsonResponse({
 #             'boxes': detections,
-#             'orig_size': [orig_h, orig_w],
-#             'display_size': [disp_h, disp_w],
-#             'display_url': os.path.join(settings.MEDIA_URL, project_name, 'display', display_image_name)
+#             'orig_size': [oh, ow],          # 與前端相容：H, W
+#             'display_size': [dh, dw],
+#             'display_url': _to_media_url(disp_path),
 #         })
 
-#     return JsonResponse({'error': 'Invalid detect'}, status=400)
+#     except Exception as e:
+#         logger.exception("detect_image failed")
+#         return HttpResponseServerError("detect failed; see server logs")
 
 # @csrf_exempt
 # def reset_media(request):
@@ -642,25 +635,28 @@ def make_imagej_roi_bytes(points):
 #         path = os.path.join(root, child)
 #         try:
 #             if os.path.isdir(path):
-#                 shutil.rmtree(path)
+#                 shutil.rmtree(path, ignore_errors=True)
 #             else:
 #                 os.remove(path)
 #         except Exception:
-#             pass
+#             logger.warning("failed to remove %s", path, exc_info=True)
 #     return JsonResponse({'ok': True})
 
 # @csrf_exempt
 # def delete_project(request):
-#     if request.method == 'POST':
-#         body = json.loads(request.body)
+#     if request.method != 'POST':
+#         return JsonResponse({'error': 'Invalid request'}, status=400)
+#     try:
+#         body = json.loads(request.body or "{}")
 #         project_name = body.get('project_name')
 #         project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
 #         if os.path.isdir(project_dir):
-#             shutil.rmtree(project_dir)
+#             shutil.rmtree(project_dir, ignore_errors=True)
 #             return JsonResponse({'success': True})
-#         else:
-#             return JsonResponse({'error': 'Not found'}, status=404)
-#     return JsonResponse({'error': 'Invalid request'}, status=400)
+#         return JsonResponse({'error': 'Not found'}, status=404)
+#     except Exception:
+#         logger.exception("delete_project failed")
+#         return HttpResponseServerError("delete failed; see logs")
 
 # @require_GET
 # def download_project(request):
@@ -669,7 +665,6 @@ def make_imagej_roi_bytes(points):
 #     if not os.path.isdir(project_dir):
 #         return HttpResponseNotFound('Project not found')
 
-#     # Create zip in memory
 #     s = BytesIO()
 #     with zipfile.ZipFile(s, 'w', zipfile.ZIP_DEFLATED) as z:
 #         for sub in ('original_mmap', 'qmap'):
@@ -678,42 +673,50 @@ def make_imagej_roi_bytes(points):
 #                 for root, _, files in os.walk(folder):
 #                     for fn in files:
 #                         path = os.path.join(root, fn)
-#                         # store files under <sub>/... in the ZIP
-#                         arcname = os.path.join(project_name, fn)
+#                         arcname = os.path.join(project_name, fn)  # 放在 zip 根/<project>/<file>
 #                         z.write(path, arcname)
 #     s.seek(0)
 #     return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
 
-# # ------ Helper Functions for Downlaod Project ------
-# @csrf_exempt
-# def _read_one(path):
-#     """OpenCV 直讀（快），回傳 (ndarray, photometric)"""
-#     arr = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-#     if arr is None:
-#         raise ValueError(f"Cannot read image: {path}")
-#     # 灰階 / 彩色處理
-#     if arr.ndim == 2:
-#         return arr, 'minisblack'
-#     if arr.shape[2] == 3:
-#         return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB), 'rgb'
-#     if arr.shape[2] == 4:
-#         return cv2.cvtColor(arr, cv2.COLOR_BGRA2RGB), 'rgb'
-#     return arr, 'minisblack'
+# # ------ Helper Functions for Download with ROIs ------
 
-# @csrf_exempt
-# def combine_to_tiff(img_paths, output_dir,
-#                     *,                      # 之後參數請用具名呼叫
-#                     compat_mode=False,      # ← 新增：True 則輸出 Windows 相片可開
-#                     tile=(512, 512),
-#                     compression='zstd',
-#                     compression_level=10,   # zstd 等級（3~10）
-#                     predictor=None,         # LZW/Deflate 建議 2（horizontal）
-#                     bigtiff=True,
-#                     read_workers=None):
+# def _read_one(path):
+#     """
+#     讀一張圖：優先用 cv2（快），失敗時以 Pillow 後備。
+#     回傳 (ndarray, photometric)
+#     """
+#     try:
+#         cv2 = get_cv2()
+#         arr = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+#         if arr is None:
+#             raise ValueError(f"Cannot read image: {path}")
+#         if arr.ndim == 2:
+#             return arr, 'minisblack'
+#         if arr.shape[2] == 3:
+#             return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB), 'rgb'
+#         if arr.shape[2] == 4:
+#             return cv2.cvtColor(arr, cv2.COLOR_BGRA2RGB), 'rgb'
+#         return arr, 'minisblack'
+#     except Exception:
+#         # Pillow 後備（避免因為 cv2 問題整站不能用）
+#         with Image.open(path) as im:
+#             im = im.convert('RGB')
+#             return np.asarray(im), 'rgb'
+
+# def combine_to_tiff(
+#     img_paths, output_dir, *,
+#     compat_mode=False,         # True: Windows 相片相容（strip + LZW）
+#     tile=(512, 512),
+#     compression='zstd',
+#     compression_level=10,      # zstd 等級（3~10）
+#     predictor=None,            # LZW/Deflate 建議 2（horizontal）
+#     bigtiff=True,
+#     read_workers=None
+# ):
 #     """
 #     把多張影像合成多頁 TIFF。
-#     compat_mode=True  → strip + LZW + predictor=2 + 避免 BigTIFF（Windows 相片相容）
-#     compat_mode=False → tile + zstd + BigTIFF（效能最佳）
+#     compat_mode=True  → strip + LZW + predictor=2 + 避免 BigTIFF
+#     compat_mode=False → tile + zstd + BigTIFF（效率較佳）
 #     """
 #     os.makedirs(output_dir, exist_ok=True)
 #     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
@@ -724,16 +727,16 @@ def make_imagej_roi_bytes(points):
 #     with ThreadPoolExecutor(max_workers=read_workers) as ex:
 #         futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
 #         for fu in as_completed(futs):
-#             pages[futs[fu]] = fu.result()   # 放回正確索引
+#             pages[futs[fu]] = fu.result()
 
-#     # 2) 相容模式覆寫參數（Windows 相片支援）
+#     # 2) 相容模式覆寫參數
 #     if compat_mode:
-#         tile = None                 # ← strip（不要 tile）
-#         compression = 'lzw'         # 或 'deflate'
-#         predictor = 2               # 對 LZW/Deflate 推薦
-#         bigtiff = False             # 能不用就不用（必要時會自動開）
+#         tile = None
+#         compression = 'lzw'
+#         predictor = 2
+#         bigtiff = False
 
-#     # 3) 若缺 imagecodecs，zstd 改 LZW（避免寫檔錯）
+#     # 3) 若缺 imagecodecs，zstd → LZW
 #     if compression == 'zstd':
 #         try:
 #             import imagecodecs  # noqa
@@ -742,8 +745,8 @@ def make_imagej_roi_bytes(points):
 #             predictor = 2
 #             compression_level = None
 
-#     # 4) >4GB 才強制 BigTIFF（Windows 相片大多不支援 BigTIFF）
-#     est_bytes = sum(arr.nbytes for (arr, _) in pages)
+#     # 4) >4GB 才強制 BigTIFF
+#     est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
 #     need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
 
 #     # 5) 寫多頁 TIFF
@@ -753,6 +756,8 @@ def make_imagej_roi_bytes(points):
 
 #     with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
 #         for (arr, photometric) in pages:
+#             if arr is None:
+#                 continue
 #             kwargs = dict(
 #                 photometric=photometric,
 #                 compression=compression,
@@ -762,28 +767,22 @@ def make_imagej_roi_bytes(points):
 #                 kwargs['compressionargs'] = comp_args
 #             if compression in ('lzw', 'deflate') and predictor:
 #                 kwargs['predictor'] = int(predictor)
-#             if tile is not None:            # compat_mode=False 才會加 tile
+#             if tile is not None:
 #                 kwargs['tile'] = tile
 #             tw.write(arr, **kwargs)
 
-#     print(f"[TIFF] saved → {out_path} (compat_mode={compat_mode})")
+#     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
+#     return out_path
 
 # @csrf_exempt
 # @require_POST
 # def download_project_with_rois(request):
 #     """
-#     Backend directly generates <project>.zip with the following structure:
-#       <project_name>/
-#         Original_Mmap.tiff (or your actual file)
-#         qmap.nii           (or your actual file)
-#         rois.zip           ← inner zip containing all *.roi
-
-#     POST (form or JSON):
-#       - project_name: str
-#       - rois: [{ "name": str, "points": [{"x":float/int, "y":float/int}, ...] }, ...]
-#               (form can send JSON string)
+#     產出 <project>.zip，包含：
+#       - Original_Mmap.tiff / qmap/*.nii 等
+#       - rois.zip（把傳入的多個 ROI polygon 另壓一層）
 #     """
-#     # Parse payload (support form and JSON)
+#     # 解析 payload（支援 JSON 與 form）
 #     if request.content_type and request.content_type.startswith("application/json"):
 #         payload = json.loads(request.body or "{}")
 #         project_name = payload.get("project_name")
@@ -803,14 +802,12 @@ def make_imagej_roi_bytes(points):
 #     if not os.path.isdir(project_dir):
 #         return HttpResponseNotFound("Project not found")
 
-#     # Use a temporary file to write the main ZIP (avoids memory usage; will be cleaned up after response)
 #     tmpf = tempfile.TemporaryFile()
 
 #     def _compress_type_for(fn: str):
-#         # 這些通常已壓縮或壓不太動，直接存放即可
 #         return zipfile.ZIP_STORED if fn.lower().endswith(('.tif', '.tiff', '.nii', '.zip')) \
-#                                 else zipfile.ZIP_DEFLATED
-    
+#                                    else zipfile.ZIP_DEFLATED
+
 #     with zipfile.ZipFile(tmpf, "w") as main_zip:
 #         for sub in ("original_mmap", "qmap"):
 #             folder = os.path.join(project_dir, sub)
@@ -820,11 +817,9 @@ def make_imagej_roi_bytes(points):
 #                         src = os.path.join(root, fn)
 #                         arc = os.path.join(project_name, fn)
 #                         ctype = _compress_type_for(fn)
-#                         # Python 3.8+ 可指定 compresslevel；存放則不用
 #                         main_zip.write(src, arcname=arc, compress_type=ctype,
-#                                     compresslevel=0 if ctype==zipfile.ZIP_DEFLATED else None)
+#                                        compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
 
-#         # 2) First zip all ROIs into an "inner rois.zip", then add it to the main ZIP
 #         if rois:
 #             roi_buf = BytesIO()
 #             with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
@@ -834,22 +829,21 @@ def make_imagej_roi_bytes(points):
 #                     rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
 #             main_zip.writestr(os.path.join(project_name, "rois.zip"), roi_buf.getvalue())
 
-#     # Return as stream (Save As dialog will pop up)
 #     tmpf.seek(0)
 #     filename = f"{project_name}.zip"
 #     return FileResponse(tmpf, as_attachment=True, filename=filename, content_type="application/zip")
 
 
 # def safe_filename(name: str) -> str:
-#     """Remove illegal characters to avoid invalid filenames"""
+#     """移除非法字元，避免檔名失敗"""
 #     name = (name or "ROI").strip() or "ROI"
 #     return re.sub(r'[\\/:*?"<>|]+', "_", name)
 
 
 # def make_imagej_roi_bytes(points):
 #     """
-#     Convert [{'x':..., 'y':...}, ...] to ImageJ .roi (polygon) binary content.
-#     Reference: ImageJ ROI format: header 64 bytes + relative coordinate arrays.
+#     把 [{'x':..,'y':..}, ...] 轉 ImageJ .roi（polygon）二進位。
+#     參照 ImageJ ROI 格式：64 bytes header + relative coords
 #     """
 #     if not points:
 #         return b""
@@ -862,19 +856,17 @@ def make_imagej_roi_bytes(points):
 #     top, left, bottom, right = min(ys), min(xs), max(ys), max(xs)
 #     n = len(xs)
 
-#     # 64-byte header
 #     header = bytearray(64)
 #     header[0:4]  = b"Iout"                  # magic
-#     header[4:6]  = (218).to_bytes(2, "big") # version (<= 218)
-#     header[6:8]  = (0).to_bytes(2, "big")   # roiType = 0 (polygon)
-#     header[8:10] = top.to_bytes(2, "big")
-#     header[10:12]= left.to_bytes(2, "big")
-#     header[12:14]= bottom.to_bytes(2, "big")
-#     header[14:16]= right.to_bytes(2, "big")
-#     header[16:18]= n.to_bytes(2, "big")     # number of coordinates
+#     header[4:6]  = (218).to_bytes(2, "big") # version
+#     header[6:8]  = (0).to_bytes(2, "big")   # roiType=0 (polygon)
+#     header[8:10]  = top.to_bytes(2, "big")
+#     header[10:12] = left.to_bytes(2, "big")
+#     header[12:14] = bottom.to_bytes(2, "big")
+#     header[14:16] = right.to_bytes(2, "big")
+#     header[16:18] = n.to_bytes(2, "big")
 
 #     buf = bytearray(header)
-#     # x/y are stored as 2-byte big-endian integers relative to the top-left corner
 #     for x in xs:
 #         buf += (x - left).to_bytes(2, "big", signed=True)
 #     for y in ys:
