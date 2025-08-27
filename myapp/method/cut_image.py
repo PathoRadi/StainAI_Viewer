@@ -1,5 +1,6 @@
 import os
 import math
+import numpy as np
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
