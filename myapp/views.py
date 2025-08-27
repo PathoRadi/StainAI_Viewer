@@ -53,7 +53,7 @@ def get_yolo_model():
 # Helpers
 # ---------------------------
 def _image_size_wh(path: str):
-    """用 Pillow 讀圖片尺寸。回傳 (w, h)。"""
+    """用 Pillow 讀圖片尺寸。回傳 (w, h)。11111"""
     with Image.open(path) as im:
         return im.width, im.height
 
