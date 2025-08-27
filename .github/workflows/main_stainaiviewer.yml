@@ -62,3 +62,8 @@ jobs:
           app-name: 'stainaiviewer'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F4797BF032BF4488AA5B40D007A5CFCF }}
+          startup-command: >
+            /bin/sh -lc 'python -m pip uninstall -y opencv-python || true &&
+            python -m pip install --no-cache-dir --upgrade opencv-python-headless==4.10.0.84 &&
+            python -m pip install --no-deps "ultralytics>=8.2,<9" &&
+            exec gunicorn StainAI_Viewer.wsgi --workers 2 --timeout 120'
