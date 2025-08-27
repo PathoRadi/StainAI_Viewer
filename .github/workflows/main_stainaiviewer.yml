@@ -26,14 +26,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-      #     pip uninstall -y opencv-python || true
-      #     pip install --upgrade opencv-python-headless==4.10.0.84
-      
-      # - name: Install ultralytics without deps
-      #   run: |
-      #     pip install --no-deps "ultralytics>=8.2,<9"
-        
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r
