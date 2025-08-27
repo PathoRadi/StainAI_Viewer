@@ -20,7 +20,7 @@ if azure_host:
     ALLOWED_HOSTS.append(azure_host)
 
 # 可選：靜音內部健康檢查的 Host
-ALLOWED_HOSTS += ['169.254.130.2']
+ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.130.4']
 
 
 # Application definition

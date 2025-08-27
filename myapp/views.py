@@ -40,6 +40,8 @@ def get_yolo_model():
         try:
             # 注意：Ultralytics 載入時會 import cv2，所以環境需安裝 opencv-python-headless
             from ultralytics import YOLO
+            import torch, os
+            torch.set_num_threads(min(4, os.cpu_count() or 1))
             weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
             _YOLO_MODEL = YOLO(weight_path)
         except Exception:
