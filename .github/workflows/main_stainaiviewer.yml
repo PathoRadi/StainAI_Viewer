@@ -1,155 +1,72 @@
-# name: Deploy StainAI Viewer
-
-# on:
-#   push:
-#     branches: [ main ]
-#   workflow_dispatch:
-
-# env:
-#   AZURE_WEBAPP_NAME: stainaiviewer            # <-- 換成你的 App Service 名稱
-#   PYTHON_VERSION: '3.12'
-#   PACKAGE_PATH: build                         # 我們會建立一個乾淨的部署資料夾
-
-# jobs:
-#   build-and-deploy:
-#     runs-on: ubuntu-latest
-#     concurrency:
-#       group: ${{ github.workflow }}-${{ github.ref }}
-#       cancel-in-progress: true
-
-#     steps:
-#       - name: Checkout
-#         uses: actions/checkout@v4
-
-#       - name: Setup Python
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: ${{ env.PYTHON_VERSION }}
-#           cache: pip
-
-#       - name: Prepare sanitized deploy folder (force headless OpenCV & CPU Torch)
-#         shell: bash
-#         run: |
-#           set -euo pipefail
-
-#           rm -rf "${PACKAGE_PATH}"
-#           mkdir -p "${PACKAGE_PATH}"
-
-#           # 複製專案到部署用資料夾（排除 .git / .github）
-#           rsync -a --delete --exclude '.git' --exclude '.github' ./ "${PACKAGE_PATH}/"
-
-#           pushd "${PACKAGE_PATH}"
-
-#           # 產生「有效的 requirements.txt」：移除非 headless 的 OpenCV，補上 headless 與 CPU Torch
-#           if [[ -f requirements.txt ]]; then mv requirements.txt requirements.orig.txt; else touch requirements.orig.txt; fi
-
-#           # 移除一般版 OpenCV（含 contrib）
-#           grep -viE '^(opencv-(contrib-)?python)(==.*)?$' requirements.orig.txt > requirements.txt || true
-
-#           # 確保 headless OpenCV 存在
-#           if ! grep -qi '^opencv-python-headless' requirements.txt; then
-#             echo 'opencv-python-headless==4.10.0.84' >> requirements.txt
-#           fi
-
-#           # 確保 CPU 版 Torch（若你原檔已經有就不再重覆附加）
-#           if ! grep -qi '^torch' requirements.txt; then
-#             {
-#               echo '--extra-index-url https://download.pytorch.org/whl/cpu'
-#               echo 'torch==2.3.1+cpu'
-#               echo 'torchvision==0.18.1+cpu'
-#             } >> requirements.txt
-#           fi
-
-#           # 鎖定 Ultralytics 在 8.x（避免未來 9.x 的破壞式變更）
-#           if ! grep -qi '^ultralytics' requirements.txt; then
-#             echo 'ultralytics>=8.2,<9' >> requirements.txt
-#           fi
-
-#           # 你的專案會用到的其他依賴（不存在才補）
-#           grep -qi '^nibabel' requirements.txt || echo 'nibabel>=5.2,<6' >> requirements.txt
-#           grep -qi '^natsort' requirements.txt || echo 'natsort>=8.4' >> requirements.txt
-#           grep -qi '^tifffile' requirements.txt || echo 'tifffile>=2024.7.24' >> requirements.txt
-#           grep -qi '^Pillow' requirements.txt || echo 'Pillow>=10.3' >> requirements.txt
-#           grep -qi '^whitenoise' requirements.txt || echo 'whitenoise>=6.6' >> requirements.txt
-#           grep -qi '^gunicorn' requirements.txt || echo 'gunicorn>=21.2' >> requirements.txt
-#           grep -qi '^Django' requirements.txt || echo 'Django>=4.2,<5.1' >> requirements.txt
-#           # imagecodecs 讓 zstd/LZW 更順（可選）
-#           grep -qi '^imagecodecs' requirements.txt || echo 'imagecodecs>=2024.6.1' >> requirements.txt
-
-#           popd
-
-#       - name: Show effective requirements (debug)
-#         run: cat "${PACKAGE_PATH}/requirements.txt"
-
-#       # 可選：在 CI 端做一次解析驗證（不影響 App Service 的最終環境）
-#       - name: Resolver sanity check (optional)
-#         run: |
-#           python -m pip install -U pip
-#           # 不下載大型 wheel 也允許失敗，只是早抓相依問題
-#           python -m pip install -r "${PACKAGE_PATH}/requirements.txt" --only-binary=:all: || true
-
-#       # 部署到 Azure Web App（Zip Deploy + Oryx 會在遠端依據 "build/requirements.txt" 安裝）
-#       - name: Deploy to Azure Web App
-#         uses: azure/webapps-deploy@v2
-#         with:
-#           app-name: ${{ env.AZURE_WEBAPP_NAME }}
-#           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F4797BF032BF4488AA5B40D007A5CFCF }}
-#           package: ${{ env.PACKAGE_PATH }}
-#           # 若你仍在遠端看到 libGL.so.1，可暫時啟用啟動命令強制矯正（對等於「解法 B」）：
-#           # startup-command: >-
-#           #   /bin/sh -c "pip uninstall -y opencv-python || true
-#           #   && pip install --no-cache-dir --upgrade opencv-python-headless==4.10.0.84
-#           #   && gunicorn StainAI_Viewer.wsgi --workers 2 --timeout 120"
-
-
-name: Deploy StainAI Viewer
+name: Build and deploy Python app to Azure Web App - stainaiviewer
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
-env:
-  AZURE_WEBAPP_NAME: stainaiviewer         # ← 改成你的 App Service 名稱
-  PYTHON_VERSION: '3.12'
-  PACKAGE_PATH: .                          # 要部署的資料夾，通常是 repo 根目錄
-
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Set up Python version
+        uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+          python-version: '3.12'
 
-      # （可選）預先解析一次 requirements，提早發現相依問題；不影響遠端環境
-      - name: Dependency resolve sanity check (optional)
+      - name: Create and start virtual environment
         run: |
-          python -m pip install -U pip
-          if [ -f requirements.txt ]; then
-            python -m pip install -r requirements.txt || true
-          fi
+          python -m venv venv
+          source venv/bin/activate
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip uninstall -y opencv-python || true
+          pip install --upgrade opencv-python-headless==4.10.0.84
+      
+      - name: Install ultralytics without deps
+        run: |
+          pip install --no-deps "ultralytics>=8.2,<9"
+        
+      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
 
-      # Zip Deploy 到 Azure；Linux Python 會由 Oryx 於遠端自動建立 venv 並 pip install -r requirements.txt
-      - name: Deploy to Azure Web App (Zip Deploy)
-        uses: azure/webapps-deploy@v2
+      - name: Zip artifact for deployment
+        run: zip release.zip ./* -r
+
+      - name: Upload artifact for deployment jobs
+        uses: actions/upload-artifact@v4
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          name: python-app
+          path: |
+            release.zip
+            !venv/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+    
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Unzip artifact for deployment
+        run: unzip release.zip
+
+      
+      - name: 'Deploy to Azure Web App'
+        uses: azure/webapps-deploy@v2
+        id: deploy-to-webapp
+        with:
+          app-name: 'stainaiviewer'
+          slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F4797BF032BF4488AA5B40D007A5CFCF }}
-          package: ${{ env.PACKAGE_PATH }}
-          # 關鍵：啟動時僅對 ultralytics 使用 --no-deps，其餘仍照 requirements.txt 安裝的結果
-          startup-command: >-
-            /bin/sh -c "
-            pip uninstall -y opencv-python || true &&
-            pip install --no-cache-dir --upgrade opencv-python-headless==4.10.0.84 &&
-            pip install --no-cache-dir --no-deps 'ultralytics>=8.2,<9' &&
-            gunicorn StainAI_Viewer.wsgi --workers 2 --timeout 120"
