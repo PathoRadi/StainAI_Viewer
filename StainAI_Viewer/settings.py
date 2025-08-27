@@ -16,7 +16,8 @@ DEBUG = True
 # Add your domain names or IP addresses here when deploying
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.azurewebsites.net']
 
-ALLOWED_HOSTS += ['169.254.130.2']
+ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.130.4']
+
 
 
 # Application definition
