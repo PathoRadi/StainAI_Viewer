@@ -6,7 +6,6 @@ import shutil
 import zipfile
 import tempfile
 import logging
-import torch
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
