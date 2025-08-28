@@ -63,19 +63,3 @@ jobs:
           app-name: 'stainaiviewer'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F4797BF032BF4488AA5B40D007A5CFCF }}
-
-      - name: Azure CLI - set startup command & settings
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az webapp config set \
-              --name stainaiviewer \
-              --resource-group mil_group \
-              --startup-file "bash startup.sh"
-
-            az webapp config appsettings set \
-              --name stainaiviewer \
-              --resource-group mil_group \
-              --settings \
-              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
-              PYTHON_ENABLE_GUNICORN_EXTENSIONS=true
