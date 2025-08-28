@@ -51,7 +51,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       onShowAllBoxes: () => {
         drawBbox(window.bboxData);
         showAllBoxes();
-        $('#checkbox_All').prop('che cked', true);
+        $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
       }
