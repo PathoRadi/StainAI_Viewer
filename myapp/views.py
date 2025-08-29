@@ -6,6 +6,8 @@ import shutil
 import zipfile
 import tempfile
 import logging
+import torch
+from ultralytics import YOLO
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -30,24 +32,9 @@ from .method.yolopipeline import YOLOPipeline
 logger = logging.getLogger(__name__)
 
 # ---------------------------
-# Lazy loader for YOLO
+# Load YOLO model
 # ---------------------------
-_YOLO_MODEL = None
-def get_yolo_model():
-    """Lazily load YOLO weights and cache them (避免啟動時載入失敗讓整站 500)。"""
-    global _YOLO_MODEL
-    if _YOLO_MODEL is None:
-        try:
-            # 注意：Ultralytics 載入時會 import cv2，所以環境需安裝 opencv-python-headless
-            from ultralytics import YOLO
-            import torch, os
-            torch.set_num_threads(min(4, os.cpu_count() or 1))
-            weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
-            _YOLO_MODEL = YOLO(weight_path)
-        except Exception:
-            logger.exception("Failed to load YOLO model")
-            raise
-    return _YOLO_MODEL
+model = YOLO(os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt'))
 
 # ---------------------------
 # Helpers
@@ -148,7 +135,6 @@ def detect_image(request):
         CutImage(gray_path, project_dir).cut()
 
         # --- 3) YOLO pipeline（lazy load model） ---
-        model = get_yolo_model()
         patches_dir = os.path.join(project_dir, 'patches')
         pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
         detections = pipeline.run()
