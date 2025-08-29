@@ -198,7 +198,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       },
       body: JSON.stringify({ image_path: window.imgPath })
     })
-    .then(r => r.json())
+    .then(async r => {
+      const contentType = r.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        return r.json();
+      } else {
+        const text = await r.text();
+        throw new Error(`Backend error: ${text}`);
+      }
+    })
     .then(d => {
       const boxes         = d.boxes;
       const [origW,origH] = d.orig_size;
