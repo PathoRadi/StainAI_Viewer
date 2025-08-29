@@ -6,8 +6,6 @@ import shutil
 import zipfile
 import tempfile
 import logging
-import torch
-from ultralytics import YOLO
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -34,7 +32,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------
 # Lazy loader for YOLO
 # ---------------------------
-model = YOLO(os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt'))
 _YOLO_MODEL = None
 def get_yolo_model():
     """Lazily load YOLO weights and cache them (避免啟動時載入失敗讓整站 500)。"""
