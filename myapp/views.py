@@ -180,8 +180,11 @@ def detect_image(request):
         })
 
     except Exception as e:
-        print("detect_image error:", e)
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        logger.exception("detect_image failed")
+        return JsonResponse(
+            {'error': 'detect failed; see server logs'},
+            status=500
+        )
         # logger.exception("detect_image failed")
         # return HttpResponseServerError("detect failed; see server logs")
 
