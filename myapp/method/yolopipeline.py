@@ -251,33 +251,7 @@ class YOLOPipeline:
         annotated_path = os.path.join(self.annotated_dir, out_name)
         annotated.save(annotated_path, format="JPEG", quality=90, optimize=True, progressive=True)
 
-        print(f"Annotated image saved at {annotated_path}")
-
-    # def annotate_large_image(self, bbox, labels, alpha=0.3):
-    #     """
-    #     Draw semi-transparent boxes on the full image and save to annotated directory.
-    #     """
-    #     img = cv2.imread(self.large_img_path)
-    #     if img is None:
-    #         print(f"Cannot read {self.large_img_path}")
-    #         return
-
-    #     overlay = img.copy()
-
-    #     for box, lbl in zip(bbox, labels):
-    #         # FIX: ensure all coords are ints (was passing floats → OpenCV complained)
-    #         x1, y1, x2, y2 = map(int, box)
-    #         color = self.class_mapping[lbl][1]
-    #         cv2.rectangle(overlay, (x1, y1), (x2, y2), color, thickness=-1)
-
-    #     # blend overlay
-    #     cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
-
-    #     # save result
-    #     out_name       = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
-    #     annotated_path = os.path.join(self.annotated_dir, out_name)
-    #     cv2.imwrite(annotated_path, img)
-    #     print(f"Annotated image saved at {annotated_path}")
+        # print(f"Annotated image saved at {annotated_path}")
 
 
 
@@ -351,7 +325,7 @@ class YOLOPipeline:
                 output_dir, coords[0] + "_" + coords[1] + "_" + coords[2]+ "_" + coords[3]+ ".png"
             )
             patch.save(save_path)
-            print(f"Cropped patch saved to {save_path}")
+            # print(f"Cropped patch saved to {save_path}")
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
@@ -382,8 +356,8 @@ class YOLOPipeline:
         img = Image.open(input_image_path)
         width, height = img.size
         ds_w, ds_h = width // downsample_factor, height // downsample_factor
-        print(f"Original image size: {width}x{height}")
-        print(f"Downsampled map size: {ds_w}x{ds_h}")
+        # print(f"Original image size: {width}x{height}")
+        # print(f"Downsampled map size: {ds_w}x{ds_h}")
 
         # === Step 2: Initialize Qmap & FM storage ===
         qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)  # 用 uint16 暫存計數
@@ -447,5 +421,5 @@ class YOLOPipeline:
         output_path = os.path.join(output_dir, "qmap.nii")
         nib.save(nifti_img, output_path)
 
-        print(f"Qmap saved to: {output_path}")
-        print("Slices order: [MAS, R, H, B, A, RD, HR, FM_avg]")
+        # print(f"Qmap saved to: {output_path}")
+        # print("Slices order: [MAS, R, H, B, A, RD, HR, FM_avg]")

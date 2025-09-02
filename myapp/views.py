@@ -88,10 +88,15 @@ def upload_image(request):
             for chunk in img.chunks():
                 f.write(chunk)
 
+        print(f"Image successfully uploaded: {img.name}")
+        print(f"Uploaded image saved to {original_path}")
+
         # 2) 是否需要縮半
         w, h = _image_size_wh(original_path)
         if h > 20000 or w > 20000:
             resized_path = ImageResizer(original_path, project_dir).resize()
+
+            print(f"Image resized to half and saved to: {resized_path}")
             return JsonResponse({'image_url': _to_media_url(resized_path)})
 
         return JsonResponse({'image_url': _to_media_url(original_path)})
