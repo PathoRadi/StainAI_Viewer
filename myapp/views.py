@@ -174,7 +174,7 @@ def detect_image(request):
 
         return JsonResponse({
             'boxes': detections,
-            'orig_size': [oh, ow],          # 前端原本使用 H,W
+            'orig_size': [oh, ow],
             'display_size': [dh, dw],
             'display_url': _to_media_url(disp_path),
         })

@@ -117,4 +117,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ===== Media =====
 MEDIA_URL  = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+DEFAULT_MEDIA_ROOT = "/home/site/wwwroot/media"
+MEDIA_ROOT = str(Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT)))
+
+os.makedirs(MEDIA_ROOT, exist_ok=True)
