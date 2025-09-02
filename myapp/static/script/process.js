@@ -194,54 +194,20 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': csrftoken
+        'X-CSRFToken':   csrftoken
       },
       body: JSON.stringify({ image_path: window.imgPath })
     })
-    .then(async (resp) => {
-      // 先拿純文字
-      const raw = await resp.text();
-
-      // HTTP 非 2xx 直接拋錯，把後端原文一起丟出
-      if (!resp.ok) {
-        const status = `HTTP ${resp.status} ${resp.statusText}`;
-        throw new Error(`${status} — ${raw || 'no body'}`);
-      }
-
-      // 嘗試 parse JSON，不是 JSON 就丟錯（包含後端回的純文字訊息）
-      try {
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        throw new Error(`Backend returned non-JSON: ${raw.slice(0, 300)}`);
-      }
-    })
-    .then((d) => {
-      // 基本結構檢查
-      if (!d || !Array.isArray(d.boxes)) {
-        throw new Error('Malformed response: missing "boxes".');
-      }
-      if (!Array.isArray(d.orig_size) || d.orig_size.length !== 2) {
-        throw new Error('Malformed response: missing "orig_size".');
-      }
-      if (!Array.isArray(d.display_size) || d.display_size.length !== 2) {
-        throw new Error('Malformed response: missing "display_size".');
-      }
-
-      const boxes = d.boxes;
-      const [origW, origH] = d.orig_size.map(Number);
-      const [dispW, dispH] = d.display_size.map(Number);
-
-      if (!origW || !origH || !dispW || !dispH) {
-        throw new Error('Invalid image sizes in response.');
-      }
-
-      const scaleX = dispW / origW;
-      const scaleY = dispH / origH;
-
-      // 依比例縮放座標
+    .then(r => r.json())
+    .then(d => {
+      const boxes         = d.boxes;
+      const [origW,origH] = d.orig_size;
+      const [dispW,dispH] = d.display_size;
+      const scaleX        = dispW / origW;
+      const scaleY        = dispH / origH;
       window.bboxData = (scaleX !== 1 || scaleY !== 1)
-        ? boxes.map((b) => ({
-            ...b,
+        ? boxes.map(b => ({
+            type: b.type,
             coords: [
               b.coords[0] * scaleX,
               b.coords[1] * scaleY,
@@ -251,121 +217,36 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           }))
         : boxes.slice();
 
-      // 切到結果畫面
-      dropZone.style.display = 'none';
+      dropZone.style.display                          = 'none';
+      hideProgressOverlay();
       document.querySelector('.main-container').hidden = false;
 
-      // 畫框
-      clearBoxes?.();
-      drawBbox?.(window.bboxData);
+      clearBoxes();
+      drawBbox(window.bboxData);
 
-      // 取得 chart 區塊
       const wrappers = document.getElementById('barChart-wrappers');
-      window.chartRefs = Array.isArray(window.chartRefs) ? window.chartRefs : [];
-
-      if (wrappers) {
-        if (window.chartRefs.length > 0) {
-          // 銷毀舊圖
-          window.chartRefs.forEach((chart) => {
-            try { chart.destroy(); } catch { /* ignore */ }
-          });
-          window.chartRefs = [];
-
-          // 逐一重建（沿用既有 canvas）
-          wrappers.querySelectorAll('.barChart-wrapper').forEach((w) => {
-            const canvas = w.querySelector('canvas.barChart');
-            if (canvas) {
-              const newChart = createBarChart(canvas.id);
-              initCheckboxes?.(window.bboxData, newChart);
-              updateChart?.(window.bboxData, newChart);
-              window.chartRefs.push(newChart);
-            }
-          });
-        } else {
-          // 沒有任何 chart，新增一個
-          const c1 = addBarChart?.();
-          if (c1) {
-            window.chartRefs.push(c1);
-            initCheckboxes?.(window.bboxData, c1);
-            updateChart?.(window.bboxData, c1);
-          }
-        }
-      } else {
-        console.warn('#barChart-wrappers not found; skip chart rendering.');
-      }
-    })
-    .catch((err) => {
-      console.error('Detection error:', err);
-      alert(`Detection failed: ${err.message}`);
-    })
-    .finally(() => {
-      hideProgressOverlay?.();
-    });
-    // fetch(DETECT_IMAGE_URL, {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     'X-CSRFToken':   csrftoken
-    //   },
-    //   body: JSON.stringify({ image_path: window.imgPath })
-    // })
-    // .then(async r => {
-    //   const contentType = r.headers.get("content-type");
-    //   if (contentType && contentType.includes("application/json")) {
-    //     return r.json();
-    //   } else {
-    //     const text = await r.text();
-    //     throw new Error(`Backend error: ${text}`);
-    //   }
-    // })
-    // .then(d => {
-    //   const boxes         = d.boxes;
-    //   const [origW,origH] = d.orig_size;
-    //   const [dispW,dispH] = d.display_size;
-    //   const scaleX        = dispW / origW;
-    //   const scaleY        = dispH / origH;
-    //   window.bboxData = (scaleX !== 1 || scaleY !== 1)
-    //     ? boxes.map(b => ({
-    //         type: b.type,
-    //         coords: [
-    //           b.coords[0] * scaleX,
-    //           b.coords[1] * scaleY,
-    //           b.coords[2] * scaleX,
-    //           b.coords[3] * scaleY
-    //         ]
-    //       }))
-    //     : boxes.slice();
-
-    //   dropZone.style.display                          = 'none';
-    //   hideProgressOverlay();
-    //   document.querySelector('.main-container').hidden = false;
-
-    //   clearBoxes();
-    //   drawBbox(window.bboxData);
-
-    //   const wrappers = document.getElementById('barChart-wrappers');
       
-    //   // If charts exist, destroy and recreate them with new data
-    //   if (window.chartRefs.length > 0) {
-    //       window.chartRefs.forEach(chart => {
-    //           chart.destroy(); // clear current chart instance
-    //       });
-    //       wrappers.querySelectorAll('.barChart-wrapper').forEach(w => {
-    //           const canvas = w.querySelector('canvas.barChart');
-    //           if (canvas) {
-    //               const ctx = canvas.getContext('2d');
-    //               // re-create the chart on existing canvas
-    //               const newChart = createBarChart(canvas.id);
-    //               initCheckboxes(window.bboxData, newChart);
-    //               updateChart(window.bboxData, newChart);
-    //               const idx = [...wrappers.children].indexOf(w);
-    //               window.chartRefs[idx] = newChart;
-    //           }
-    //       });
-    //   } else {
-    //       const c1 = addBarChart();
-    //       window.chartRefs.push(c1);
-    //   }
+      // If charts exist, destroy and recreate them with new data
+      if (window.chartRefs.length > 0) {
+          window.chartRefs.forEach(chart => {
+              chart.destroy(); // clear current chart instance
+          });
+          wrappers.querySelectorAll('.barChart-wrapper').forEach(w => {
+              const canvas = w.querySelector('canvas.barChart');
+              if (canvas) {
+                  const ctx = canvas.getContext('2d');
+                  // re-create the chart on existing canvas
+                  const newChart = createBarChart(canvas.id);
+                  initCheckboxes(window.bboxData, newChart);
+                  updateChart(window.bboxData, newChart);
+                  const idx = [...wrappers.children].indexOf(w);
+                  window.chartRefs[idx] = newChart;
+              }
+          });
+      } else {
+          const c1 = addBarChart();
+          window.chartRefs.push(c1);
+      }
 
       window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
       window.viewer.addOnceHandler('open', () => {

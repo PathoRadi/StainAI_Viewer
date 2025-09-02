@@ -53,7 +53,7 @@ def get_yolo_model():
 # Helpers
 # ---------------------------
 def _image_size_wh(path: str):
-    """用 Pillow 讀圖片尺寸。回傳 (w, h)。111"""
+    """用 Pillow 讀圖片尺寸。回傳 (w, h)。"""
     with Image.open(path) as im:
         return im.width, im.height
 
@@ -174,19 +174,14 @@ def detect_image(request):
 
         return JsonResponse({
             'boxes': detections,
-            'orig_size': [oh, ow],          
+            'orig_size': [oh, ow],          # 前端原本使用 H,W
             'display_size': [dh, dw],
             'display_url': _to_media_url(disp_path),
         })
 
-    except Exception as e:
+    except Exception:
         logger.exception("detect_image failed")
-        return JsonResponse(
-            {'error': 'detect failed; see server logs'},
-            status=500
-        )
-        # logger.exception("detect_image failed")
-        # return HttpResponseServerError("detect failed; see server logs")
+        return HttpResponseServerError("detect failed; see server logs")
 
 @csrf_exempt
 def reset_media(request):
