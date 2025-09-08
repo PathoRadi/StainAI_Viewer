@@ -182,7 +182,7 @@ class YOLOPipeline:
         half: bool = True,
     ):
         """
-        以自動降載批次 + 串流推論的方式跑所有 patches，並套用相同的邊界過濾規則。
+        以自動降載批次 + 串流推論的方式跑所有 patches，並套用相同的邊界過濾規則111。
         Returns:
             (all_bbox: ndarray[M,4], all_labels: ndarray[M])
         """
