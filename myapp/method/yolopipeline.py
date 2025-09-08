@@ -175,7 +175,7 @@ class YOLOPipeline:
 
     def process_patches(
         self,
-        max_batch: int = 8,         # 起始批次大小；GPU 建議 8，CPU 建議 2
+        max_batch: int = 2,         # 起始批次大小；GPU 建議 8，CPU 建議 2
         min_batch: int = 1,         # 最小批次大小（不再往下砍）
         workers: int = 4,
         device=None,
