@@ -101,77 +101,212 @@ class YOLOPipeline:
         y2 = (y + h * 0.5) + off_y
         return np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
     
-    def process_patches(self, batch_size=16, workers=4, device=None, half=True):
-        """
-        Batch read and inference for all patches, and apply the same boundary filtering rules as before.
-        Returns: (all_bbox: ndarray[M,4], all_labels: ndarray[M])
-        """
-        device = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
-        half   = bool(half and (device != 'cpu'))
+    # def process_patches(self, batch_size=16, workers=4, device=None, half=True):
+    #     """
+    #     Batch read and inference for all patches, and apply the same boundary filtering rules as before.
+    #     Returns: (all_bbox: ndarray[M,4], all_labels: ndarray[M])
+    #     """
+    #     device = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
+    #     half   = bool(half and (device != 'cpu'))
 
-        # 1) Collect paths and offsets (sorted as before)
+    #     # 1) Collect paths and offsets (sorted as before)
+    #     from natsort import natsorted
+    #     fns = natsorted(os.listdir(self.patches_dir))
+    #     paths = [os.path.join(self.patches_dir, fn) for fn in fns]
+    #     offsets = np.array([self._parse_offset_from_name(fn) for fn in fns], dtype=np.int32)  # (N,2) = (y,x)
+
+    #     all_boxes = []
+    #     all_labels = []
+
+    #     # 2) Inference in batches
+    #     for s in range(0, len(paths), batch_size):
+    #         batch_paths   = paths[s:s+batch_size]
+    #         batch_offsets = offsets[s:s+batch_size]  # (B,2)
+
+    #         with torch.no_grad():
+    #             results = self.model(
+    #                 batch_paths, imgsz=640, device=device, half=half,
+    #                 conf=0.25, iou=0.45, verbose=False
+    #             )
+
+    #         # 3) Post-processing: offset and filter boxes for each image (parallel processing)
+    #         def _post_one(i):
+    #             res = results[i]
+    #             # Get xywh / cls as numpy arrays (on CPU)
+    #             xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32) if res.boxes.xywh.numel() else np.zeros((0,4), np.float32)
+    #             cls  = res.boxes.cls.detach().cpu().numpy().astype(np.int16)     if res.boxes.cls.numel()  else np.zeros((0,), np.int16)
+
+    #             off_y, off_x = batch_offsets[i]  # (y,x)
+    #             xyxy_full = self._xywh_to_xyxy_full(xywh, off_y, off_x)
+
+    #             # Decide which filter strategy to use for this patch (same as your current detection rules)
+    #             pl, pt = off_x, off_y
+    #             pr, pb = pl + 640, pt + 640
+    #             det = [(off_y // 320) % 2, (off_x // 320) % 2]  # same as before
+
+    #             if det == [0, 0]:
+    #                 bb, lb = BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
+    #             elif det == [0, 1]:
+    #                 bb, lb = BoundingBoxFilter.keep_cline(xyxy_full,  cls, pl, pt, pr, pb)
+    #             elif det == [1, 0]:
+    #                 bb, lb = BoundingBoxFilter.keep_rline(xyxy_full,  cls, pl, pt, pr, pb)
+    #             else:
+    #                 bb, lb = BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
+
+    #             return bb, lb
+
+    #         # Use ThreadPool to parallelize post-processing for each image; numpy computation can utilize multiple cores
+    #         with ThreadPoolExecutor(max_workers=workers) as ex:
+    #             futs = [ex.submit(_post_one, i) for i in range(len(batch_paths))]
+    #             for fut in as_completed(futs):
+    #                 bb, lb = fut.result()
+    #                 if len(bb):
+    #                     all_boxes.append(bb)
+    #                     all_labels.append(lb)
+
+    #     if len(all_boxes):
+    #         all_boxes  = np.concatenate(all_boxes, axis=0)
+    #         all_labels = np.concatenate(all_labels, axis=0)
+    #     else:
+    #         all_boxes  = np.zeros((0,4), np.float32)
+    #         all_labels = np.zeros((0,),  np.int16)
+
+    #     return all_boxes, all_labels
+
+    def process_patches(
+        self,
+        max_batch: int = 8,         # 起始批次大小；GPU 建議 8，CPU 建議 2
+        min_batch: int = 1,         # 最小批次大小（不再往下砍）
+        workers: int = 4,
+        device=None,
+        half: bool = True,
+    ):
+        """
+        以自動降載批次 + 串流推論的方式跑所有 patches，並套用相同的邊界過濾規則。
+        Returns:
+            (all_bbox: ndarray[M,4], all_labels: ndarray[M])
+        """
+        import gc
         from natsort import natsorted
-        fns = natsorted(os.listdir(self.patches_dir))
-        paths = [os.path.join(self.patches_dir, fn) for fn in fns]
-        offsets = np.array([self._parse_offset_from_name(fn) for fn in fns], dtype=np.int32)  # (N,2) = (y,x)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        all_boxes = []
-        all_labels = []
+        dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
+        use_half = bool(half and (dev != 'cpu'))
 
-        # 2) Inference in batches
-        for s in range(0, len(paths), batch_size):
-            batch_paths   = paths[s:s+batch_size]
-            batch_offsets = offsets[s:s+batch_size]  # (B,2)
+        # 1) 收集路徑與 offset（保持與原本相同的排序）
+        fns     = natsorted(os.listdir(self.patches_dir))
+        paths   = [os.path.join(self.patches_dir, fn) for fn in fns]
+        offsets = np.array([self._parse_offset_from_name(fn) for fn in fns], dtype=np.int32)  # (N,2)=(y,x)
 
-            with torch.no_grad():
-                results = self.model(
-                    batch_paths, imgsz=640, device=device, half=half,
-                    conf=0.25, iou=0.45, verbose=False
-                )
+        all_boxes, all_labels = [], []
 
-            # 3) Post-processing: offset and filter boxes for each image (parallel processing)
-            def _post_one(i):
-                res = results[i]
-                # Get xywh / cls as numpy arrays (on CPU)
-                xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32) if res.boxes.xywh.numel() else np.zeros((0,4), np.float32)
-                cls  = res.boxes.cls.detach().cpu().numpy().astype(np.int16)     if res.boxes.cls.numel()  else np.zeros((0,), np.int16)
+        i = 0
+        N = len(paths)
 
-                off_y, off_x = batch_offsets[i]  # (y,x)
-                xyxy_full = self._xywh_to_xyxy_full(xywh, off_y, off_x)
+        # CPU 預設把起始批次調小一點
+        if dev == 'cpu':
+            max_batch = min(max_batch, 2)
 
-                # Decide which filter strategy to use for this patch (same as your current detection rules)
-                pl, pt = off_x, off_y
-                pr, pb = pl + 640, pt + 640
-                det = [(off_y // 320) % 2, (off_x // 320) % 2]  # same as before
+        while i < N:
+            bs = min(max_batch, N - i)
+            tried_oom = False
 
-                if det == [0, 0]:
-                    bb, lb = BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
-                elif det == [0, 1]:
-                    bb, lb = BoundingBoxFilter.keep_cline(xyxy_full,  cls, pl, pt, pr, pb)
-                elif det == [1, 0]:
-                    bb, lb = BoundingBoxFilter.keep_rline(xyxy_full,  cls, pl, pt, pr, pb)
-                else:
-                    bb, lb = BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
+            while True:
+                batch_paths   = paths[i:i + bs]
+                batch_offsets = offsets[i:i + bs]  # (bs, 2)
 
-                return bb, lb
+                try:
+                    with torch.no_grad():
+                        # 串流推論：逐張吐出 Results，避免一次佔滿記憶體
+                        result_iter = self.model(
+                            batch_paths,
+                            imgsz=640,
+                            device=dev,
+                            half=use_half,
+                            conf=0.25,
+                            iou=0.45,
+                            stream=True,         # 關鍵
+                            verbose=False,
+                        )
 
-            # Use ThreadPool to parallelize post-processing for each image; numpy computation can utilize multiple cores
-            with ThreadPoolExecutor(max_workers=workers) as ex:
-                futs = [ex.submit(_post_one, i) for i in range(len(batch_paths))]
-                for fut in as_completed(futs):
-                    bb, lb = fut.result()
-                    if len(bb):
-                        all_boxes.append(bb)
-                        all_labels.append(lb)
+                        # 3) 邊推論邊後處理；不要把 results 全部存起來
+                        def _post_one(res, off_y, off_x):
+                            # 轉為 numpy（在 CPU 上）
+                            if res.boxes.xywh.numel():
+                                xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
+                            else:
+                                xywh = np.zeros((0, 4), np.float32)
+                            if res.boxes.cls.numel():
+                                cls = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
+                            else:
+                                cls = np.zeros((0,), np.int16)
+
+                            xyxy_full = self._xywh_to_xyxy_full(xywh, off_y, off_x)
+
+                            pl, pt = off_x, off_y
+                            pr, pb = pl + 640, pt + 640
+                            det = [(off_y // 320) % 2, (off_x // 320) % 2]
+
+                            if det == [0, 0]:
+                                return BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
+                            elif det == [0, 1]:
+                                return BoundingBoxFilter.keep_cline(xyxy_full, cls, pl, pt, pr, pb)
+                            elif det == [1, 0]:
+                                return BoundingBoxFilter.keep_rline(xyxy_full, cls, pl, pt, pr, pb)
+                            else:
+                                return BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
+
+                        # 平行後處理（僅 CPU/Numpy，安全）
+                        with ThreadPoolExecutor(max_workers=workers) as ex:
+                            futs = []
+                            for j, res in enumerate(result_iter):
+                                off_y, off_x = batch_offsets[j]
+                                futs.append(ex.submit(_post_one, res, int(off_y), int(off_x)))
+                                # 立刻釋放 res 內張量的 GPU 記憶體引用
+                                del res
+                            for fut in as_completed(futs):
+                                bb, lb = fut.result()
+                                if len(bb):
+                                    all_boxes.append(bb)
+                                    all_labels.append(lb)
+
+                    # 成功跑完這個批次
+                    i += bs
+                    # 清理
+                    if torch.cuda.is_available() and dev != 'cpu':
+                        torch.cuda.empty_cache()
+                    gc.collect()
+                    break
+
+                except RuntimeError as e:
+                    msg = str(e).lower()
+                    if ('out of memory' in msg or 'cuda oom' in msg or 'cublas' in msg) and bs > min_batch:
+                        # 批次砍半重試
+                        bs = max(min_batch, bs // 2)
+                        if torch.cuda.is_available() and dev != 'cpu':
+                            torch.cuda.empty_cache()
+                        gc.collect()
+                        tried_oom = True
+                        continue
+                    # 非 OOM 或已經到最小批次仍失敗 → 往外丟
+                    raise
+                finally:
+                    if torch.cuda.is_available() and dev != 'cpu':
+                        torch.cuda.empty_cache()
+
+            # 若剛剛 OOM 過，下一個迴圈維持較小批次，避免來回震盪
+            if tried_oom:
+                max_batch = bs
 
         if len(all_boxes):
             all_boxes  = np.concatenate(all_boxes, axis=0)
             all_labels = np.concatenate(all_labels, axis=0)
         else:
-            all_boxes  = np.zeros((0,4), np.float32)
+            all_boxes  = np.zeros((0, 4), np.float32)
             all_labels = np.zeros((0,),  np.int16)
 
         return all_boxes, all_labels
+
         
 
 
