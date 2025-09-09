@@ -344,49 +344,102 @@ class YOLOPipeline:
         with open(os.path.join(self.result_dir, base), "w") as f:
             json.dump(detections, f, indent=2)    
 
-    def annotate_large_image(self, bbox, labels, alpha=0.3):
+    # def annotate_large_image(self, bbox, labels, alpha=0.3):
+    #     """
+    #     Draw semi-transparent boxes on the full image and save to annotated directory. (Pillow version)
+    #     """
+    #     from PIL import Image, ImageDraw  # 這裡就地匯入，避免頂層相依
+    #     try:
+    #         base_img = Image.open(self.large_img_path).convert("RGBA")
+    #     except Exception:
+    #         print(f"Cannot read {self.large_img_path}")
+    #         return
+
+    #     # 建一層全透明疊圖，畫半透明框在這層
+    #     overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+    #     draw = ImageDraw.Draw(overlay)
+
+    #     W, H = base_img.size
+    #     a255 = max(0, min(255, int(round(alpha * 255))))  # alpha (0~1) → 0~255
+
+    #     for box, lbl in zip(bbox, labels):
+    #         x1, y1, x2, y2 = map(int, box)
+
+    #         # 邊界保護
+    #         x1 = max(0, min(x1, W)); x2 = max(0, min(x2, W))
+    #         y1 = max(0, min(y1, H)); y2 = max(0, min(y2, H))
+    #         if x2 <= x1 or y2 <= y1:
+    #             continue
+
+    #         # 你的 class_mapping 顏色是給 OpenCV（BGR），Pillow 需要 RGB → 轉換 (b,g,r)→(r,g,b)
+    #         color_bgr = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
+    #         b, g, r = color_bgr
+    #         fill_rgba = (r, g, b, a255)
+
+    #         # 畫「填滿」的半透明矩形（若只要描邊可改用 outline=...）
+    #         draw.rectangle([x1, y1, x2, y2], fill=fill_rgba)
+
+    #     # 疊合：base ⊕ overlay → 轉回 RGB 存 JPG
+    #     annotated = Image.alpha_composite(base_img, overlay).convert("RGB")
+    #     os.makedirs(self.annotated_dir, exist_ok=True)
+    #     out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
+    #     annotated_path = os.path.join(self.annotated_dir, out_name)
+    #     annotated.save(annotated_path, format="JPEG", quality=90, optimize=True, progressive=True)
+
+    #     # print(f"Annotated image saved at {annotated_path}")
+
+    def annotate_large_image(self, bbox, labels, alpha=0.3, max_side=6000):
         """
-        Draw semi-transparent boxes on the full image and save to annotated directory. (Pillow version)
+        對超大圖：改在縮圖上畫框，避免一次載入巨大的 RGBA 疊圖。
+        會輸出 <原檔名>_annotated_preview.jpg
         """
-        from PIL import Image, ImageDraw  # 這裡就地匯入，避免頂層相依
+        from PIL import Image, ImageDraw
+
         try:
-            base_img = Image.open(self.large_img_path).convert("RGBA")
+            base_img = Image.open(self.large_img_path).convert("RGB")
         except Exception:
             print(f"Cannot read {self.large_img_path}")
             return
 
-        # 建一層全透明疊圖，畫半透明框在這層
-        overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-
         W, H = base_img.size
-        a255 = max(0, min(255, int(round(alpha * 255))))  # alpha (0~1) → 0~255
+
+        # 大圖 → 做縮圖（最長邊不超過 max_side）
+        scale = 1.0
+        if max(W, H) > max_side:
+            if W >= H:
+                scale = max_side / float(W)
+                newW, newH = max_side, int(round(H * scale))
+            else:
+                scale = max_side / float(H)
+                newW, newH = int(round(W * scale)), max_side
+            base_img = base_img.resize((newW, newH), Image.LANCZOS)
+        else:
+            newW, newH = W, H
+
+        # 轉成可畫圖的 RGBA（僅縮圖大小）
+        base_img = base_img.convert("RGBA")
+        overlay  = Image.new("RGBA", (newW, newH), (0, 0, 0, 0))
+        draw     = ImageDraw.Draw(overlay)
+        a255     = max(0, min(255, int(round(alpha * 255))))
 
         for box, lbl in zip(bbox, labels):
-            x1, y1, x2, y2 = map(int, box)
-
+            x1, y1, x2, y2 = [int(v * scale) for v in box]
             # 邊界保護
-            x1 = max(0, min(x1, W)); x2 = max(0, min(x2, W))
-            y1 = max(0, min(y1, H)); y2 = max(0, min(y2, H))
+            x1 = max(0, min(x1, newW)); x2 = max(0, min(x2, newW))
+            y1 = max(0, min(y1, newH)); y2 = max(0, min(y2, newH))
             if x2 <= x1 or y2 <= y1:
                 continue
 
-            # 你的 class_mapping 顏色是給 OpenCV（BGR），Pillow 需要 RGB → 轉換 (b,g,r)→(r,g,b)
-            color_bgr = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
-            b, g, r = color_bgr
-            fill_rgba = (r, g, b, a255)
+            # 你的 class_mapping 是 BGR；Pillow 要 RGB
+            b, g, r = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
+            draw.rectangle([x1, y1, x2, y2], fill=(r, g, b, a255))
 
-            # 畫「填滿」的半透明矩形（若只要描邊可改用 outline=...）
-            draw.rectangle([x1, y1, x2, y2], fill=fill_rgba)
-
-        # 疊合：base ⊕ overlay → 轉回 RGB 存 JPG
         annotated = Image.alpha_composite(base_img, overlay).convert("RGB")
         os.makedirs(self.annotated_dir, exist_ok=True)
-        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
+        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated_preview.jpg"
         annotated_path = os.path.join(self.annotated_dir, out_name)
-        annotated.save(annotated_path, format="JPEG", quality=90, optimize=True, progressive=True)
+        annotated.save(annotated_path, format="JPEG", quality=88, optimize=True, progressive=True)
 
-        # print(f"Annotated image saved at {annotated_path}")
 
 
 
@@ -467,35 +520,125 @@ class YOLOPipeline:
 
 
     # --- Qmap Generation ---
+    # def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
+    #     """
+    #     Generate a Qmap from the input image and detection JSON file.
+    #     Args:
+    #         input_image_path: Path to the input image.
+    #         json_file_path: Path to the JSON file containing detection results.
+    #         output_dir: Directory to save the Qmap.
+    #         downsample_factor: Factor by which to downsample the image for Qmap generation.
+    #     """
+    #     # === Class to Slice Mapping (6 classes only) ===
+    #     class_to_idx = {
+    #         "R": 0,
+    #         "H": 1,
+    #         "B": 2,
+    #         "A": 3,
+    #         "RD": 4,
+    #         "HR": 5,
+    #     }
+    #     num_classes = len(class_to_idx)
+
+    #     # === Step 1: Get image dimensions ===
+    #     img = Image.open(input_image_path)
+    #     width, height = img.size
+    #     ds_w, ds_h = width // downsample_factor, height // downsample_factor
+    #     # print(f"Original image size: {width}x{height}")
+    #     # print(f"Downsampled map size: {ds_w}x{ds_h}")
+
+    #     # === Step 2: Initialize Qmap & FM storage ===
+    #     qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)  # 用 uint16 暫存計數
+    #     fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
+    #     fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
+
+    #     # === Step 3: Load detection JSON ===
+    #     with open(json_file_path, "r") as f:
+    #         detections = json.load(f)
+
+    #     # === Step 4: Fill Qmap & FM data ===
+    #     for cell in detections:
+    #         try:
+    #             class_label = cell["class"]
+    #             if class_label not in class_to_idx:
+    #                 continue  # skip unused classes
+
+    #             x, y = map(int, cell["center"].strip("[]").split())
+    #             x_ds, y_ds = x // downsample_factor, y // downsample_factor
+
+    #             if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
+    #                 slice_idx = class_to_idx[class_label]
+    #                 qmap[slice_idx, y_ds, x_ds] = min(qmap[slice_idx, y_ds, x_ds] + 1, 65535)
+
+    #                 # FM accumulation
+    #                 fm = float(cell.get("FM", 0.0))
+    #                 fm_map[y_ds, x_ds] += fm
+    #                 fm_count[y_ds, x_ds] += 1
+
+    #         except Exception as e:
+    #             print(f"Error processing cell {cell}: {e}")
+
+    #     # === Step 5: Compute MAS map ===
+    #     weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
+    #     qmap_float = qmap.astype(np.float32)
+
+    #     numerator = np.tensordot(qmap_float, weights, axes=(0, 0))
+    #     denominator = np.sum(qmap_float, axis=0)
+    #     denominator[denominator == 0] = 1e-6  # Avoid division by zero
+
+    #     mas_map = numerator / denominator
+    #     mas_map = np.clip(mas_map / mas_map.max() * 255, 0, 255).astype(np.uint8)
+
+    #     # === Step 6: Compute FM average map ===
+    #     fm_avg = np.zeros_like(fm_map)
+    #     mask = fm_count > 0
+    #     fm_avg[mask] = fm_map[mask] / fm_count[mask]
+    #     fm_avg = np.clip(fm_avg / (fm_avg.max() + 1e-6) * 255, 0, 255).astype(np.uint8)
+
+    #     # === Step 7: Prepare final Qmap ===
+    #     qmap = np.clip(qmap, 0, 255).astype(np.uint8)  # Convert counts to 8-bit
+    #     final_qmap = np.concatenate(
+    #         [mas_map[None, :, :], qmap, fm_avg[None, :, :]], axis=0
+    #     )  # shape: (8, H, W)
+
+    #     # === Step 8: Save as .nii ===
+    #     final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (C, H, W) → (H, W, C)
+    #     final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))  # Rotate 90°
+    #     final_qmap = np.flip(final_qmap, axis=0)  # Flip vertically
+    #     nifti_img = nib.Nifti1Image(final_qmap, affine=np.eye(4))
+    #     output_path = os.path.join(output_dir, "qmap.nii")
+    #     nib.save(nifti_img, output_path)
+
+    #     # print(f"Qmap saved to: {output_path}")
+    #     # print("Slices order: [MAS, R, H, B, A, RD, HR, FM_avg]")
     def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
         """
         Generate a Qmap from the input image and detection JSON file.
-        Args:
-            input_image_path: Path to the input image.
-            json_file_path: Path to the JSON file containing detection results.
-            output_dir: Directory to save the Qmap.
-            downsample_factor: Factor by which to downsample the image for Qmap generation.
+        Slices order in output: [MAS, R, H, B, A, RD, HR, FM_avg]
         """
+
         # === Class to Slice Mapping (6 classes only) ===
-        class_to_idx = {
-            "R": 0,
-            "H": 1,
-            "B": 2,
-            "A": 3,
-            "RD": 4,
-            "HR": 5,
-        }
+        class_to_idx = {"R": 0, "H": 1, "B": 2, "A": 3, "RD": 4, "HR": 5}
         num_classes = len(class_to_idx)
 
         # === Step 1: Get image dimensions ===
         img = Image.open(input_image_path)
         width, height = img.size
-        ds_w, ds_h = width // downsample_factor, height // downsample_factor
-        # print(f"Original image size: {width}x{height}")
-        # print(f"Downsampled map size: {ds_w}x{ds_h}")
+
+        # ---- 自動調整 downsample（避免超大圖記憶體壓力）----
+        # 目標把最長邊壓到 ~1800 像素的 Qmap 網格
+        import math
+        target_side = 1800
+        dyn = max(1, math.ceil(max(width, height) / target_side))
+        downsample_factor = max(downsample_factor, dyn)
+
+        # 安全的 ceil 除法確保至少為 1
+        ds_w = max(1, math.ceil(width  / downsample_factor))
+        ds_h = max(1, math.ceil(height / downsample_factor))
 
         # === Step 2: Initialize Qmap & FM storage ===
-        qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)  # 用 uint16 暫存計數
+        # uint16 作為計數上限 65535，之後會截斷到 8-bit 輸出
+        qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
         fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
         fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
 
@@ -503,58 +646,81 @@ class YOLOPipeline:
         with open(json_file_path, "r") as f:
             detections = json.load(f)
 
+        # 小工具：健壯解析 center
+        def parse_center(v):
+            # 支援 [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
+            if isinstance(v, (list, tuple)) and len(v) >= 2:
+                return int(v[0]), int(v[1])
+            if isinstance(v, str):
+                s = v.strip().replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+                s = s.replace(",", " ")
+                parts = [p for p in s.split() if p]
+                if len(parts) >= 2:
+                    return int(float(parts[0])), int(float(parts[1]))
+            raise ValueError(f"Unrecognized center format: {v!r}")
+
         # === Step 4: Fill Qmap & FM data ===
         for cell in detections:
             try:
-                class_label = cell["class"]
+                class_label = cell.get("class")
                 if class_label not in class_to_idx:
-                    continue  # skip unused classes
+                    continue
 
-                x, y = map(int, cell["center"].strip("[]").split())
-                x_ds, y_ds = x // downsample_factor, y // downsample_factor
-
+                cx, cy = parse_center(cell.get("center"))
+                x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
                 if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
-                    slice_idx = class_to_idx[class_label]
-                    qmap[slice_idx, y_ds, x_ds] = min(qmap[slice_idx, y_ds, x_ds] + 1, 65535)
+                    si = class_to_idx[class_label]
+                    # 避免 uint16 溢位
+                    if qmap[si, y_ds, x_ds] < 65535:
+                        qmap[si, y_ds, x_ds] += 1
 
-                    # FM accumulation
-                    fm = float(cell.get("FM", 0.0))
+                    fm = float(cell.get("FM", 0.0) or 0.0)
                     fm_map[y_ds, x_ds] += fm
-                    fm_count[y_ds, x_ds] += 1
+                    if fm_count[y_ds, x_ds] < 65535:
+                        fm_count[y_ds, x_ds] += 1
 
             except Exception as e:
                 print(f"Error processing cell {cell}: {e}")
 
         # === Step 5: Compute MAS map ===
+        # 權重維持你的設定
         weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
         qmap_float = qmap.astype(np.float32)
 
-        numerator = np.tensordot(qmap_float, weights, axes=(0, 0))
-        denominator = np.sum(qmap_float, axis=0)
-        denominator[denominator == 0] = 1e-6  # Avoid division by zero
+        numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
+        denominator = np.sum(qmap_float, axis=0)                     # (H,W)
+        # 避免除以 0
+        safe_den = np.where(denominator > 0, denominator, 1.0)
+        mas_map = numerator / safe_den
 
-        mas_map = numerator / denominator
-        mas_map = np.clip(mas_map / mas_map.max() * 255, 0, 255).astype(np.uint8)
+        # 正規化到 0~255（全 0 時直接給 0）
+        mas_max = float(mas_map.max()) if mas_map.size else 0.0
+        if mas_max > 0:
+            mas_map = (mas_map / mas_max) * 255.0
+        else:
+            mas_map = np.zeros_like(mas_map, dtype=np.float32)
+        mas_map = np.clip(mas_map, 0, 255).astype(np.uint8)
 
         # === Step 6: Compute FM average map ===
-        fm_avg = np.zeros_like(fm_map)
-        mask = fm_count > 0
-        fm_avg[mask] = fm_map[mask] / fm_count[mask]
-        fm_avg = np.clip(fm_avg / (fm_avg.max() + 1e-6) * 255, 0, 255).astype(np.uint8)
+        fm_avg = np.zeros_like(fm_map, dtype=np.float32)
+        m = fm_count > 0
+        fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
+        fm_max = float(fm_avg.max()) if fm_avg.size else 0.0
+        if fm_max > 0:
+            fm_avg = (fm_avg / fm_max) * 255.0
+        fm_avg = np.clip(fm_avg, 0, 255).astype(np.uint8)
 
         # === Step 7: Prepare final Qmap ===
-        qmap = np.clip(qmap, 0, 255).astype(np.uint8)  # Convert counts to 8-bit
+        qmap_u8 = np.clip(qmap, 0, 255).astype(np.uint8)  # counts to 8-bit
         final_qmap = np.concatenate(
-            [mas_map[None, :, :], qmap, fm_avg[None, :, :]], axis=0
-        )  # shape: (8, H, W)
+            [mas_map[None, :, :], qmap_u8, fm_avg[None, :, :]],
+            axis=0
+        )  # (8, H, W)
 
         # === Step 8: Save as .nii ===
-        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (C, H, W) → (H, W, C)
-        final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))  # Rotate 90°
-        final_qmap = np.flip(final_qmap, axis=0)  # Flip vertically
-        nifti_img = nib.Nifti1Image(final_qmap, affine=np.eye(4))
+        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, C)
+        final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
+        final_qmap = np.flip(final_qmap, axis=0)
+        os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, "qmap.nii")
-        nib.save(nifti_img, output_path)
-
-        # print(f"Qmap saved to: {output_path}")
-        # print("Slices order: [MAS, R, H, B, A, RD, HR, FM_avg]")
+        nib.save(nib.Nifti1Image(final_qmap, affine=np.eye(4)), output_path)
