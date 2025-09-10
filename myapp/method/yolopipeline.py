@@ -220,13 +220,20 @@ class YOLOPipeline:
                         # 串流推論：逐張吐出 Results，避免一次佔滿記憶體
                         result_iter = self.model(
                             batch_paths,
-                            imgsz=640,
-                            device=dev,
-                            half=use_half,
+                            imgsz=640,                # 32 的倍數；跟本機一致
+                            batch=16,                 # 控制 RAM；雲端大圖時可改小，例如 8、4
+                            device=dev,               # 'cpu' 或 'cuda:0'，兩邊一致
+                            half=False,               # 兩邊都 False，避免 FP16 差異
+                            dtype=torch.float32,      # 明確 dtype（新版 Ultralytics 支援）
                             conf=0.25,
                             iou=0.45,
-                            stream=True,         # 關鍵
+                            max_det=300,              # 視你的資料密度調整
+                            agnostic_nms=False,
+                            classes=None,
+                            augment=False,
+                            stream=True,              # 你已有自己的外層批次/串流處理，保持 True 沒問題
                             verbose=False,
+                            save=False, save_txt=False, save_conf=False
                         )
 
                         # 3) 邊推論邊後處理；不要把 results 全部存起來
