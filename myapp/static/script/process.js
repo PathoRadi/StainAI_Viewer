@@ -29,8 +29,8 @@ export function addBarChart() {
       <div class="screenshot-menu-wrapper">
         <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
         <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
-          <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
           ${idx > 1 ? `<button class="take-screenshot-btn close-chart-btn" id="close-chart-btn${idx}">Close Bar Chart</button>` : ''}
+          <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
         </div>
       </div>
     </div>
