@@ -81,6 +81,7 @@
   --bg-roi-container:   rgb(23,23,23);
   --bg-roi-item: rgb(120,120,120);
   --bg-roi-item-hover: rgb(70,70,70);
+  --border-roi-item-hover: 2px solid rgb(255, 255, 255);
   --text-roi-item: rgb(255,255,255);
   --text-roi-menu-btn: rgb(255,255,255);
   --bg-roi-action-menu: rgb(120,120,120);
@@ -103,7 +104,7 @@
   --border-upload-new-img-btn: none;
   /* History Item */
   --bg-history-item: none;
-  --bg-history-item-hover: rgba(74, 106, 118, 0.6);
+  --bg-history-item-hover: rgb(97, 136, 155);
   --text-history-item: rgb(255,255,255);
   --bg-history-menu-btn: rgb(255,255,255);
   --bg-history-action-menu: rgb(74, 106, 118);
@@ -174,6 +175,7 @@
   --bg-roi-container:   rgb(255,255,255);
   --bg-roi-item: rgb(225,225,225);
   --bg-roi-item-hover: rgb(180,180,180);
+  --border-roi-item-hover: 2px solid rgb(0,0,0);
   --text-roi-item: rgb(0,0,0);
   --text-roi-menu-btn: rgb(0,0,0);
   --bg-roi-action-menu: rgb(225,225,225);

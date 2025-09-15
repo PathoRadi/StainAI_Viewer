@@ -23,22 +23,22 @@
     filter: blur(4px);
 }
 #drop-zone p {
-    font-size: 1.5rem;
+    font-size: 30px;
     margin: 0;
 }
 #drop-upload-btn {
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 160px;
+    width: 200px;
     height: 35px;
-    margin: 20px;
+    margin: 30px;
     background: var(--bg-drop-upload-btn);
     color: var(--text-drop-upload-btn);
     border: var(--border-drop-upload-btn);
     border-radius: 15px;
     font-weight: 500;
-    font-size: 15px;
+    font-size: 20px;
     font-family: 'PingFangHKWeb', sans-serif;
 }
 
@@ -61,15 +61,15 @@
     display: block; 
     justify-content: center;
     align-items: center;
-    width: 130px;
+    width: 200px;
     height: 35px;
     margin: 20px;            
-    margin: 8px auto;
+    margin: 20px auto;
     background: var(--bg-drop-upload-btn);
     color: var(--text-drop-upload-btn);
     border: var(--border-drop-upload-btn);
     border-radius: 15px;
     font-weight: 500;
-    font-size: 15px;
+    font-size: 20px;
     font-family: 'PingFangHKWeb', sans-serif;
 }

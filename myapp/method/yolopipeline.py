@@ -8,8 +8,6 @@ from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .bounding_box_filter import BoundingBoxFilter
 
-
-
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
 
@@ -69,8 +67,8 @@ class YOLOPipeline:
 
         detections = []
         for box, lbl in zip(bbox, labels):
-            # 若你要整數座標（建議，前端畫框更穩）
-            coords = [int(v) for v in box]          # 或要保留小數： [float(v) for v in box]
+            # If you want integer coordinates (recommended, more stable for frontend drawing)
+            coords = [int(v) for v in box]          # Or keep floats: [float(v) for v in box]
             cls    = int(lbl) if hasattr(lbl, 'item') else int(lbl)
             detections.append({
                 'coords': coords,
@@ -103,14 +101,15 @@ class YOLOPipeline:
 
     def process_patches(
         self,
-        max_batch: int = 2,         # 起始批次大小；GPU 建議 8，CPU 建議 2
-        min_batch: int = 1,         # 最小批次大小（不再往下砍）
+        max_batch: int = 2,         # Initial batch size; GPU recommend 8, CPU recommend 2
+        min_batch: int = 1,         # Minimum batch size (won't go lower)
         workers: int = 4,
         device=None,
         half: bool = True,
     ):
         """
-        以自動降載批次 + 串流推論的方式跑所有 patches，並套用相同的邊界過濾規則111。
+        Run all patches with automatic batch size reduction and streaming inference,
+        and apply the same bounding box filtering rules.
         Returns:
             (all_bbox: ndarray[M,4], all_labels: ndarray[M])
         """
@@ -121,7 +120,7 @@ class YOLOPipeline:
         dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
         use_half = bool(half and (dev != 'cpu'))
 
-        # 1) 收集路徑與 offset（保持與原本相同的排序）
+        # 1) Collect paths and offsets (keep original order)
         fns     = natsorted(os.listdir(self.patches_dir))
         paths   = [os.path.join(self.patches_dir, fn) for fn in fns]
         offsets = np.array([self._parse_offset_from_name(fn) for fn in fns], dtype=np.int32)  # (N,2)=(y,x)
@@ -131,7 +130,7 @@ class YOLOPipeline:
         i = 0
         N = len(paths)
 
-        # CPU 預設把起始批次調小一點
+        # For CPU, set initial batch size smaller
         if dev == 'cpu':
             max_batch = min(max_batch, 2)
 
@@ -145,7 +144,7 @@ class YOLOPipeline:
 
                 try:
                     with torch.no_grad():
-                        # 串流推論：逐張吐出 Results，避免一次佔滿記憶體
+                        # Streaming inference: yield Results one by one to avoid memory overload
                         result_iter = self.model(
                             batch_paths,
                             imgsz=640,
@@ -153,13 +152,13 @@ class YOLOPipeline:
                             half=False,
                             conf=0.25,
                             iou=0.45,
-                            stream=True,         # 關鍵
+                            stream=True,         # Key
                             verbose=False,
                         )
 
-                        # 3) 邊推論邊後處理；不要把 results 全部存起來
+                        # 3) Post-process as inference proceeds; don't store all results at once
                         def _post_one(res, off_y, off_x):
-                            # 轉為 numpy（在 CPU 上）
+                            # Convert to numpy (on CPU)
                             if res.boxes.xywh.numel():
                                 xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
                             else:
@@ -184,13 +183,13 @@ class YOLOPipeline:
                             else:
                                 return BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
 
-                        # 平行後處理（僅 CPU/Numpy，安全）
+                        # Parallel post-processing (CPU/Numpy only, safe)
                         with ThreadPoolExecutor(max_workers=workers) as ex:
                             futs = []
                             for j, res in enumerate(result_iter):
                                 off_y, off_x = batch_offsets[j]
                                 futs.append(ex.submit(_post_one, res, int(off_y), int(off_x)))
-                                # 立刻釋放 res 內張量的 GPU 記憶體引用
+                                # Immediately release GPU memory references in res
                                 del res
                             for fut in as_completed(futs):
                                 bb, lb = fut.result()
@@ -198,9 +197,9 @@ class YOLOPipeline:
                                     all_boxes.append(bb)
                                     all_labels.append(lb)
 
-                    # 成功跑完這個批次
+                    # Successfully processed this batch
                     i += bs
-                    # 清理
+                    # Cleanup
                     if torch.cuda.is_available() and dev != 'cpu':
                         torch.cuda.empty_cache()
                     gc.collect()
@@ -209,20 +208,20 @@ class YOLOPipeline:
                 except RuntimeError as e:
                     msg = str(e).lower()
                     if ('out of memory' in msg or 'cuda oom' in msg or 'cublas' in msg) and bs > min_batch:
-                        # 批次砍半重試
+                        # Halve batch size and retry
                         bs = max(min_batch, bs // 2)
                         if torch.cuda.is_available() and dev != 'cpu':
                             torch.cuda.empty_cache()
                         gc.collect()
                         tried_oom = True
                         continue
-                    # 非 OOM 或已經到最小批次仍失敗 → 往外丟
+                    # Not OOM or already at min batch and still failed → raise
                     raise
                 finally:
                     if torch.cuda.is_available() and dev != 'cpu':
                         torch.cuda.empty_cache()
 
-            # 若剛剛 OOM 過，下一個迴圈維持較小批次，避免來回震盪
+            # If OOM just happened, keep smaller batch size for next loop to avoid oscillation
             if tried_oom:
                 max_batch = bs
 
@@ -238,14 +237,14 @@ class YOLOPipeline:
         
 
 
-    # --- Result Saving a Annotated Map Generation ---
+    # --- Result Saving and Annotated Map Generation ---
     def save_results(self, bbox, labels):
         """
         Save detection results to a JSON file in the result directory.
         Each detection includes bounding box, center coordinates, class label, and focus measure.
         """
         detections = []
-        # 可選：多執行緒把很多框的 FM 平行算起來（NumPy 會釋放 GIL）
+        # Optional: use multithreading to compute FM for many boxes in parallel (NumPy releases GIL)
         from concurrent.futures import ThreadPoolExecutor
         def _fm_one(box):
             x1,y1,x2,y2 = map(int, box)
@@ -274,8 +273,8 @@ class YOLOPipeline:
 
     def annotate_large_image(self, bbox, labels, alpha=0.3, max_side=6000):
         """
-        對超大圖：改在縮圖上畫框，避免一次載入巨大的 RGBA 疊圖。
-        會輸出 <原檔名>_annotated_preview.jpg
+        For very large images: draw boxes on a downsampled image to avoid loading a huge RGBA overlay.
+        Outputs <original_filename>_annotated_preview.jpg
         """
         from PIL import Image, ImageDraw
 
@@ -287,7 +286,7 @@ class YOLOPipeline:
 
         W, H = base_img.size
 
-        # 大圖 → 做縮圖（最長邊不超過 max_side）
+        # Downsample image (longest side no more than max_side)
         scale = 1.0
         if max(W, H) > max_side:
             if W >= H:
@@ -300,7 +299,7 @@ class YOLOPipeline:
         else:
             newW, newH = W, H
 
-        # 轉成可畫圖的 RGBA（僅縮圖大小）
+        # Convert to RGBA for drawing (only at downsampled size)
         base_img = base_img.convert("RGBA")
         overlay  = Image.new("RGBA", (newW, newH), (0, 0, 0, 0))
         draw     = ImageDraw.Draw(overlay)
@@ -308,13 +307,13 @@ class YOLOPipeline:
 
         for box, lbl in zip(bbox, labels):
             x1, y1, x2, y2 = [int(v * scale) for v in box]
-            # 邊界保護
+            # Boundary protection
             x1 = max(0, min(x1, newW)); x2 = max(0, min(x2, newW))
             y1 = max(0, min(y1, newH)); y2 = max(0, min(y2, newH))
             if x2 <= x1 or y2 <= y1:
                 continue
 
-            # 你的 class_mapping 是 BGR；Pillow 要 RGB
+            # Your class_mapping is BGR; Pillow wants RGB
             b, g, r = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
             draw.rectangle([x1, y1, x2, y2], fill=(r, g, b, a255))
 
@@ -327,13 +326,13 @@ class YOLOPipeline:
 
 
 
-    # --- Fm(Focus Measure) Fuctions ---
+    # --- Fm(Focus Measure) Functions ---
     @staticmethod
     def _brenner_np(patch_u8: np.ndarray, mode: str = 'v', norm: str = 'valid') -> float:
         """
-        Brenner FM（多模式）
-        mode: 'v' 垂直、'h' 水平、'sum' = dx^2+dy^2、'max' = max(dx^2, dy^2)
-        norm: 'valid' 用有效差分點數做平均；'hw' 用 H*W 做平均
+        Brenner FM (multiple modes)
+        mode: 'v' vertical, 'h' horizontal, 'sum' = dx^2+dy^2, 'max' = max(dx^2, dy^2)
+        norm: 'valid' average over valid diff points; 'hw' average over H*W
         """
         I = patch_u8.astype(np.float32, copy=False)
         H, W = I.shape
@@ -400,7 +399,7 @@ class YOLOPipeline:
             # print(f"Cropped patch saved to {save_path}")
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
-            
+
     def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
         """
         Generate a Qmap from the input image and detection JSON file.
@@ -415,19 +414,19 @@ class YOLOPipeline:
         img = Image.open(input_image_path)
         width, height = img.size
 
-        # ---- 自動調整 downsample（避免超大圖記憶體壓力）----
-        # 目標把最長邊壓到 ~1800 像素的 Qmap 網格
+        # ---- Auto-adjust downsample (avoid memory pressure for huge images) ----
+        # Target: longest side ~1800 pixels for Qmap grid
         import math
         target_side = 1800
         dyn = max(1, math.ceil(max(width, height) / target_side))
         downsample_factor = max(downsample_factor, dyn)
 
-        # 安全的 ceil 除法確保至少為 1
+        # Safe ceil division, ensure at least 1
         ds_w = max(1, math.ceil(width  / downsample_factor))
         ds_h = max(1, math.ceil(height / downsample_factor))
 
         # === Step 2: Initialize Qmap & FM storage ===
-        # uint16 作為計數上限 65535，之後會截斷到 8-bit 輸出
+        # uint16 as count limit 65535, will be clipped to 8-bit for output
         qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
         fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
         fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
@@ -436,9 +435,9 @@ class YOLOPipeline:
         with open(json_file_path, "r") as f:
             detections = json.load(f)
 
-        # 小工具：健壯解析 center
+        # Helper: robustly parse center
         def parse_center(v):
-            # 支援 [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
+            # Supports [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
             if isinstance(v, (list, tuple)) and len(v) >= 2:
                 return int(v[0]), int(v[1])
             if isinstance(v, str):
@@ -460,7 +459,7 @@ class YOLOPipeline:
                 x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
                 if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
                     si = class_to_idx[class_label]
-                    # 避免 uint16 溢位
+                    # Avoid uint16 overflow
                     if qmap[si, y_ds, x_ds] < 65535:
                         qmap[si, y_ds, x_ds] += 1
 
@@ -473,17 +472,17 @@ class YOLOPipeline:
                 print(f"Error processing cell {cell}: {e}")
 
         # === Step 5: Compute MAS map ===
-        # 權重維持你的設定
+        # Weights as per your setting
         weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
         qmap_float = qmap.astype(np.float32)
 
         numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
         denominator = np.sum(qmap_float, axis=0)                     # (H,W)
-        # 避免除以 0
+        # Avoid division by 0
         safe_den = np.where(denominator > 0, denominator, 1.0)
         mas_map = numerator / safe_den
 
-        # 正規化到 0~255（全 0 時直接給 0）
+        # Normalize to 0~255 (if all zero, just give 0)
         mas_max = float(mas_map.max()) if mas_map.size else 0.0
         if mas_max > 0:
             mas_map = (mas_map / mas_max) * 255.0

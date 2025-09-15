@@ -46,11 +46,12 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.roi-item:hover {
+/* .roi-item:hover {
   background: var(--bg-roi-item-hover);
-}
+} */
 .roi-item-selected{
-  background: var(--bg-roi-item-hover) !important;
+  /* background: var(--bg-roi-item-hover) !important; */
+  border: var(--border-roi-item-hover) !important;
 }
 .roi-entry {
   position: relative;

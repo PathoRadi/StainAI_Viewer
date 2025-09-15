@@ -25,16 +25,16 @@ class CutImage:
         """
         Cut the image into overlapping patches and save them to the output directory.
         Returns:
-            (rows, cols, W, H)  # 與原本相同
+            (rows, cols, W, H)  # same as original
         """
         max_workers = None
 
         out_dir = os.path.join(self.output_dir, "patches")
         os.makedirs(out_dir, exist_ok=True)
 
-        # 以 PIL 讀圖；轉成 numpy 陣列以便快速切片（等效 cv2.imread 後的 ndarray）
+        # Read image with PIL; convert to numpy array for fast slicing (equivalent to cv2.imread ndarray)
         with Image.open(self.image_path) as im:
-            # 不改變 bit-depth / 通道；保持原有模式
+            # Do not change bit-depth/channels; keep original mode
             img_arr = np.array(im)        # shape: (H, W) or (H, W, C)
             H, W = img_arr.shape[:2]
 
@@ -44,12 +44,12 @@ class CutImage:
 
         def save_one(i, j):
             """
-            存單一 patch（以 numpy 切片，再轉回 PIL 存檔）
+            Save a single patch (slice with numpy, convert back to PIL and save)
             """
             x = j * step
             y = i * step
 
-            # 邊界保護，確保切塊尺寸固定為 patch_size×patch_size
+            # Boundary protection, ensure patch size is fixed as patch_size×patch_size
             if x + self.patch_size > W:
                 x = W - self.patch_size
             if y + self.patch_size > H:
@@ -59,7 +59,7 @@ class CutImage:
             patch_img = Image.fromarray(patch_arr)
 
             filepath = os.path.join(out_dir, f"patch_{y}_{x}.png")
-            # PIL 的 PNG 參數: compress_level=0~9（1 跟你原本 OpenCV 的 1 類似，較快）
+            # PIL PNG parameter: compress_level=0~9 (1 is similar to your original OpenCV 1, faster)
             patch_img.save(filepath, format="PNG", compress_level=1)
             return filepath
 
