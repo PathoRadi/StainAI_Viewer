@@ -136,20 +136,36 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
     const fd = new FormData();
     fd.append('image', file);
-    showProgressOverlay1();
-    fetch(UPLOAD_IMAGE_URL, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': csrftoken },
-      body: fd
-    })
-    .then(r => r.json())
-    .then(d => {
-      window.imgPath = d.image_url;
-      previewImg.src = window.imgPath;
-      previewContainer.style.display = 'block';
-    })
-    .catch(err => console.error(err))
-    .finally(() => hideProgressOverlay1());
+
+    const img = new Image();
+
+    img.onload = function() {
+      if (img.width > 10000 || img.height > 10000) {
+        alert("⚠️ Image to Large (width and height are over 10000 pixel)\nPlease upload smaller image and try again.");
+        // disable Start Detection button
+        document.getElementById('start-detect-btn').disabled = true;
+        // hide preview
+        document.getElementById('preview-container').style.display = 'none';
+        return; // Stop further processing
+      }
+
+      showProgressOverlay1();
+      fetch(UPLOAD_IMAGE_URL, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        body: fd
+      })
+      .then(r => r.json())
+      .then(d => {
+        window.imgPath = d.image_url;
+        previewImg.src = window.imgPath;
+        previewContainer.style.display = 'block';
+        document.getElementById('start-detect-btn').disabled = false;
+      })
+      .catch(err => console.error(err))
+      .finally(() => hideProgressOverlay1());
+    }
+    img.src = URL.createObjectURL(file);
   }
 
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('hover'); });

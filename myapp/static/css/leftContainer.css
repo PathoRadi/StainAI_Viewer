@@ -239,3 +239,18 @@
 .theme-switch input:checked + .slider .icon-sun {
     opacity: 0;
 }
+
+
+
+
+
+
+/* 左欄固定貼左 */
+.left-container {
+  position: fixed;   /* ← 取代原 absolute */
+  top: 0;
+  left: 0;
+  width: 200px;
+  height: 100vh;
+  background: var(--bg-left);
+}

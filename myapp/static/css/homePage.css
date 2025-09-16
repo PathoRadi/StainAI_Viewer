@@ -73,3 +73,34 @@
     font-size: 20px;
     font-family: 'PingFangHKWeb', sans-serif;
 }
+
+
+
+
+
+
+/* 初始上傳畫面的右側版心：跟 main-container 對齊左欄，鋪滿其餘寬度 */
+#drop-zone {
+  position: relative;
+  /* margin-left: 200px;               ★ 和左欄無縫銜接 */
+  width: calc(100vw - 200px);       /* ★ 右側吃滿剩餘寬 */
+  min-height: 100vh;
+
+  display: flex;                    /* 以下維持你原本的置中排版 */
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  background: var(--bg-drop-zone);
+  color: var(--text-drop-zone);
+  font-family: 'PingFangHKWeb', sans-serif;
+  transition: background .2s;
+}
+
+
+/* 可選：限制 drop-zone 內部最大寬，視覺更像 Apple */
+#drop-zone { text-align: center; }
+
+
+html, body { height: 100%; margin: 0; }
+* { box-sizing: border-box; }
