@@ -134,65 +134,106 @@ export function initHistoryHandlers(historyStack) {
     });
   });
 
-  // 左上角( menu ) = 右下角( item )
+  /* ========= History Action Menu (align: menu TL = item BR) ========= */
+
+  /** 把所有移到 <body> 的選單放回各自的 history-entry（避免取消後失效） */
+  function restoreMenusToOrigin() {
+    $('.history-action-menu').each(function () {
+      const $m = $(this);
+      const $origin = $m.data('originEntry');
+      if ($origin && $origin.length) $m.appendTo($origin);
+    });
+  }
+
+  /** 開啟：menu 左上角精準對齊到 item 右下角（可用 offset 微調圓角/陰影） */
   $(document).off('click.histMenu').on('click.histMenu', '.history-menu-btn', function (e) {
     e.stopPropagation();
 
-    // 關其他、移除舊遮罩
+    // 關其他、清舊遮罩
     $('.history-action-menu').hide();
     $('.menu-click-shield').remove();
 
     const $entry = $(this).closest('.history-entry');
-    const $item  = $entry.find('.history-item');                   // ★ 以整個 item 當錨點
-    const $menu  = $entry.find('.history-action-menu').appendTo('body');
+    const $item  = $entry.find('.history-item');       // ★ 錨點 = 整個 item
+    const $menu  = $entry.find('.history-action-menu');
 
-    // 量測：使用 viewport 座標，避免滾動干擾
+    // 記住來源，等等收合時放回
+    $menu.data('originEntry', $entry);
+
+    // 先移到 body，避免父層 stacking context 影響
+    $menu.appendTo('body');
+
+    // 量測 item 的 viewport 座標
     const itemRect = $item[0].getBoundingClientRect();
-    const menuW = $menu.outerWidth();
-    const menuH = $menu.outerHeight();
 
-    // 需求：menu 左上角 = item 右下角（不加偏移）
-    let left = Math.round(itemRect.right);
-    let top  = Math.round(itemRect.bottom);
-
-    // 視窗邊界保護（若會出框才回退）
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    if (left + menuW > vw) left = vw - menuW;      // 右邊溢出 → 向左回退至可見
-    if (top  + menuH > vh) top  = vh - menuH;      // 下邊溢出 → 向上回退至可見
-    if (left < 0) left = 0;                         // 極端保護
-    if (top  < 0) top  = 0;
-
-    // 以 fixed + 高 z-index 顯示（跨 stacking context 最穩）
+    // 先把 menu 以不可見的方式顯示起來，量測寬高（避免 display:none 量不到）
     $menu.css({
       position: 'fixed',
-      left: left - 10 + 'px',
-      top:  top - 10 + 'px',
+      left: 0,
+      top:  0,
       display: 'block',
+      visibility: 'hidden',
       zIndex: 3000
     });
 
-    // 透明遮罩擋背景點擊（z-index 低於 menu）
+    const menuW = $menu.outerWidth();
+    const menuH = $menu.outerHeight();
+
+    // 需求：menu 左上角 = item 右下角（可用偏移微調）
+    const offsetX = -10;  // 依你的截圖微退 10px，想要貼齊就改成 0
+    const offsetY = -10;
+    let left = Math.round(itemRect.right + offsetX);
+    let top  = Math.round(itemRect.bottom + offsetY);
+
+    // 視窗邊界保護
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (left + menuW > vw) left = vw - menuW;   // 右邊溢出 → 向左回退
+    if (top  + menuH > vh) top  = vh - menuH;   // 下邊溢出 → 向上回退
+    if (left < 0) left = 0;
+    if (top  < 0) top  = 0;
+
+    // 定位並顯示（解除 hidden）
+    $menu.css({
+      left: left + 'px',
+      top:  top  + 'px',
+      visibility: 'visible'    // 顯示
+    });
+
+    // 透明遮罩，擋背景點擊（層級低於 menu）
     const $shield = $('<div class="menu-click-shield"></div>')
       .css({ position: 'fixed', inset: 0, zIndex: 2500 })
       .appendTo('body');
 
+    // 點遮罩關閉
     $shield.on('click', function (ev) {
       ev.stopPropagation();
-      $menu.hide().appendTo($entry);   // 收合時放回原處
+      $menu.hide();
       $(this).remove();
+      restoreMenusToOrigin();  // ★ 放回來源 entry
     });
   });
 
-  // 全域點擊也關閉
+  /** 全域點擊也關閉（避免殘留） */
   $(document).off('click.histMenuClose').on('click.histMenuClose', function () {
     const $open = $('.history-action-menu:visible');
-    if ($open.length) {
-      const $entry = $open.closest('.history-entry');
-      $open.hide().appendTo($entry);
-    }
+    if ($open.length) $open.hide();
     $('.menu-click-shield').remove();
+    restoreMenusToOrigin();  // ★ 放回來源 entry
   });
+
+  /** 可選：ESC 關閉 */
+  $(document).off('keydown.histMenuEsc').on('keydown.histMenuEsc', function (ev) {
+    if (ev.key === 'Escape') {
+      const $open = $('.history-action-menu:visible');
+      if ($open.length) $open.hide();
+      $('.menu-click-shield').remove();
+      restoreMenusToOrigin();
+    }
+  });
+
+  /* ========= /History Action Menu ========= */
+
 
 
   let pendingDeleteIdx = null;
