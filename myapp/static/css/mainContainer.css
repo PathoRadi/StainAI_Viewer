@@ -79,9 +79,8 @@
   --backdrop-filter-barchart-wrapper:blur(10px);
   --transition-barchart-wrapper: all 0.3s ease;
   --bg-roi-container:   rgb(23,23,23);
-  --bg-roi-item: rgb(120,120,120);
-  --bg-roi-item-hover: rgb(70,70,70);
-  --border-roi-item-hover: 2px solid rgb(255, 255, 255);
+  --bg-roi-item: rgb(70,70,70);
+  --bg-roi-item-hover: rgb(120,120,120);
   --text-roi-item: rgb(255,255,255);
   --text-roi-menu-btn: rgb(255,255,255);
   --bg-roi-action-menu: rgb(120,120,120);
@@ -173,9 +172,8 @@
   --backdrop-filter-barchart-wrapper: none;
   --transition-barchart-wrapper: none;
   --bg-roi-container:   rgb(255,255,255);
-  --bg-roi-item: rgb(225,225,225);
-  --bg-roi-item-hover: rgb(180,180,180);
-  --border-roi-item-hover: 2px solid rgb(0,0,0);
+  --bg-roi-item: rgb(180,180,180);
+  --bg-roi-item-hover: rgb(225,225,225);
   --text-roi-item: rgb(0,0,0);
   --text-roi-menu-btn: rgb(0,0,0);
   --bg-roi-action-menu: rgb(225,225,225);
