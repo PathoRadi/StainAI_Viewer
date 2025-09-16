@@ -134,36 +134,63 @@ export function initHistoryHandlers(historyStack) {
     });
   });
 
-  $(document).on('click','.history-menu-btn',function(e){
+  // 左上角( menu ) = 右下角( item )
+  $(document).off('click.histMenu').on('click.histMenu', '.history-menu-btn', function (e) {
     e.stopPropagation();
 
-    // First close other menus and remove old overlays
+    // 關其他、移除舊遮罩
     $('.history-action-menu').hide();
     $('.menu-click-shield').remove();
 
     const $entry = $(this).closest('.history-entry');
-    const $menu  = $entry.find('.history-action-menu');
-    const btnOff = $(this).offset();
+    const $item  = $entry.find('.history-item');                   // ★ 以整個 item 當錨點
+    const $menu  = $entry.find('.history-action-menu').appendTo('body');
+
+    // 量測：使用 viewport 座標，避免滾動干擾
+    const itemRect = $item[0].getBoundingClientRect();
+    const menuW = $menu.outerWidth();
+    const menuH = $menu.outerHeight();
+
+    // 需求：menu 左上角 = item 右下角（不加偏移）
+    let left = Math.round(itemRect.right);
+    let top  = Math.round(itemRect.bottom);
+
+    // 視窗邊界保護（若會出框才回退）
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (left + menuW > vw) left = vw - menuW;      // 右邊溢出 → 向左回退至可見
+    if (top  + menuH > vh) top  = vh - menuH;      // 下邊溢出 → 向上回退至可見
+    if (left < 0) left = 0;                         // 極端保護
+    if (top  < 0) top  = 0;
+
+    // 以 fixed + 高 z-index 顯示（跨 stacking context 最穩）
     $menu.css({
-      top: btnOff.top + 'px',
-      left: btnOff.left + 'px',
-      position: 'absolute',
+      position: 'fixed',
+      left: left - 10 + 'px',
+      top:  top - 10 + 'px',
       display: 'block',
-  zIndex: 2000                // ⬅️ Higher than the overlay
+      zIndex: 3000
     });
 
-    // Add overlay (to absorb background clicks)
-    const $shield = $('<div class="menu-click-shield"></div>').appendTo('body');
-    $shield.on('click', function(ev){
+    // 透明遮罩擋背景點擊（z-index 低於 menu）
+    const $shield = $('<div class="menu-click-shield"></div>')
+      .css({ position: 'fixed', inset: 0, zIndex: 2500 })
+      .appendTo('body');
+
+    $shield.on('click', function (ev) {
       ev.stopPropagation();
-      $('.history-action-menu').hide();
+      $menu.hide().appendTo($entry);   // 收合時放回原處
       $(this).remove();
     });
   });
 
-  // If you still have the original "document click → hide menu" code, please change it to also remove the overlay:
-  $(document).off('click.histMenuClose').on('click.histMenuClose', function(){
-    $('.history-action-menu').hide();
+  // 全域點擊也關閉
+  $(document).off('click.histMenuClose').on('click.histMenuClose', function () {
+    const $open = $('.history-action-menu:visible');
+    if ($open.length) {
+      const $entry = $open.closest('.history-entry');
+      $open.hide().appendTo($entry);
+    }
     $('.menu-click-shield').remove();
   });
 
