@@ -46,9 +46,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.roi-item:hover {
-  background: var(--bg-roi-item-hover);
-}
 .roi-item-selected{
   background: var(--bg-roi-item-hover) !important;
 }

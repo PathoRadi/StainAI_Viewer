@@ -234,9 +234,6 @@ class YOLOPipeline:
 
         return all_boxes, all_labels
 
-        
-
-
     # --- Result Saving and Annotated Map Generation ---
     def save_results(self, bbox, labels):
         """
@@ -319,12 +316,9 @@ class YOLOPipeline:
 
         annotated = Image.alpha_composite(base_img, overlay).convert("RGB")
         os.makedirs(self.annotated_dir, exist_ok=True)
-        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated_preview.jpg"
+        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
         annotated_path = os.path.join(self.annotated_dir, out_name)
         annotated.save(annotated_path, format="JPEG", quality=88, optimize=True, progressive=True)
-
-
-
 
     # --- Fm(Focus Measure) Functions ---
     @staticmethod
@@ -362,7 +356,6 @@ class YOLOPipeline:
             den = H * W
 
         return num / max(den, 1)
-
 
     def crop_image_by_box(self, img, box_str, output_dir):
         """

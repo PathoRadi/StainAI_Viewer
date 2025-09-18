@@ -101,6 +101,7 @@
     width: 100vw;
     height: 100vh;
     background-color: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px); 
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -111,21 +112,32 @@
 .readme-header {
     position: sticky;
     top: 0;
-    width: 90vw; 
+    width: 1500px; 
+    height: 25px;
     display: flex;
     justify-content: flex-end;
     padding: 10px;
-    background: white;
+    background: rgb(60,60,60);
     z-index: 10001;
 }
 .readme-box {
     background: white;
-    padding: 0px 20px 20px 20px;
-    max-width: 90vw;
-    max-height: none;
-    overflow: auto;
+    padding: 0;                  
+    display: inline-block;          
     box-shadow: 0 0 30px rgba(0,0,0,0.5);
     margin-top: 0px;
+    width: min(90vw, 1500px);
+    height: min(100vh, 1000px);
+    max-width: 1500px;
+    max-height: 1000px;
+    overflow: hidden;
+}
+.readme-box img {
+    display: block;
+    margin: 0 auto;
+    width: 100%;     
+    height: auto;
+    object-fit: contain;
 }
 .readme-content {
     width: 100%;
@@ -138,9 +150,9 @@
     color: white;
     border: none;
     border-radius: 50%;
-    font-size: 16px;
-    width: 32px;
-    height: 32px;
+    font-size: 12px;
+    width: 25px;
+    height: 25px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -156,9 +168,9 @@
     color: white;
     border: none;
     border-radius: 50%;
-    font-size: 16px;
-    width: 32px;
-    height: 32px;
+    font-size: 12px;
+    width: 25px;
+    height: 25px;
     cursor: pointer;
     margin-right: 10px;
 }
@@ -253,4 +265,28 @@
   width: 200px;
   height: 100vh;
   background: var(--bg-left);
+}
+
+
+
+
+
+
+
+
+
+/* 背景變暗 + 模糊：你已經有 .readme-overlay，可加入 backdrop-filter */
+.readme-overlay {
+  background-color: rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);          /* Chrome/Safari 支援；Firefox 需開啟 flag */
+}
+
+/* 中央白色框：拿掉內邊距讓 PDF 充滿，並給固定視窗比例 */
+
+
+/* 內嵌 PDF 的 iframe 全滿 */
+#readme-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
 }

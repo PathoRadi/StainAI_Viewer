@@ -243,82 +243,142 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
   });
   // ReadMe Page
-  document.addEventListener('DOMContentLoaded', () => {
-    const readmeBtn = document.querySelector('.readme-btn');
-    const readmePage = document.getElementById('readme-page');
-    const closeBtn = document.getElementById('readme-close-btn');
+  // document.addEventListener('DOMContentLoaded', () => {
+  //   const readmeBtn = document.querySelector('.readme-btn');
+  //   const readmePage = document.getElementById('readme-page');
+  //   const closeBtn = document.getElementById('readme-close-btn');
 
-    if (readmeBtn && readmePage && closeBtn) {
+  //   if (readmeBtn && readmePage && closeBtn) {
+  //     readmeBtn.addEventListener('click', () => {
+  //       readmePage.removeAttribute('hidden');
+  //     });
+
+  //     closeBtn.addEventListener('click', () => {
+  //       readmePage.setAttribute('hidden', true);
+  //     });
+  //   } else {
+  //     console.warn("README elements not found in DOM");
+  //   }
+
+  //   const popoutBtn = document.getElementById('readme-popout-btn');
+
+  //   if (popoutBtn) {
+  //     popoutBtn.addEventListener('click', () => {
+  //       const readmeBox = document.querySelector('.readme-box');
+  //       if (!readmeBox) return;
+
+  //       const img = readmeBox.querySelector('img');
+  //       const imgWidth = img?.naturalWidth || 1000;
+  //       const imgHeight = img?.naturalHeight || 1200;
+
+  //       const windowWidth = Math.min(imgWidth + 100, screen.availWidth - 100);
+  //       const windowHeight = Math.min(imgHeight + 100, screen.availHeight - 100);
+
+  //       const newWindow = window.open('', '_blank', `width=${windowWidth},height=${windowHeight},resizable=yes,scrollbars=yes`);
+  //       if (!newWindow) return;
+
+  //       const doc = newWindow.document;
+  //       doc.open();
+  //       doc.write(`
+  //         <html>
+  //           <head>
+  //             <title>README</title>
+  //             <link rel="stylesheet" type="text/css" href="/static/css/visualization.css">
+  //             <link rel="stylesheet" type="text/css" href="/static/css/mainContainer.css">
+  //             <style>
+  //               body {
+  //                 margin: 0;
+  //                 padding: 2rem;
+  //                 background: white;
+  //                 display: flex;
+  //                 justify-content: center;
+  //                 align-items: flex-start;
+  //                 overflow: auto;
+  //               }
+  //               .readme-box {
+  //                 max-width: 1000px;
+  //                 max-height: 2050px;
+  //                 box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  //                 margin: 0 auto;
+  //               }
+  //               .readme-box img {
+  //                 display: block;
+  //                 margin: 0 auto;
+  //                 width: 100%;     
+  //                 height: auto;
+  //                 object-fit: contain;
+  //               }
+  //             </style>
+  //           </head>
+  //           <body></body>
+  //         </html>
+  //       `);
+  //       doc.close();
+
+  //       const clonedBox = readmeBox.cloneNode(true);
+  //       newWindow.document.body.appendChild(clonedBox);
+  //     });
+  //   }
+  // });
+
+
+  // ReadMe Page（PDF 版：overlay 用 iframe 顯示，Pop-out 直接開 PDF）
+  document.addEventListener('DOMContentLoaded', () => {
+    const readmeBtn     = document.querySelector('.readme-btn');
+    const readmePage    = document.getElementById('readme-page');   // overlay
+    const closeBtn      = document.getElementById('readme-close-btn');
+    const popoutBtn     = document.getElementById('readme-popout-btn');
+    const readmeIframe  = document.getElementById('readme-iframe'); // 需要在 HTML 的 .readme-box 內放一個 <iframe id="readme-iframe">
+
+    // 你的 README PDF 路徑（放在 static 下即可）
+    // 常用參數：
+    //  - #toolbar=1   ：顯示工具列
+    //  - #navpanes=0  ：關閉側邊縮圖/大綱
+    //  - #view=FitH   ：水平置寬
+    //  - #page=1      ：開啟的頁碼
+    const README_PDF_URL = '/static/logo/readme_page.pdf';
+
+    // 打開 overlay
+    if (readmeBtn && readmePage && closeBtn && readmeIframe) {
       readmeBtn.addEventListener('click', () => {
+        // 每次開啟才設定 src，避免預載佔資源
+        readmeIframe.src = README_PDF_URL;
         readmePage.removeAttribute('hidden');
+        // 鎖背景滾動（可選）
+        document.documentElement.style.overflow = 'hidden';
       });
 
+      // 關閉 overlay
       closeBtn.addEventListener('click', () => {
         readmePage.setAttribute('hidden', true);
+        // 釋放 PDF（可選）
+        // readmeIframe.src = '';
+        document.documentElement.style.overflow = '';
+      });
+
+      // ESC 關閉（可選）
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !readmePage.hasAttribute('hidden')) {
+          readmePage.setAttribute('hidden', true);
+          // readmeIframe.src = '';
+          document.documentElement.style.overflow = '';
+        }
       });
     } else {
-      console.warn("README elements not found in DOM");
+      console.warn('README overlay elements not found in DOM (btn/page/close/iframe)');
     }
 
-    const popoutBtn = document.getElementById('readme-popout-btn');
-
+    // Pop-out：新視窗直接開 PDF（使用瀏覽器原生 PDF 檢視器）
     if (popoutBtn) {
       popoutBtn.addEventListener('click', () => {
-        const readmeBox = document.querySelector('.readme-box');
-        if (!readmeBox) return;
-
-        const img = readmeBox.querySelector('img');
-        const imgWidth = img?.naturalWidth || 1000;
-        const imgHeight = img?.naturalHeight || 1200;
-
-        const windowWidth = Math.min(imgWidth + 100, screen.availWidth - 100);
-        const windowHeight = Math.min(imgHeight + 100, screen.availHeight - 100);
-
-        const newWindow = window.open('', '_blank', `width=${windowWidth},height=${windowHeight},resizable=yes,scrollbars=yes`);
-        if (!newWindow) return;
-
-        const doc = newWindow.document;
-        doc.open();
-        doc.write(`
-          <html>
-            <head>
-              <title>README</title>
-              <link rel="stylesheet" type="text/css" href="/static/css/visualization.css">
-              <link rel="stylesheet" type="text/css" href="/static/css/mainContainer.css">
-              <style>
-                body {
-                  margin: 0;
-                  padding: 2rem;
-                  background: white;
-                  display: flex;
-                  justify-content: center;
-                  align-items: flex-start;
-                  overflow: auto;
-                }
-                .readme-box {
-                  max-width: 100%;
-                  width: auto;
-                  box-shadow: 0 0 10px rgba(0,0,0,0.1);
-                  margin: 0 auto;
-                }
-                .readme-box img {
-                  max-width: 100%;
-                  height: auto;
-                  display: block;
-                  margin: 0 auto;
-                }
-              </style>
-            </head>
-            <body></body>
-          </html>
-        `);
-        doc.close();
-
-        const clonedBox = readmeBox.cloneNode(true);
-        newWindow.document.body.appendChild(clonedBox);
+        // 新視窗大小可依你需求調整
+        const w = Math.min(screen.availWidth - 100, 1200);
+        const h = Math.min(screen.availHeight - 100, 900);
+        window.open(README_PDF_URL, '_blank', `width=${w},height=${h},resizable=yes,scrollbars=yes,noopener`);
       });
     }
   });
+
 
   // === Color Picker with click-shield (prevent drawing on background) ===
   (function setupColorPickerShield(){
