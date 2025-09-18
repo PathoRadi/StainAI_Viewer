@@ -115,22 +115,24 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   const resetBtn         = document.getElementById('upload-new-img-btn');
   window.chartRefs = [];
 
-  function showProgressOverlay() {
-    document.getElementById('progress-overlay').style.display = 'flex';
-    dropZone.classList.add('blur');
-  }
-  function hideProgressOverlay() {
-    document.getElementById('progress-overlay').style.display = 'none';
-    dropZone.classList.remove('blur');
-  }
-  function showProgressOverlay1() {
-    document.getElementById('progress-overlay1').style.display = 'flex';
-    dropZone.classList.add('blur');
-  }
-  function hideProgressOverlay1() {
-    document.getElementById('progress-overlay1').style.display = 'none';
-    dropZone.classList.remove('blur');
-  }
+function showProgressOverlay1() {
+  document.getElementById('progress-overlay1').classList.add('active');
+  dropZone.classList.add('blur');
+}
+function hideProgressOverlay1() {
+  document.getElementById('progress-overlay1').classList.remove('active');
+  dropZone.classList.remove('blur');
+}
+function showProgressOverlay() {
+  document.getElementById('progress-overlay').classList.add('active');
+  dropZone.classList.add('blur');
+}
+function hideProgressOverlay() {
+  document.getElementById('progress-overlay').classList.remove('active');
+  dropZone.classList.remove('blur');
+}
+
+
 
   // Handle file upload to server
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
