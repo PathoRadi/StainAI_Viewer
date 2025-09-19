@@ -19,6 +19,7 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
+from django.core.cache import cache
 from tifffile import TiffWriter
 
 # Your method / pipeline
@@ -61,6 +62,21 @@ def _to_media_url(abs_path: str) -> str:
     """Convert absolute path to MEDIA URL usable by frontend."""
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
+
+def _set_progress_stage(project: str, stage: str):
+    """
+    stage ∈ {'idle','gray','cut','yolo','done','error'}
+    """
+    cache.set(f"progress:{project}", stage, timeout=60*60)
+
+@require_GET
+def progress(request):
+    """
+    Get current progress stage for a project.
+    """
+    project = request.GET.get("project") or ""
+    stage = cache.get(f"progress:{project}", "idle")
+    return JsonResponse({"stage": stage})
 
 # ---------------------------
 # Views
@@ -148,26 +164,27 @@ def detect_image(request):
         shutil.copy(src, display_dir)
 
         # --- 1) Convert to grayscale (PIL version) ---
+        _set_progress_stage(project_name, 'gray')                # Enter 1) gray stage
         GrayScaleImage(orig_path, project_dir).rgb_to_gray()
 
         # --- 2) Cut patch (PIL version) ---
+        _set_progress_stage(project_name, 'cut')                 # Enter 2) cut stage
         gray_dir = os.path.join(project_dir, 'gray')
         gray_name = os.listdir(gray_dir)[0]
         gray_path = os.path.join(gray_dir, gray_name)
         CutImage(gray_path, project_dir).cut()
 
         # --- 3) YOLO pipeline (lazy load model) ---
+        _set_progress_stage(project_name, 'yolo')                # Enter 3) yolo stage
         model = get_yolo_model()
         patches_dir = os.path.join(project_dir, 'patches')
         pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
         detections = pipeline.run()
-
-        # --- 4) Display image size and URL ---
+        # Get display image size and URL ---
         disp_name = os.listdir(display_dir)[0]
         disp_path = os.path.join(display_dir, disp_name)
         dw, dh = _image_size_wh(disp_path)   # w, h
-
-        # --- 5) Generate Original_Mmap.tiff (compatible mode, can be opened by Windows Photos) ---
+        # Generate Original_Mmap.tiff
         original_mmap_dir = os.path.join(project_dir, 'original_mmap')
         os.makedirs(original_mmap_dir, exist_ok=True)
         annotated_jpg = os.path.join(project_dir, 'annotated', project_name + '_annotated.jpg')
@@ -176,10 +193,12 @@ def detect_image(request):
             original_mmap_inputs.append(annotated_jpg)
         combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
 
-        # --- 6) Clean up temp folders (ignore if not exist) ---
+        # --- 4) Clean up temp folders (ignore if not exist) ---
         for folder in ('fm_images', 'patches'):
             p = os.path.join(project_dir, folder)
             shutil.rmtree(p, ignore_errors=True)
+
+        _set_progress_stage(project_name, 'done')               # Enter 4) done stage
 
         return JsonResponse({
             'boxes': detections,

@@ -93,15 +93,32 @@
 
   <!-- ───── PROGRESS OVERLAY ───── -->
   <div id="progress-overlay">
-    <div class="progress-text">Detecting...</div>
-    <div class="progress">
-      <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></div>
+    <div class="stage-timeline" id="stage-timeline">
+      <div class="stage-track"></div>
+      <div class="stage-node" data-stage="1">
+        <div class="stage-badge">1</div>
+        <div class="stage-name">Grayscale</div>
+      </div>
+      <div class="stage-node" data-stage="2">
+        <div class="stage-badge">2</div>
+        <div class="stage-name">Cut Patch</div>
+      </div>
+      <div class="stage-node" data-stage="3">
+        <div class="stage-badge">3</div>
+        <div class="stage-name">YOLO</div>
+      </div>
+      <div class="stage-node" data-stage="4">
+        <div class="stage-badge">4</div>
+        <div class="stage-name">Finish</div>
+      </div>
+      <img class="stage-rocket" id="stage-rocket" src="{% static 'logo/animation.png' %}" alt="">
     </div>
   </div>
   <div id="progress-overlay1">
     <div class="progress-text">Loading...</div>
     <div class="progress">
       <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></div>
+      <img class="progress-icon" src="{% static 'logo/animation.png' %}">
     </div>
   </div>
 
@@ -268,6 +285,7 @@
     const DELETE_PROJECT_URL = "{% url 'myapp:delete_project' %}";
     const DOWNLOAD_PROJECT_URL= "{% url 'myapp:download_project' %}";
     const DOWNLOAD_WITH_ROIS_URL = "{% url 'myapp:download_with_rois' %}";
+    const PROGRESS_URL       = "{% url 'myapp:progress' %}";
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });
