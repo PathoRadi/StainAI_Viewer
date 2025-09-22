@@ -3,6 +3,7 @@ import { initProcess } from './process.js';
 import { updateHistoryUI, initHistoryHandlers } from './history.js';
 import { initKonvaManager } from './konvaManager.js';
 import { showAllBoxes, drawBbox } from './box.js';
+window.showAllBoxes = showAllBoxes;
 import { layerManagerApi } from './layerManager.js';
 import { initROI } from './roi.js';
 import html2canvas from 'https://cdn.skypack.dev/html2canvas';
@@ -143,10 +144,174 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
     // === Screenshot Menu Toggle ===
-    $('#screenshot-menu-btn').on('click', function (e) {
-      e.stopPropagation();  
-      $('#screenshot-dropdown').toggle();
-    });
+    // $('#screenshot-menu-btn').on('click', function (e) {
+    //   e.stopPropagation();  
+    //   $('#screenshot-dropdown').toggle();
+    // });
+
+    // async function exportCompositePNG() {
+    //   const viewer = window.viewer;               // OSD 全域
+    //   const stage  = window.konvaStage;           // Konva Stage（konvaManager.js 要暴露，見本文最後提示）
+    //   const wrap   = document.getElementById('displayedImage-wrapper');
+    //   if (!viewer || !wrap) return;
+
+    //   const outW = wrap.clientWidth, outH = wrap.clientHeight;
+    //   const out = document.createElement('canvas');
+    //   out.width = outW; out.height = outH;
+    //   const ctx = out.getContext('2d');
+
+    //   // 1) 底圖：直接抓 OSD 的畫布
+    //   const baseCanvas =
+    //     viewer?.drawer?.canvas || viewer?.canvas || wrap.querySelector('canvas');
+    //   if (baseCanvas) ctx.drawImage(baseCanvas, 0, 0, outW, outH);
+
+    //   // 2) 疊 SVG 偵測框（先確保顯示，再序列化）
+    //   try {
+    //     if (window.showAllBoxes) window.showAllBoxes();
+    //     const svgNode = viewer.svgOverlay().node();
+    //     if (svgNode) {
+    //       const clone = svgNode.cloneNode(true);
+    //       clone.querySelectorAll('rect').forEach(el => {
+    //         el.style.display = 'block';
+    //         el.removeAttribute('display');
+    //         el.removeAttribute('visibility');
+    //         el.style.opacity = '1';
+    //       });
+    //       clone.setAttribute('width',  outW);
+    //       clone.setAttribute('height', outH);
+
+    //       const s   = new XMLSerializer().serializeToString(clone);
+    //       const url = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
+    //       await new Promise((res) => {
+    //         const img = new Image();
+    //         img.onload = () => { ctx.drawImage(img, 0, 0, outW, outH); URL.revokeObjectURL(url); res(); };
+    //         img.onerror = () => { URL.revokeObjectURL(url); res(); };
+    //         img.src = url;
+    //       });
+    //     }
+    //   } catch (e) {
+    //     console.warn('SVG overlay export skipped:', e);
+    //   }
+
+    //   // 3) 疊 Konva ROI
+    //   if (stage && typeof stage.toCanvas === 'function') {
+    //     stage.draw(); // flush 最新圖層
+    //     const roiCanvas = await stage.toCanvas({ pixelRatio: 1 });
+    //     if (roiCanvas) ctx.drawImage(roiCanvas, 0, 0, outW, outH);
+    //   }
+
+    //   // 4) 下載（toBlob 比 toDataURL 快且省記憶體）
+    //   out.toBlob((blob) => {
+    //     if (!blob) return;
+    //     const url = URL.createObjectURL(blob);
+    //     const a = document.createElement('a');
+    //     a.download = 'screenshot.png';
+    //     a.href = url;
+    //     a.click();
+    //     URL.revokeObjectURL(url);
+    //   }, 'image/png');
+    // }
+
+
+    // 與 box.js 一致的色票（可視需要調整）
+    const BBOX_COLORS = {
+      R:  'rgba(102,204,0,0.30)',
+      H:  'rgba(204,204,0,0.30)',
+      B:  'rgba(220,112,0,0.30)',
+      A:  'rgba(204,0,0,0.30)',
+      RD: 'rgba(0,210,210,0.30)',
+      HR: 'rgba(0,0,204,0.30)'
+    };
+
+    // 讀目前畫面上「被勾選」的 cell types（決定哪些 box 要畫）
+    function getSelectedTypes() {
+      return new Set(
+        $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+          .map((_, el) => el.id.split('_')[1])
+          .get()
+      );
+    }
+
+    async function exportCompositePNG() {
+      const viewer = window.viewer;        // OpenSeadragon 實例（全域）
+      const stage  = window.konvaStage;    // Konva Stage（konvaManager.js 要有 window.konvaStage = stage）
+      const wrap   = document.getElementById('displayedImage-wrapper');
+      if (!viewer || !wrap) return;
+
+      const outW = wrap.clientWidth;
+      const outH = wrap.clientHeight;
+
+      // 1) 建立離屏 canvas
+      const out = document.createElement('canvas');
+      out.width = outW;
+      out.height = outH;
+      const ctx = out.getContext('2d');
+
+      // 2) 底圖：直接抓 OSD 畫布（與螢幕所見一致）
+      const baseCanvas =
+        viewer?.drawer?.canvas || viewer?.canvas || wrap.querySelector('canvas');
+      if (baseCanvas) {
+        ctx.drawImage(baseCanvas, 0, 0, outW, outH);
+      }
+
+      // 3) 疊 BBOX（只畫「目前勾選的 cell types」）
+      try {
+        const selected = getSelectedTypes();                       // 目前可見的類別
+        const vp = viewer.viewport;
+        const data = Array.isArray(window.bboxData) ? window.bboxData : [];
+
+        data.forEach(d => {
+          if (!selected.has(d.type)) return;                       // 不在可見集合就跳過
+
+          // d.coords = [x1, y1, x2, y2]，單位：影像座標
+          const x1 = d.coords[0], y1 = d.coords[1];
+          const x2 = d.coords[2], y2 = d.coords[3];
+
+          // 影像座標 → Viewer 元素像素（與畫面 1:1）
+          const p1 = vp.imageToViewerElementCoordinates(new OpenSeadragon.Point(x1, y1));
+          const p2 = vp.imageToViewerElementCoordinates(new OpenSeadragon.Point(x2, y2));
+
+          const px = Math.min(p1.x, p2.x);
+          const py = Math.min(p1.y, p2.y);
+          const pw = Math.abs(p2.x - p1.x);
+          const ph = Math.abs(p2.y - p1.y);
+
+          // 半透明填色（與畫面一致）
+          ctx.fillStyle = BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)';
+          ctx.fillRect(px, py, pw, ph);
+
+          // 若需要描邊，打開以下幾行（顏色可自訂對應 d.type）
+          // ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+          // ctx.lineWidth = 1;
+          // ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+        });
+      } catch (e) {
+        console.warn('BBox draw skipped:', e);
+      }
+
+      // 4) 疊 Konva ROI（與畫面一致）
+      if (stage && typeof stage.toCanvas === 'function') {
+        try {
+          stage.draw(); // 確保最新
+          const roiCanvas = await stage.toCanvas({ pixelRatio: 1 });
+          if (roiCanvas) ctx.drawImage(roiCanvas, 0, 0, outW, outH);
+        } catch (e) {
+          console.warn('ROI export skipped:', e);
+        }
+      }
+
+      // 5) 下載（toBlob 較快且省記憶體）
+      out.toBlob(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.download = 'screenshot.png';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    }
+
 
     // === Take a Shot handler ===
     window.takeScreenshot = function takeScreenshot(
@@ -203,41 +368,59 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         e.stopPropagation();
       });
 
-      // Click "Save Image"
-      $(takeScreenshotBtn).off('click.execSS').on('click.execSS', function(){
+      $(takeScreenshotBtn).off('click.execSS').on('click.execSS', async function(){
         const $dd = $(screenshotDropdown);
         $dd.hide();
         $('.menu-click-shield').remove();
 
+        // 0 組（圖片 + boxes + ROI）
+        if (toBeTaken === 'displayedImage-wrapper') {
+          await exportCompositePNG();      // ← 走合成輸出
+          return;
+        }
+
+        // 1/2/3 組（Bar Chart）：照舊 html2canvas
         const target = document.getElementById(toBeTaken);
         if (!target) return;
 
-        // html2canvas(target, {
-        //   useCORS: true, backgroundColor: null, allowTaint: true, logging: false
-        // }).then(canvas => {
-        //   const link = document.createElement('a');
-        //   link.download = 'screenshot.png';
-        //   link.href = canvas.toDataURL();
-        //   link.click();
-        // }).catch(err => console.error('Screenshot error:', err));
+        const MAX_MP = 4e6;
+        const w = target.clientWidth, h = target.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
+        let scale = dpr;
+        const areaAtDpr = w * h * dpr * dpr;
+        if (areaAtDpr > MAX_MP) scale = Math.sqrt(MAX_MP / (w * h));
+
+        document.documentElement.classList.add('screenshotting');
         html2canvas(target, {
           useCORS: true,
           backgroundColor: null,
           allowTaint: true,
           logging: false,
-
-          // 關鍵：鎖定比例，避免跟 devicePixelRatio 綁在一起
-          scale: 1,
-
-          // 以實際 CSS 大小輸出（避免某些瀏覽器在縮放下抓到奇怪的內部尺寸）
-          width:  target.clientWidth,
-          height: target.clientHeight
+          scale,
+          width:  w,
+          height: h,
         }).then(canvas => {
-          const link = document.createElement('a');
-          link.download = 'screenshot.png';
-          link.href = canvas.toDataURL();
-          link.click();
-        }).catch(err => console.error('Screenshot error:', err));
+          if (canvas.toBlob) {
+            canvas.toBlob(blob => {
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.download = 'screenshot.png';
+              link.href = url;
+              link.click();
+              URL.revokeObjectURL(url);
+              document.documentElement.classList.remove('screenshotting');
+            }, 'image/png');
+          } else {
+            const link = document.createElement('a');
+            link.download = 'screenshot.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            document.documentElement.classList.remove('screenshotting');
+          }
+        }).catch(err => {
+          console.error('Screenshot error:', err);
+          document.documentElement.classList.remove('screenshotting');
+        });
       });
 
       // ESC to close (optional)
@@ -255,9 +438,17 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 
     // Initialize screenshot functionality
-    window.takeScreenshot('#take-screenshot-btn0', '#screenshot-menu-btn0', 
-      '#screenshot-dropdown0', 'displayedImage-wrapper'
-    );
+    // window.takeScreenshot('#take-screenshot-btn0', '#screenshot-menu-btn0', 
+    //   '#screenshot-dropdown0', 'displayedImage-wrapper'
+    // );
+    [0,1,2,3].forEach(i => {
+      window.takeScreenshot(
+        `#take-screenshot-btn${i}`,
+        `#screenshot-menu-btn${i}`,
+        `#screenshot-dropdown${i}`,
+        i === 0 ? 'displayedImage-wrapper' : `barChart${i}` // ← 若你的圖表容器 id 不同，改這裡
+      );
+    });
 
   });
 

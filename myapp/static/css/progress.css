@@ -233,3 +233,12 @@
   40%  { transform: translate(-50%, -58%) scale(1.04) }
   100% { transform: translate(-50%, -50%) scale(1.00) }
 }
+
+
+.screenshotting *, .screenshotting *::before, .screenshotting *::after {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}

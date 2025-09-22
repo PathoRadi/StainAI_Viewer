@@ -77,6 +77,8 @@ export function initKonvaManager({
   const drawLayer = new Konva.Layer();
   stage.add(drawLayer);
 
+  window.konvaStage = stage;
+
   /* === ROI Hover Tooltip (one singleton) === */
   const tipLayer = new Konva.Layer();
   stage.add(tipLayer);
@@ -701,5 +703,11 @@ export function initKonvaManager({
     } catch { return false; }
   }
 
-  return { redrawPolygons, isInAnyPolygon };
+  window.addEventListener('resize', () => {
+    const wrapEl = document.getElementById('displayedImage-wrapper');
+    stage.size({ width: wrapEl.clientWidth, height: wrapEl.clientHeight });
+    redrawPolygons(); // 重新投影 ROI 點
+  });
+
+  return { stage, redrawPolygons, isInAnyPolygon };
 }
