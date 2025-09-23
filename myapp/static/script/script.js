@@ -144,75 +144,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
     // === Screenshot Menu Toggle ===
-    // $('#screenshot-menu-btn').on('click', function (e) {
-    //   e.stopPropagation();  
-    //   $('#screenshot-dropdown').toggle();
-    // });
-
-    // async function exportCompositePNG() {
-    //   const viewer = window.viewer;               // OSD 全域
-    //   const stage  = window.konvaStage;           // Konva Stage（konvaManager.js 要暴露，見本文最後提示）
-    //   const wrap   = document.getElementById('displayedImage-wrapper');
-    //   if (!viewer || !wrap) return;
-
-    //   const outW = wrap.clientWidth, outH = wrap.clientHeight;
-    //   const out = document.createElement('canvas');
-    //   out.width = outW; out.height = outH;
-    //   const ctx = out.getContext('2d');
-
-    //   // 1) 底圖：直接抓 OSD 的畫布
-    //   const baseCanvas =
-    //     viewer?.drawer?.canvas || viewer?.canvas || wrap.querySelector('canvas');
-    //   if (baseCanvas) ctx.drawImage(baseCanvas, 0, 0, outW, outH);
-
-    //   // 2) 疊 SVG 偵測框（先確保顯示，再序列化）
-    //   try {
-    //     if (window.showAllBoxes) window.showAllBoxes();
-    //     const svgNode = viewer.svgOverlay().node();
-    //     if (svgNode) {
-    //       const clone = svgNode.cloneNode(true);
-    //       clone.querySelectorAll('rect').forEach(el => {
-    //         el.style.display = 'block';
-    //         el.removeAttribute('display');
-    //         el.removeAttribute('visibility');
-    //         el.style.opacity = '1';
-    //       });
-    //       clone.setAttribute('width',  outW);
-    //       clone.setAttribute('height', outH);
-
-    //       const s   = new XMLSerializer().serializeToString(clone);
-    //       const url = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
-    //       await new Promise((res) => {
-    //         const img = new Image();
-    //         img.onload = () => { ctx.drawImage(img, 0, 0, outW, outH); URL.revokeObjectURL(url); res(); };
-    //         img.onerror = () => { URL.revokeObjectURL(url); res(); };
-    //         img.src = url;
-    //       });
-    //     }
-    //   } catch (e) {
-    //     console.warn('SVG overlay export skipped:', e);
-    //   }
-
-    //   // 3) 疊 Konva ROI
-    //   if (stage && typeof stage.toCanvas === 'function') {
-    //     stage.draw(); // flush 最新圖層
-    //     const roiCanvas = await stage.toCanvas({ pixelRatio: 1 });
-    //     if (roiCanvas) ctx.drawImage(roiCanvas, 0, 0, outW, outH);
-    //   }
-
-    //   // 4) 下載（toBlob 比 toDataURL 快且省記憶體）
-    //   out.toBlob((blob) => {
-    //     if (!blob) return;
-    //     const url = URL.createObjectURL(blob);
-    //     const a = document.createElement('a');
-    //     a.download = 'screenshot.png';
-    //     a.href = url;
-    //     a.click();
-    //     URL.revokeObjectURL(url);
-    //   }, 'image/png');
-    // }
-
-
     // 與 box.js 一致的色票（可視需要調整）
     const BBOX_COLORS = {
       R:  'rgba(102,204,0,0.30)',
@@ -222,7 +153,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       RD: 'rgba(0,210,210,0.30)',
       HR: 'rgba(0,0,204,0.30)'
     };
-
     // 讀目前畫面上「被勾選」的 cell types（決定哪些 box 要畫）
     function getSelectedTypes() {
       return new Set(
@@ -231,7 +161,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           .get()
       );
     }
-
     async function exportCompositePNG() {
       const viewer = window.viewer;        // OpenSeadragon 實例（全域）
       const stage  = window.konvaStage;    // Konva Stage（konvaManager.js 要有 window.konvaStage = stage）
