@@ -144,7 +144,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
     // === Screenshot Menu Toggle ===
-    // 與 box.js 一致的色票（可視需要調整）
     const BBOX_COLORS = {
       R:  'rgba(102,204,0,0.30)',
       H:  'rgba(204,204,0,0.30)',
@@ -153,7 +152,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       RD: 'rgba(0,210,210,0.30)',
       HR: 'rgba(0,0,204,0.30)'
     };
-    // 讀目前畫面上「被勾選」的 cell types（決定哪些 box 要畫）
+    // check what cell types are selected（determine what boxes should be drawed on the screenshot）
     function getSelectedTypes() {
       return new Set(
         $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
@@ -162,21 +161,21 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       );
     }
     async function exportCompositePNG() {
-      const viewer = window.viewer;        // OpenSeadragon 實例（全域）
-      const stage  = window.konvaStage;    // Konva Stage（konvaManager.js 要有 window.konvaStage = stage）
+      const viewer = window.viewer;        // OpenSeadragon
+      const stage  = window.konvaStage;    // Konva Stage（konvaManager.js needs window.konvaStage = stage）
       const wrap   = document.getElementById('displayedImage-wrapper');
       if (!viewer || !wrap) return;
 
       const outW = wrap.clientWidth;
       const outH = wrap.clientHeight;
 
-      // 1) 建立離屏 canvas
+      // 1) Create an offscreen canvas
       const out = document.createElement('canvas');
       out.width = outW;
       out.height = outH;
       const ctx = out.getContext('2d');
 
-      // 2) 底圖：直接抓 OSD 畫布（與螢幕所見一致）
+      // 2) Base image: directly get the OSD canvas (matches what is seen on screen)
       const baseCanvas =
         viewer?.drawer?.canvas || viewer?.canvas || wrap.querySelector('canvas');
       if (baseCanvas) {
@@ -185,12 +184,12 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
       // 3) 疊 BBOX（只畫「目前勾選的 cell types」）
       try {
-        const selected = getSelectedTypes();                       // 目前可見的類別
+        const selected = getSelectedTypes();                       // visible types
         const vp = viewer.viewport;
         const data = Array.isArray(window.bboxData) ? window.bboxData : [];
 
         data.forEach(d => {
-          if (!selected.has(d.type)) return;                       // 不在可見集合就跳過
+          if (!selected.has(d.type)) return;                       // non-visible type skip
 
           // d.coords = [x1, y1, x2, y2]，單位：影像座標
           const x1 = d.coords[0], y1 = d.coords[1];

@@ -176,10 +176,15 @@ def detect_image(request):
 
         # --- 3) YOLO pipeline (lazy load model) ---
         _set_progress_stage(project_name, 'yolo')                # Enter 3) yolo stage
-        model = get_yolo_model()
-        patches_dir = os.path.join(project_dir, 'patches')
-        pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
-        detections = pipeline.run()
+        try:
+            model = get_yolo_model()
+            patches_dir = os.path.join(project_dir, 'patches')
+            pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
+            detections = pipeline.run()
+        except Exception:
+            logger.exception("YOLO inference failed")
+            _set_progress_stage(project_name, 'error')      # Failure → mark as error
+            return HttpResponseServerError("detect failed during yolo")
         # Get display image size and URL ---
         disp_name = os.listdir(display_dir)[0]
         disp_path = os.path.join(display_dir, disp_name)
@@ -209,7 +214,11 @@ def detect_image(request):
 
     except Exception:
         logger.exception("detect_image failed")
-        return HttpResponseServerError("detect failed; see server logs")
+        try:
+            if 'project_name' in locals():
+                _set_progress_stage(project_name, 'error')  # make sure to mark error if possible
+        finally:
+            return HttpResponseServerError("detect failed; see server logs")
 
 @csrf_exempt
 def reset_media(request):

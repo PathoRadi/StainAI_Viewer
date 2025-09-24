@@ -98,108 +98,152 @@ class YOLOPipeline:
         x2 = (x + w * 0.5) + off_x
         y2 = (y + h * 0.5) + off_y
         return np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
+    
+    def _list_patch_files(self):
+        """回傳 patches_dir 內實際存在的影像檔（依檔名排序）"""
+        import glob
+        exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff')
+        files = []
+        for e in exts:
+            files.extend(glob.glob(os.path.join(self.patches_dir, e)))
+        # 依檔名自然排序（可避免 patch_100_0 在 patch_2_0 前面的問題）
+        try:
+            from natsort import natsorted
+            files = natsorted(files)
+        except Exception:
+            files.sort()
+        return files
 
+    def _load_np(self, path):
+        """讀檔成 RGB np.uint8（Ultralytics 可以直接吃 list[np.ndarray]）"""
+        with Image.open(path) as im:
+            if im.mode != 'RGB':
+                im = im.convert('RGB')
+            return np.asarray(im)  # (H,W,3) uint8
+        
     def process_patches(
         self,
-        max_batch: int = 2,         # Initial batch size; GPU recommend 8, CPU recommend 2
-        min_batch: int = 1,         # Minimum batch size (won't go lower)
+        max_batch: int = 8,      # GPU 建議 8；CPU 可用 2
+        min_batch: int = 1,
         workers: int = 4,
         device=None,
         half: bool = True,
     ):
         """
-        Run all patches with automatic batch size reduction and streaming inference,
-        and apply the same bounding box filtering rules.
-        Returns:
-            (all_bbox: ndarray[M,4], all_labels: ndarray[M])
+        以「實際存在的 patch 檔案 → numpy 陣列」做批次推論；
+        任何缺檔/單張讀取錯誤都會被跳過，不會讓整批失敗。
+        回傳: (all_bbox: ndarray[M,4], all_labels: ndarray[M])
         """
         import gc
-        from natsort import natsorted
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
         use_half = bool(half and (dev != 'cpu'))
-
-        # 1) Collect paths and offsets (keep original order)
-        fns     = natsorted(os.listdir(self.patches_dir))
-        paths   = [os.path.join(self.patches_dir, fn) for fn in fns]
-        offsets = np.array([self._parse_offset_from_name(fn) for fn in fns], dtype=np.int32)  # (N,2)=(y,x)
-
-        all_boxes, all_labels = [], []
-
-        i = 0
-        N = len(paths)
-
-        # For CPU, set initial batch size smaller
         if dev == 'cpu':
             max_batch = min(max_batch, 2)
 
+        files = self._list_patch_files()
+        if not files:
+            # 沒有任何 patch → 回空結果
+            return np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
+
+        # 解析每個檔名的位移 (off_y, off_x)；遇到不符合命名規則者直接跳過
+        valid = []
+        offsets = []
+        for fp in files:
+            fn = os.path.basename(fp)
+            try:
+                off_y, off_x = self._parse_offset_from_name(fn)  # "patch_{y}_{x}.png" → (y,x)
+                valid.append(fp)
+                offsets.append((off_y, off_x))
+            except Exception:
+                continue
+
+        files   = valid
+        offsets = np.asarray(offsets, dtype=np.int32)
+        N = len(files)
+        if N == 0:
+            return np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
+
+        all_boxes, all_labels = [], []
+        i = 0
         while i < N:
             bs = min(max_batch, N - i)
             tried_oom = False
-
             while True:
-                batch_paths   = paths[i:i + bs]
-                batch_offsets = offsets[i:i + bs]  # (bs, 2)
+                batch_files   = files[i:i+bs]
+                batch_offsets = offsets[i:i+bs]
+
+                # 1) 讀取成 numpy 陣列；任何讀檔失敗直接跳過，不放進這個 batch
+                arrs, offs = [], []
+                for fp, (oy, ox) in zip(batch_files, batch_offsets):
+                    try:
+                        if not os.path.exists(fp):
+                            continue
+                        arrs.append(self._load_np(fp))
+                        offs.append((int(oy), int(ox)))
+                    except Exception:
+                        continue
+
+                if not arrs:
+                    # 這一批通通讀不到，就當作處理成功往前推進
+                    i += bs
+                    break
 
                 try:
-                    with torch.no_grad():
-                        # Streaming inference: yield Results one by one to avoid memory overload
-                        result_iter = self.model(
-                            batch_paths,
-                            imgsz=640,
-                            device=dev,
-                            half=False,
-                            conf=0.25,
-                            iou=0.45,
-                            stream=True,         # Key
-                            verbose=False,
-                        )
+                    # 2) 推論（直接吃 list[np.ndarray]）
+                    preds = self.model.predict(
+                        source=arrs,
+                        imgsz=640,
+                        device=dev,
+                        half=False,          # predict 會自己處理 dtype；也可依需要設 True
+                        conf=0.25,
+                        iou=0.45,
+                        stream=False,
+                        verbose=False
+                    )
 
-                        # 3) Post-process as inference proceeds; don't store all results at once
-                        def _post_one(res, off_y, off_x):
-                            # Convert to numpy (on CPU)
-                            if res.boxes.xywh.numel():
-                                xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
-                            else:
-                                xywh = np.zeros((0, 4), np.float32)
-                            if res.boxes.cls.numel():
-                                cls = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
-                            else:
-                                cls = np.zeros((0,), np.int16)
+                    # 3) 後處理：把每張的框從 patch 座標轉回全圖座標，並套用你的濾波規則
+                    #    平行處理只跑 CPU/Numpy，不會佔顯存
+                    def _post_one(res, off_y, off_x):
+                        if res.boxes.xywh.numel():
+                            xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
+                        else:
+                            xywh = np.zeros((0, 4), np.float32)
+                        if res.boxes.cls.numel():
+                            cls = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
+                        else:
+                            cls = np.zeros((0,), np.int16)
 
-                            xyxy_full = self._xywh_to_xyxy_full(xywh, off_y, off_x)
+                        xyxy_full = self._xywh_to_xyxy_full(xywh, off_y, off_x)
 
-                            pl, pt = off_x, off_y
-                            pr, pb = pl + 640, pt + 640
-                            det = [(off_y // 320) % 2, (off_x // 320) % 2]
+                        pl, pt = off_x, off_y
+                        pr, pb = pl + 640, pt + 640
+                        det = [(off_y // 320) % 2, (off_x // 320) % 2]
 
-                            if det == [0, 0]:
-                                return BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
-                            elif det == [0, 1]:
-                                return BoundingBoxFilter.keep_cline(xyxy_full, cls, pl, pt, pr, pb)
-                            elif det == [1, 0]:
-                                return BoundingBoxFilter.keep_rline(xyxy_full, cls, pl, pt, pr, pb)
-                            else:
-                                return BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
+                        if det == [0, 0]:
+                            return BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
+                        elif det == [0, 1]:
+                            return BoundingBoxFilter.keep_cline(xyxy_full, cls, pl, pt, pr, pb)
+                        elif det == [1, 0]:
+                            return BoundingBoxFilter.keep_rline(xyxy_full, cls, pl, pt, pr, pb)
+                        else:
+                            return BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
 
-                        # Parallel post-processing (CPU/Numpy only, safe)
-                        with ThreadPoolExecutor(max_workers=workers) as ex:
-                            futs = []
-                            for j, res in enumerate(result_iter):
-                                off_y, off_x = batch_offsets[j]
-                                futs.append(ex.submit(_post_one, res, int(off_y), int(off_x)))
-                                # Immediately release GPU memory references in res
-                                del res
-                            for fut in as_completed(futs):
-                                bb, lb = fut.result()
-                                if len(bb):
-                                    all_boxes.append(bb)
-                                    all_labels.append(lb)
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+                    with ThreadPoolExecutor(max_workers=workers) as ex:
+                        futs = []
+                        for res, (oy, ox) in zip(preds, offs):
+                            futs.append(ex.submit(_post_one, res, oy, ox))
+                            # 釋放 GPU 參考
+                            del res
+                        for fut in as_completed(futs):
+                            bb, lb = fut.result()
+                            if len(bb):
+                                all_boxes.append(bb)
+                                all_labels.append(lb)
 
-                    # Successfully processed this batch
+                    # 這一批成功
                     i += bs
-                    # Cleanup
                     if torch.cuda.is_available() and dev != 'cpu':
                         torch.cuda.empty_cache()
                     gc.collect()
@@ -208,20 +252,17 @@ class YOLOPipeline:
                 except RuntimeError as e:
                     msg = str(e).lower()
                     if ('out of memory' in msg or 'cuda oom' in msg or 'cublas' in msg) and bs > min_batch:
-                        # Halve batch size and retry
                         bs = max(min_batch, bs // 2)
                         if torch.cuda.is_available() and dev != 'cpu':
                             torch.cuda.empty_cache()
                         gc.collect()
                         tried_oom = True
                         continue
-                    # Not OOM or already at min batch and still failed → raise
                     raise
                 finally:
                     if torch.cuda.is_available() and dev != 'cpu':
                         torch.cuda.empty_cache()
 
-            # If OOM just happened, keep smaller batch size for next loop to avoid oscillation
             if tried_oom:
                 max_batch = bs
 

@@ -115,87 +115,88 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   const resetBtn         = document.getElementById('upload-new-img-btn');
   window.chartRefs = [];
 
-function showProgressOverlay1() {
-  document.getElementById('progress-overlay1').classList.add('active');
-  dropZone.classList.add('blur');
-}
-function hideProgressOverlay1() {
-  document.getElementById('progress-overlay1').classList.remove('active');
-  dropZone.classList.remove('blur');
-}
+  const mainEl = document.querySelector('.main-container');
+  const showMain = () => { if (!mainEl) return; mainEl.hidden = false; };
+  const hideMain = () => { if (!mainEl) return; mainEl.hidden = true; };
+  window.showMain = showMain;
+  window.hideMain = hideMain;
 
-// 追蹤偵測進度 → 移動火箭（四段：gray→cut→yolo→done）
-let _progressTimer = null;
+  function showProgressOverlay1() {
+    document.getElementById('progress-overlay1').classList.add('active');
+    dropZone.classList.add('blur');
+  }
+  function hideProgressOverlay1() {
+    document.getElementById('progress-overlay1').classList.remove('active');
+    dropZone.classList.remove('blur');
+  }
 
-function startStageWatcher(projectName) {
-  const overlay = document.getElementById('progress-overlay');
-  const rocket  = document.getElementById('stage-rocket');
-  const nodes   = overlay.querySelectorAll('.stage-node');
+  // 追蹤偵測進度 → 移動火箭（四段：gray→cut→yolo→done）
+  let _progressTimer = null;
 
-  const stagePos = {
-    idle: '0%',
-    gray: '0%',
-    cut:  '33.333%',
-    yolo: '66.667%',
-    done: '100%',
-    error:'100%'
-  };
-  const stageIdx = { idle:1, gray:1, cut:2, yolo:3, done:4, error:4 };
+  function startStageWatcher(projectName) {
+    const overlay = document.getElementById('progress-overlay');
+    const rocket  = document.getElementById('stage-rocket');
+    const nodes   = overlay.querySelectorAll('.stage-node');
 
-  const gotoStage = (stage) => {
-    const pos = stagePos[stage] ?? '0%';
-    const idx = stageIdx[stage] ?? 1;
+    const stagePos = {
+      idle: '0%',
+      gray: '0%',
+      cut:  '33.333%',
+      yolo: '66.667%',
+      done: '100%',
+      error:'100%'
+    };
+    const stageIdx = { idle:1, gray:1, cut:2, yolo:3, done:4, error:4 };
 
-    // 節點亮起（<= 目前站）
-    nodes.forEach((el, i) => el.classList.toggle('active', i < idx));
+    const gotoStage = (stage) => {
+      const pos = stagePos[stage] ?? '0%';
+      const idx = stageIdx[stage] ?? 1;
 
-    // pace：後段給久一點比較合理
-    let ms = 800;
-    if (stage === 'gray') ms = 650;
-    else if (stage === 'cut') ms = 800;
-    else if (stage === 'yolo') ms = 1000;
-    else if (stage === 'done') ms = 650;
+      // 節點亮起（<= 目前站）
+      nodes.forEach((el, i) => el.classList.toggle('active', i < idx));
 
-    rocket.style.setProperty('--travel-ms', `${ms}ms`);
-    rocket.style.left = pos;
-    rocket.classList.remove('bump'); void rocket.offsetWidth; rocket.classList.add('bump');
-  };
+      // pace：後段給久一點比較合理
+      let ms = 800;
+      if (stage === 'gray') ms = 650;
+      else if (stage === 'cut') ms = 800;
+      else if (stage === 'yolo') ms = 1000;
+      else if (stage === 'done') ms = 650;
 
-  // 原本是 'gray'，改成 'idle'，避免一開始就重複 bump 一次
-  gotoStage('idle');
+      rocket.style.setProperty('--travel-ms', `${ms}ms`);
+      rocket.style.left = pos;
+      rocket.classList.remove('bump'); void rocket.offsetWidth; rocket.classList.add('bump');
+    };
 
-  clearInterval(_progressTimer);
-  _progressTimer = setInterval(() => {
-    fetch(`${PROGRESS_URL}?project=${encodeURIComponent(projectName)}`)
-      .then(r => r.json())
-      .then(({ stage }) => {
-        gotoStage(stage);
-        if (stage === 'done' || stage === 'error') {
-          stopStageWatcher(); // overlay 會在外面 finally 關閉
+    // 原本是 'gray'，改成 'idle'，避免一開始就重複 bump 一次
+    gotoStage('idle');
 
-          setTimeout(() => {
-            hideProgressOverlay();              // 關掉 overlay
-            document.querySelector('.main-container').hidden = false; // 顯示結果區
-          }, 10000);
-        }
-      })
-      .catch(() => {});
-  }, 350);
-}
-function stopStageWatcher() {
-  clearInterval(_progressTimer);
-  _progressTimer = null;
-}
+    clearInterval(_progressTimer);
+    _progressTimer = setInterval(() => {
+      fetch(`${PROGRESS_URL}?project=${encodeURIComponent(projectName)}`)
+        .then(r => r.json())
+        .then(({ stage }) => {
+          gotoStage(stage);
+          if (stage === 'done' || stage === 'error') {
+            stopStageWatcher(); // overlay 會在外面 finally 關閉
+          }
+        })
+        .catch(() => {});
+    }, 350);
+  }
+  function stopStageWatcher() {
+    clearInterval(_progressTimer);
+    _progressTimer = null;
+  }
 
 
-function showProgressOverlay() {
-  document.getElementById('progress-overlay').classList.add('active');
-  dropZone.classList.add('blur');
-}
-function hideProgressOverlay() {
-  document.getElementById('progress-overlay').classList.remove('active');
-  dropZone.classList.remove('blur');
-}
+  function showProgressOverlay() {
+    document.getElementById('progress-overlay').classList.add('active');
+    dropZone.classList.add('blur');
+  }
+  function hideProgressOverlay() {
+    document.getElementById('progress-overlay').classList.remove('active');
+    dropZone.classList.remove('blur');
+  }
 
 
 
@@ -252,7 +253,7 @@ function hideProgressOverlay() {
     if (histIdx !== -1) {
       const item = historyStack[histIdx];
       document.getElementById('drop-zone').style.display       = 'none';
-      document.querySelector('.main-container').hidden         = false;
+      showMain(); 
       window.viewer.open({ type: 'image', url: item.displayUrl, buildPyramid: false });
       window.viewer.addOnceHandler('open', () => {
         const vp = window.viewer.viewport;
@@ -270,6 +271,7 @@ function hideProgressOverlay() {
       return;
     }
 
+
     // Otherwise, send image to backend for detection
     window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });
     showProgressOverlay();
@@ -284,7 +286,10 @@ function hideProgressOverlay() {
       },
       body: JSON.stringify({ image_path: window.imgPath })
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP' + r.status);
+      return r.json();
+    })
     .then(d => {
       const boxes         = d.boxes;
       const [origW,origH] = d.orig_size;
@@ -305,7 +310,7 @@ function hideProgressOverlay() {
 
       dropZone.style.display                          = 'none';
       hideProgressOverlay();
-      document.querySelector('.main-container').hidden = false;
+      showMain();
 
       clearBoxes();
       drawBbox(window.bboxData);
@@ -368,7 +373,15 @@ function hideProgressOverlay() {
           });
       }
     })
-    .catch(err => console.error('Detection error:', err))
+    .catch(err => {
+      console.error('Detection error:', err);
+      stopStageWatcher();
+      hideProgressOverlay();
+      alert("⚠️ Detection failed. Please try again or upload another image.");
+      hideMain();
+      document.getElementById('drop-zone').style.display = 'flex';
+      document.getElementById('start-detect-btn').disabled = false;
+    })
   });
 
 
