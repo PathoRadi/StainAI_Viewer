@@ -1,13 +1,12 @@
 /* static/css/leftContainer.css */
-
 .left-container {
     display: flex;
     flex-direction: column;
-    position:absolute;
+    position:fixed;
     top: 0;
     left: 0;
     width: 200px;
-    height: 911px;
+    height: 100vh;
     background: var(--bg-left);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
@@ -17,11 +16,8 @@
 .left-container-header {
     display: flex;
     flex-direction: column;
-    position:absolute;
-    top: 0;
-    left: 0;
-    width: 200px;
-    height: 711px;
+    flex: 1 1 auto;
+    overflow: auto;
     background: var(--bg-left);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
@@ -31,17 +27,15 @@
 .left-container-bottom {
     display: flex;
     flex-direction: column;
-    position:absolute;
-    top: 711px;
-    left: 0;
-    width: 200px;
-    height: 200px;
     background: var(--bg-left-bottom);
+    margin-top: auto;
+    padding-bottom: 0;
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
 }
+
 
 
 
@@ -62,6 +56,8 @@
 
 
 
+
+
 /* -----Upload Image & Start Detection Button----- */
 #upload-new-img-btn {
     display: flex;
@@ -78,6 +74,10 @@
     font-weight: 500;
     font-size: 15px;
 }
+
+
+
+
 
 /* ReadMe Page */
 .readme-btn {
@@ -100,7 +100,7 @@
     top: 0; left: 0;
     width: 100vw;
     height: 100vh;
-    background-color: rgba(0,0,0,0.6);
+    background-color: rgba(0,0,0,0.35);
     backdrop-filter: blur(8px); 
     display: flex;
     flex-direction: column;
@@ -179,6 +179,14 @@
     color: black;
     border: 1px solid #444;
 }
+#readme-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+
+
 
 
 /* -----Dark/Light Mode Toggle----- */
@@ -250,43 +258,4 @@
 }
 .theme-switch input:checked + .slider .icon-sun {
     opacity: 0;
-}
-
-
-
-
-
-
-/* 左欄固定貼左 */
-.left-container {
-  position: fixed;   /* ← 取代原 absolute */
-  top: 0;
-  left: 0;
-  width: 200px;
-  height: 100vh;
-  background: var(--bg-left);
-}
-
-
-
-
-
-
-
-
-
-/* 背景變暗 + 模糊：你已經有 .readme-overlay，可加入 backdrop-filter */
-.readme-overlay {
-  background-color: rgba(0,0,0,0.35);
-  backdrop-filter: blur(8px);          /* Chrome/Safari 支援；Firefox 需開啟 flag */
-}
-
-/* 中央白色框：拿掉內邊距讓 PDF 充滿，並給固定視窗比例 */
-
-
-/* 內嵌 PDF 的 iframe 全滿 */
-#readme-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
 }
