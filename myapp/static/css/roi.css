@@ -1,15 +1,15 @@
 /* static/css/roi.css */
 
 .roi-container {
-    display: flex;
-    flex-direction: column;
-    width: 130px;
-    height: 211px;
-    max-height: 211px;
-    overflow-y: auto;
-    margin: 15px 0px 15px 30px;
-    background: var(--bg-roi-container);
-    border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  width: 130px;
+  height: 211px;
+  max-height: 211px;
+  overflow-y: auto;
+  margin: 15px 0px 15px 30px;
+  background: var(--bg-roi-container);
+  border-radius: 15px;
 }
 .roi-item {
   display: flex;
@@ -83,6 +83,11 @@
 .roi-action-menu button:hover {
   background: var(--bg-roi-action-menu-hover);
 }
+
+
+
+
+
 /* --- Scrollbar --- */
 /* Firefox */
 .roi-container {
@@ -93,7 +98,6 @@
   scrollbar-gutter: stable;        /* Keep scrollbar space stable to prevent layout shift when scrollbar appears/disappears */
   --sbw: 10px;                     /* Scrollbar width, should match the webkit setting */
 }
-
 /* Chrome / Edge / Safari */
 .roi-container::-webkit-scrollbar {
   width: 10px;
