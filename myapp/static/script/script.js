@@ -207,11 +207,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           // 半透明填色（與畫面一致）
           ctx.fillStyle = BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)';
           ctx.fillRect(px, py, pw, ph);
-
-          // 若需要描邊，打開以下幾行（顏色可自訂對應 d.type）
-          // ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-          // ctx.lineWidth = 1;
-          // ctx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
         });
       } catch (e) {
         console.warn('BBox draw skipped:', e);

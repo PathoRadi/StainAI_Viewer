@@ -96,30 +96,25 @@
     <div class="stage-timeline" id="stage-timeline">
       <div class="stage-track"></div>
       <div class="stage-node" data-stage="1">
-        <div class="stage-badge">1</div>
-        <div class="stage-name">Grayscale</div>
+        <div class="stage-name">0%</div>
       </div>
       <div class="stage-node" data-stage="2">
-        <div class="stage-badge">2</div>
-        <div class="stage-name">Cut Patch</div>
+        <div class="stage-name">25%</div>
       </div>
       <div class="stage-node" data-stage="3">
-        <div class="stage-badge">3</div>
-        <div class="stage-name">YOLO</div>
+        <div class="stage-name">50%</div>
       </div>
       <div class="stage-node" data-stage="4">
-        <div class="stage-badge">4</div>
-        <div class="stage-name">Finish</div>
+        <div class="stage-name">75%</div>
       </div>
-      <img class="stage-rocket" id="stage-rocket" src="{% static 'logo/animation.png' %}" alt="">
+      <div class="stage-node" data-stage="5">
+        <div class="stage-name">100%</div>
+      </div>
+      <img class="stage-icon" id="stage-icon" src="{% static 'logo/animation.png' %}" alt="">
     </div>
   </div>
   <div id="progress-overlay1">
     <div class="progress-text">Loading...</div>
-    <div class="progress">
-      <div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></div>
-      <img class="progress-icon" src="{% static 'logo/animation.png' %}">
-    </div>
   </div>
 
   <!-- ───── MAIN PART ───── -->
@@ -264,6 +259,8 @@
         </div>
         <!-- Bar Chart -->
         <div id="barChart-wrappers">
+        </div>
+        <div id="barChart-wrappers1">
         </div>
       </div>
     </div>

@@ -6,8 +6,9 @@ import { csrftoken } from './cookie.js';
 window.chartRefs = [];
 
 // Add a new bar chart to the DOM and initialize it
-export function addBarChart() {
-  const wrappers = document.getElementById('barChart-wrappers');
+export function addBarChart(barChartWrappers) {
+  // const wrappers = document.getElementById('barChart-wrappers');
+  const wrappers = document.getElementById(barChartWrappers);
 
   // Get an unused idx (avoid collision in concurrent situations)
   let idx = wrappers.querySelectorAll('.barChart-wrapper').length + 1;
@@ -20,21 +21,40 @@ export function addBarChart() {
   wrapper.classList.add('barChart-wrapper');
 
   // Move the delete button below screenshot-dropdown, reuse take-screenshot-btn style
-  wrapper.innerHTML = `
-    <div class="roi-container" id="roi-container${idx}"></div>
-    <canvas class="barChart" id="barChart${idx}"
-            width="400" height="200"
-            style="margin-top:16px;"></canvas>
-    <div style="position: absolute; top: 1px; right: 8px;">
-      <div class="screenshot-menu-wrapper">
-        <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
-        <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
-          ${idx > 1 ? `<button class="take-screenshot-btn close-chart-btn" id="close-chart-btn${idx}">Close Bar Chart</button>` : ''}
-          <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+  if (idx === 1) {
+    // First barChart-wrapper: only barChart
+    wrapper.innerHTML = `
+      <canvas class="barChart" id="barChart${idx}"
+              width="400" height="200"
+              style="margin-top:16px;"></canvas>
+      <span class="chart-label">Full Image Result</span>
+      <div style="position: absolute; top: 1px; right: 8px;">
+        <div class="screenshot-menu-wrapper">
+          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
+    `;
+  } else {
+    // Second or third barChart-wrapper: add ROI list and Close button
+    wrapper.innerHTML = `
+      <div class="roi-container" id="roi-container${idx}"></div>
+      <canvas class="barChart" id="barChart${idx}"
+              width="400" height="200"
+              style="margin-top:16px;"></canvas>
+      <div style="position: absolute; top: 1px; right: 8px;">
+        <div class="screenshot-menu-wrapper">
+          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+            <button class="take-screenshot-btn close-chart-btn" id="close-chart-btn${idx}">Close Bar Chart</button>
+            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   wrappers.appendChild(wrapper);
   if (typeof window.renderROIList === 'function') window.renderROIList();
@@ -55,7 +75,14 @@ export function addBarChart() {
   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
     .prop('checked', true);
   showAllBoxes();
-  updateChart(window.bboxData, chart);
+  if (idx === 1) {
+    // First chart shows full image data
+    updateChart(window.bboxData, chart);
+  } else {
+    // Other charts start empty
+    chart.data.datasets[0].data = [0,0,0,0,0,0];
+    chart.update();
+  }
 
   // Bind Close Bar Chart (only exists when idx > 1)
   if (idx > 1) {
@@ -81,7 +108,7 @@ export function addBarChart() {
         if (i > -1) window.chartRefs.splice(i, 1);
 
         // If less than 3 charts, re-enable +CHART button
-        if (window.chartRefs.length < 3) {
+        if (window.chartRefs.length < 4) {
           const addBtn = document.getElementById('addChartBtn');
           if (addBtn) addBtn.disabled = false;
         }
@@ -130,23 +157,25 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     dropZone.classList.remove('blur');
   }
 
-  // 追蹤偵測進度 → 移動火箭（四段：gray→cut→yolo→done）
+  // trace the progress → 5 stages
   let _progressTimer = null;
 
   function startStageWatcher(projectName) {
     const overlay = document.getElementById('progress-overlay');
-    const rocket  = document.getElementById('stage-rocket');
+    const icon  = document.getElementById('stage-icon');
     const nodes   = overlay.querySelectorAll('.stage-node');
+    const track   = overlay.querySelector('.stage-track');
 
     const stagePos = {
       idle: '0%',
       gray: '0%',
-      cut:  '33.333%',
-      yolo: '66.667%',
+      cut:  '25%',
+      yolo: '50%',
+      proc: '75%',
       done: '100%',
       error:'100%'
     };
-    const stageIdx = { idle:1, gray:1, cut:2, yolo:3, done:4, error:4 };
+    const stageIdx = { idle:1, gray:1, cut:2, yolo:3, proc:4, done:5, error:5 };
 
     const gotoStage = (stage) => {
       const pos = stagePos[stage] ?? '0%';
@@ -155,16 +184,20 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       // 節點亮起（<= 目前站）
       nodes.forEach((el, i) => el.classList.toggle('active', i < idx));
 
+      // Blue track
+      if (track) track.style.setProperty('--progress-pct', pos);
+
       // pace：後段給久一點比較合理
       let ms = 800;
       if (stage === 'gray') ms = 650;
       else if (stage === 'cut') ms = 800;
       else if (stage === 'yolo') ms = 1000;
+      else if (stage === 'proc') ms = 850;
       else if (stage === 'done') ms = 650;
 
-      rocket.style.setProperty('--travel-ms', `${ms}ms`);
-      rocket.style.left = pos;
-      rocket.classList.remove('bump'); void rocket.offsetWidth; rocket.classList.add('bump');
+      icon.style.setProperty('--travel-ms', `${ms}ms`);
+      icon.style.left = pos;
+      icon.classList.remove('bump'); void icon.offsetWidth; icon.classList.add('bump');
     };
 
     // 原本是 'gray'，改成 'idle'，避免一開始就重複 bump 一次
@@ -265,7 +298,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         const wrappers = document.getElementById('barChart-wrappers');
         wrappers.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
 
-        const c1 = addBarChart();
+        const c1 = addBarChart('barChart-wrappers');
         window.chartRefs.push(c1);
       });
       return;
@@ -329,13 +362,18 @@ export function initProcess(bboxData, historyStack, barChartRef) {
                   // re-create the chart on existing canvas
                   const newChart = createBarChart(canvas.id);
                   initCheckboxes(window.bboxData, newChart);
-                  updateChart(window.bboxData, newChart);
-                  const idx = [...wrappers.children].indexOf(w);
+                  const idx = parseInt(canvas.id.replace('barChart',''), 10);
+                  if (idx === 1) {
+                    updateChart(window.bboxData, newChart);
+                  } else {
+                    newChart.data.datasets[0].data = [0,0,0,0,0,0];
+                    newChart.update();
+                  }
                   window.chartRefs[idx] = newChart;
               }
           });
       } else {
-          const c1 = addBarChart();
+          const c1 = addBarChart('barChart-wrappers');
           window.chartRefs.push(c1);
       }
 
@@ -395,16 +433,16 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     const wrappers = document.getElementById('barChart-wrappers');
     const count    = wrappers.querySelectorAll('.barChart-wrapper').length;
 
-    if (count >= 3) {
+    if (count >= 4) {
       return; // Already at limit, keep disabled
     }
 
-    const newChart = addBarChart();
+    const newChart = addBarChart('barChart-wrappers1');
     window.chartRefs.push(newChart);
 
     // Only unlock button if less than 3 charts
     const newCount = wrappers.querySelectorAll('.barChart-wrapper').length;
-    if (newCount < 3) {
+    if (newCount < 4) {
       addBtn.disabled = false;
     }
   });

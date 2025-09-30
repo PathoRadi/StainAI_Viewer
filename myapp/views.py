@@ -164,18 +164,18 @@ def detect_image(request):
         shutil.copy(src, display_dir)
 
         # --- 1) Convert to grayscale (PIL version) ---
-        _set_progress_stage(project_name, 'gray')                # Enter 1) gray stage
+        _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
         GrayScaleImage(orig_path, project_dir).rgb_to_gray()
 
         # --- 2) Cut patch (PIL version) ---
-        _set_progress_stage(project_name, 'cut')                 # Enter 2) cut stage
+        _set_progress_stage(project_name, 'cut')                  # Enter 2) cut stage
         gray_dir = os.path.join(project_dir, 'gray')
         gray_name = os.listdir(gray_dir)[0]
         gray_path = os.path.join(gray_dir, gray_name)
         CutImage(gray_path, project_dir).cut()
 
-        # --- 3) YOLO pipeline (lazy load model) ---
-        _set_progress_stage(project_name, 'yolo')                # Enter 3) yolo stage
+        # --- 3) YOLO pipeline ---
+        _set_progress_stage(project_name, 'yolo')                 # Enter 3) yolo stage
         try:
             model = get_yolo_model()
             patches_dir = os.path.join(project_dir, 'patches')
@@ -183,8 +183,11 @@ def detect_image(request):
             detections = pipeline.run()
         except Exception:
             logger.exception("YOLO inference failed")
-            _set_progress_stage(project_name, 'error')      # Failure → mark as error
+            _set_progress_stage(project_name, 'error')            # Failure → mark as error
             return HttpResponseServerError("detect failed during yolo")
+        
+        # --- 4) Processing Result ---
+        _set_progress_stage(project_name, 'proc')                 # Enter 4) yolo stage
         # Get display image size and URL ---
         disp_name = os.listdir(display_dir)[0]
         disp_path = os.path.join(display_dir, disp_name)
@@ -198,12 +201,13 @@ def detect_image(request):
             original_mmap_inputs.append(annotated_jpg)
         combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
 
-        # --- 4) Clean up temp folders (ignore if not exist) ---
+        # Clean up temp folders (ignore if not exist) ---
         for folder in ('fm_images', 'patches'):
             p = os.path.join(project_dir, folder)
             shutil.rmtree(p, ignore_errors=True)
 
-        _set_progress_stage(project_name, 'done')               # Enter 4) done stage
+        # --- 5) Finished ---
+        _set_progress_stage(project_name, 'done')               # Enter 5) done stage
 
         return JsonResponse({
             'boxes': detections,

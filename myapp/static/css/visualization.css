@@ -366,12 +366,22 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none; 
 }
+#barChart-wrappers {
+    height: 270px;
+    width: 655px;
+}
+#barChart-wrappers1 {
+    max-height: 783px;          
+    overflow-y: auto;
+    padding-right: 5px;         
+    scroll-behavior: smooth;    
+}
 .barChart-wrapper {
     display: flex;                  
     flex-direction: row;
     position: relative;
-    width: 645px;
-    height: 241px;
+    width: 625px;
+    height: 240px;
     margin: 15px 15px 15px 15px;
     border: var(--border-barchart-wrapper);
     border-radius: 15px;
@@ -385,6 +395,38 @@
     height: 200px !important;
     margin: 20px 15px 15px 15px;
 }
+.chart-label {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 40px 0 0 15px;
+    color: var(--chart-tick-color);
+    font-family: 'PingFangHKWeb', sans-serif;
+    white-space: nowrap;           
+}
+.barChart-wrapper .barChart {
+    display: block;
+    width: 100%;
+    height: 200px;
+}
+/* Chrome / Edge / Safari */
+#barChart-wrappers1::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+#barChart-wrappers1::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 2px solid var(--scrollbar-track);
+}
+#barChart-wrappers1::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+/* Firefox */
+#barChart-wrappers1 {
+    scrollbar-width: thin;                       /* thin / auto / none */
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
 
 /* Transparent click shield used to close menus without interacting with canvas */
 .menu-click-shield {

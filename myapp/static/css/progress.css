@@ -1,6 +1,6 @@
 /* static/css/progress.css */
 
-/* ----- Progress Overlays (hidden by default) ----- */
+/* ----- Progress Overlays ----- */
 #progress-overlay,
 #progress-overlay1 {
   display: none;            
@@ -20,12 +20,6 @@
 #progress-overlay1[style*="display: block"] {
   display: flex !important;
 }
-#progress-overlay .progress,
-#progress-overlay1 .progress {
-  width: 50%;
-  max-width: 400px;
-}
-
 @keyframes neonGlow {
   0% {
     color: rgb(200, 200, 200);
@@ -54,118 +48,9 @@
 }
 
 
-/* 自由落體 + 多次減幅彈跳；icon 不會低於進度條 */
-.progress-icon {
-  --icon-size: 60px;    /* 球大小，可調 */
-  --gap: 6px;           /* 球與進度條上緣的最小間隙，避免視覺穿透 */
-  --right-offset: 8px;  /* 球距離進度條最右端的內縮 */
-
-  position: absolute;
-  left: calc(100% - var(--right-offset));
-  bottom: calc(100% + var(--gap));  /* 地面 = 進度條上緣 */
-  width: var(--icon-size);
-  height: var(--icon-size);
-  transform: translate(-50%, 0);
-  object-fit: contain;
-  pointer-events: none;
-
-  animation: bounce-freefall 1.6s infinite;
-}
-
-@keyframes bounce-freefall {
-  0%   { transform: translate(-50%, -220%); animation-timing-function: cubic-bezier(.15,.65,.35,1); }
-  38%  { transform: translate(-50%, 0);     animation-timing-function: cubic-bezier(.2,.6,.3,1); }
-  55%  { transform: translate(-50%, -120%); animation-timing-function: cubic-bezier(.15,.65,.35,1); }
-  70%  { transform: translate(-50%, 0);     animation-timing-function: cubic-bezier(.2,.6,.3,1); }
-  80%  { transform: translate(-50%, -60%);  animation-timing-function: cubic-bezier(.15,.65,.35,1); }
-  88%  { transform: translate(-50%, 0);     animation-timing-function: cubic-bezier(.2,.6,.3,1); }
-  94%  { transform: translate(-50%, -30%);  animation-timing-function: cubic-bezier(.15,.65,.35,1); }
-  100% { transform: translate(-50%, 0); }
-}
-
-/* 使用者偏好減少動態：停用動畫（無障礙友善） */
-@media (prefers-reduced-motion: reduce) {
-  .progress-icon { animation: none; }
-}
-
-#progress-overlay .progress,
-#progress-overlay1 .progress {
-  position: relative;   /* 關鍵：讓絕對定位以此為基準 */
-  overflow: visible;    /* 關鍵：球在條上方時不被裁掉 */
-}
 
 
 
-/* ===== 三段式時間軸（只在 #progress-overlay） ===== */
-#progress-overlay .stage-timeline {
-  --track-h: 10px;
-  --node-size: 30px;
-  --rocket-size: 56px;
-  --travel-ms: 850ms; /* 基本節奏，JS 會依階段覆寫 */
-  position: relative;
-  width: min(620px, 88vw);
-  padding: 28px 8px 10px;
-}
-
-#progress-overlay .stage-track {
-  position: relative;
-  height: var(--track-h);
-  background: linear-gradient(180deg, #dadde3, #b9bec7);
-  border-radius: 999px;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.15);
-}
-
-/* 三個節點固定在 0% / 50% / 100% */
-#progress-overlay .stage-node {
-  position: absolute;
-  top: calc(var(--track-h) / -2 + 1px);
-  transform: translate(-50%, -50%);
-  text-align: center;
-  color: #e6e9ef;
-  font-weight: 700;
-  font-size: 12px;
-}
-#progress-overlay .stage-node[data-stage="1"] { left: 0%;  }
-#progress-overlay .stage-node[data-stage="2"] { left: 50%; }
-#progress-overlay .stage-node[data-stage="3"] { left: 100%;}
-
-#progress-overlay .stage-badge {
-  width: var(--node-size);
-  height: var(--node-size);
-  line-height: var(--node-size);
-  border-radius: 999px;
-  background: #3b3f47;
-  border: 3px solid #c9ced6;
-  display: inline-block;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
-}
-#progress-overlay .stage-name { margin-top: 10px; font-weight: 600; opacity: .9; }
-
-#progress-overlay .stage-node.active .stage-badge {
-  background: #5b8cff;
-  border-color: #fff;
-}
-
-/* 火箭：left 由 JS 設成 0% / 50% / 100%；加小彈跳 */
-#progress-overlay .stage-rocket {
-  position: absolute;
-  top: calc(var(--track-h) / 2);
-  left: 0%;
-  transform: translate(-50%, -50%);
-  width: var(--rocket-size);
-  height: var(--rocket-size);
-  object-fit: contain;
-  filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
-  transition:
-    left var(--travel-ms) cubic-bezier(.22,.61,.36,1),
-    transform 240ms ease;
-}
-#progress-overlay .stage-rocket.bump { animation: arrive-bounce .55s ease-out; }
-@keyframes arrive-bounce {
-  0%   { transform: translate(-50%, -52%) scale(1.00) }
-  40%  { transform: translate(-50%, -58%) scale(1.04) }
-  100% { transform: translate(-50%, -50%) scale(1.00) }
-}
 
 
 
@@ -177,7 +62,7 @@
   --travel-ms: 850ms;
   position: relative;
   width: min(720px, 90vw);
-  padding: 28px 8px 10px;
+  padding: 28px 8px 30px;
 }
 #progress-overlay .stage-track {
   position: relative;
@@ -186,8 +71,15 @@
   border-radius: 999px;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.15);
 }
+#progress-overlay .stage-track::before {
+  content: "";
+  position: absolute; inset: 0;
+  width: var(--progress-pct, 0%);             /* 由 JS 寫入 0/25/50/75/100% */
+  background: linear-gradient(180deg, #7aa2ff, #3b6bff);
+  border-radius: 999px;
+  transition: width var(--travel-ms) cubic-bezier(.22,.61,.36,1);
+}
 
-/* 四個節點固定在 0% / 33.333% / 66.667% / 100% */
 #progress-overlay .stage-node {
   position: absolute;
   top: calc(var(--track-h) / -2 + 1px);
@@ -197,26 +89,29 @@
   font-weight: 700;
   font-size: 12px;
 }
-#progress-overlay .stage-node[data-stage="1"] { left: 0%;      }
-#progress-overlay .stage-node[data-stage="2"] { left: 33.333%; }
-#progress-overlay .stage-node[data-stage="3"] { left: 66.667%; }
-#progress-overlay .stage-node[data-stage="4"] { left: 100%;    }
+#progress-overlay .stage-node[data-stage="1"] { left: 0%;   }
+#progress-overlay .stage-node[data-stage="2"] { left: 25%;  }
+#progress-overlay .stage-node[data-stage="3"] { left: 50%;  }
+#progress-overlay .stage-node[data-stage="4"] { left: 75%;  }
+#progress-overlay .stage-node[data-stage="5"] { left: 100%; }
 
-#progress-overlay .stage-badge {
-  width: var(--node-size);
-  height: var(--node-size);
-  line-height: var(--node-size);
-  border-radius: 999px;
-  background: #3b3f47;
-  border: 3px solid #c9ced6;
-  display: inline-block;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+#progress-overlay .stage-name {
+  position: absolute;
+  top: calc(var(--node-size) / 2 + 30px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-weight: 600;
+  font-size: 20px;
+  opacity: .9;
+  white-space: nowrap;
 }
-#progress-overlay .stage-name { margin-top: 10px; font-weight: 600; opacity: .9; }
-#progress-overlay .stage-node.active .stage-badge { background: #5b8cff; border-color: #fff; }
+#progress-overlay .stage-node.active .stage-badge {
+  background: #5b8cff;
+  border-color: #fff;
+}
 
-/* 火箭沿軌道移動；left 由 JS 設為 0/33.333/66.667/100% */
-#progress-overlay .stage-rocket {
+
+#progress-overlay .stage-icon {
   position: absolute;
   top: calc(var(--track-h) / 2);
   left: 0%;
@@ -227,14 +122,12 @@
   filter: drop-shadow(0 6px 16px rgba(0,0,0,.35));
   transition: left var(--travel-ms) cubic-bezier(.22,.61,.36,1), transform 240ms ease;
 }
-#progress-overlay .stage-rocket.bump { animation: arrive-bounce .55s ease-out; }
+#progress-overlay .stage-icon.bump { animation: arrive-bounce .55s ease-out; }
 @keyframes arrive-bounce {
   0%   { transform: translate(-50%, -52%) scale(1.00) }
   40%  { transform: translate(-50%, -58%) scale(1.04) }
   100% { transform: translate(-50%, -50%) scale(1.00) }
 }
-
-
 .screenshotting *, .screenshotting *::before, .screenshotting *::after {
   animation: none !important;
   transition: none !important;

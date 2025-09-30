@@ -62,7 +62,8 @@ function updatePanelChart($panel, chart) {
       borderWidth: 0
     }];
     
-    updateChartAll(window.bboxData, chart);
+    // updateChartAll(window.bboxData, chart);
+    chart.update();
     return;
   }
 
