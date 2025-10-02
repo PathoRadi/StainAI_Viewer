@@ -310,10 +310,10 @@
     z-index: 1000;
     overflow: hidden;
 }
-#screenshot-dropdown0 {
+#screenshot-dropdown1 {
     height: 30px;
 }
-#screenshot-dropdown1 {
+#screenshot-dropdown2 {
     height: 30px;
 }
 .take-screenshot-btn {
@@ -398,7 +398,7 @@
 .chart-label {
     font-size: 20px;
     font-weight: 500;
-    margin: 40px 0 0 15px;
+    margin: 25px 0 0 10px;
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
     white-space: nowrap;           

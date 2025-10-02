@@ -7,7 +7,6 @@ window.chartRefs = [];
 
 // Add a new bar chart to the DOM and initialize it
 export function addBarChart(barChartWrappers) {
-  // const wrappers = document.getElementById('barChart-wrappers');
   const wrappers = document.getElementById(barChartWrappers);
 
   // Get an unused idx (avoid collision in concurrent situations)
@@ -27,7 +26,7 @@ export function addBarChart(barChartWrappers) {
       <canvas class="barChart" id="barChart${idx}"
               width="400" height="200"
               style="margin-top:16px;"></canvas>
-      <span class="chart-label">Full Image Result</span>
+      <span class="chart-label">Full Image</span>
       <div style="position: absolute; top: 1px; right: 8px;">
         <div class="screenshot-menu-wrapper">
           <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
@@ -37,8 +36,25 @@ export function addBarChart(barChartWrappers) {
         </div>
       </div>
     `;
-  } else {
-    // Second or third barChart-wrapper: add ROI list and Close button
+  } else if(idx === 2) {
+    // second barChart-wrapper: add ROI list
+    wrapper.innerHTML = `
+      <div class="roi-container" id="roi-container${idx}"></div>
+      <canvas class="barChart" id="barChart${idx}"
+              width="400" height="200"
+              style="margin-top:16px;"></canvas>
+      <div style="position: absolute; top: 1px; right: 8px;">
+        <div class="screenshot-menu-wrapper">
+          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  else {
+    // third and forth barChart-wrapper: add ROI list and Close button
     wrapper.innerHTML = `
       <div class="roi-container" id="roi-container${idx}"></div>
       <canvas class="barChart" id="barChart${idx}"
@@ -300,6 +316,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
         const c1 = addBarChart('barChart-wrappers');
         window.chartRefs.push(c1);
+        const c2 = addBarChart('barChart-wrappers1');
+        window.chartRefs.push(c2);
       });
       return;
     }
@@ -351,30 +369,35 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const wrappers = document.getElementById('barChart-wrappers');
       
       // If charts exist, destroy and recreate them with new data
+      const allWrappers = document.querySelectorAll('.barChart-wrapper');
       if (window.chartRefs.length > 0) {
-          window.chartRefs.forEach(chart => {
-              chart.destroy(); // clear current chart instance
-          });
-          wrappers.querySelectorAll('.barChart-wrapper').forEach(w => {
-              const canvas = w.querySelector('canvas.barChart');
-              if (canvas) {
-                  const ctx = canvas.getContext('2d');
-                  // re-create the chart on existing canvas
-                  const newChart = createBarChart(canvas.id);
-                  initCheckboxes(window.bboxData, newChart);
-                  const idx = parseInt(canvas.id.replace('barChart',''), 10);
-                  if (idx === 1) {
-                    updateChart(window.bboxData, newChart);
-                  } else {
-                    newChart.data.datasets[0].data = [0,0,0,0,0,0];
-                    newChart.update();
-                  }
-                  window.chartRefs[idx] = newChart;
-              }
-          });
-      } else {
-          const c1 = addBarChart('barChart-wrappers');
-          window.chartRefs.push(c1);
+        window.chartRefs.forEach(c => c?.destroy?.());
+        window.chartRefs = [];
+        allWrappers.forEach(w => {
+          const canvas = w.querySelector('canvas.barChart');
+          if (!canvas) return;
+          const newChart = createBarChart(canvas.id);
+          initCheckboxes(window.bboxData, newChart);
+          const idx = parseInt(canvas.id.replace('barChart',''), 10);
+          if (idx === 1) {
+            updateChart(window.bboxData, newChart);     // #1 塞滿全圖
+          } else {
+            newChart.data.datasets[0].data = [0,0,0,0,0,0]; // 其他預設空白
+            newChart.update();
+          }
+          window.chartRefs.push(newChart);
+        });
+      }
+      // 若現有總數少於 2，補齊到 2（#1 在 wrappers、#2 在 wrappers1）
+      const totalNow = document.querySelectorAll('.barChart-wrapper').length;
+      if (totalNow === 0) {
+       const c1 = addBarChart('barChart-wrappers');
+        window.chartRefs.push(c1);
+        const c2 = addBarChart('barChart-wrappers1');
+        window.chartRefs.push(c2);
+      } else if (totalNow === 1) {
+        const c2 = addBarChart('barChart-wrappers1');
+        window.chartRefs.push(c2);
       }
 
       window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
@@ -402,13 +425,18 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
       // Update all charts with new data and reset filters
       if (Array.isArray(window.chartRefs)) {
-          window.chartRefs.forEach(chart => {
-              $('#checkbox_All').prop('checked', true);
-              $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-                .prop('checked', true);
-              showAllBoxes();
-              updateChart(window.bboxData, chart);
-          });
+        $('#checkbox_All').prop('checked', true);
+        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
+        showAllBoxes();
+        window.chartRefs.forEach(chart => {
+          const isChart1 = chart?.canvas?.id === 'barChart1';
+          if (isChart1) {
+            updateChart(window.bboxData, chart);             // #1: 全圖結果
+          } else {
+            chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: 初始空白
+            chart.update();
+          }
+        });
       }
     })
     .catch(err => {
@@ -430,8 +458,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (addBtn.disabled) return;          // Prevent re-entry
     addBtn.disabled = true;               // Lock button immediately to prevent double click
 
-    const wrappers = document.getElementById('barChart-wrappers');
-    const count    = wrappers.querySelectorAll('.barChart-wrapper').length;
+    const count = document.querySelectorAll('.barChart-wrapper').length;
 
     if (count >= 4) {
       return; // Already at limit, keep disabled
@@ -441,7 +468,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     window.chartRefs.push(newChart);
 
     // Only unlock button if less than 3 charts
-    const newCount = wrappers.querySelectorAll('.barChart-wrapper').length;
+    const newCount = document.querySelectorAll('.barChart-wrapper').length;
     if (newCount < 4) {
       addBtn.disabled = false;
     }
