@@ -4,6 +4,7 @@ import re
 import torch
 import numpy as np
 import nibabel as nib
+import math
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .bounding_box_filter import BoundingBoxFilter
@@ -434,6 +435,119 @@ class YOLOPipeline:
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
+    # def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=50):
+    #     """
+    #     Generate a Qmap from the input image and detection JSON file.
+    #     Slices order in output: [MAS, R, H, B, A, RD, HR, FM_avg]
+    #     """
+
+    #     # === Class to Slice Mapping (6 classes only) ===
+    #     class_to_idx = {"R": 0, "H": 1, "B": 2, "A": 3, "RD": 4, "HR": 5}
+    #     num_classes = len(class_to_idx)
+
+    #     # === Step 1: Get image dimensions ===
+    #     img = Image.open(input_image_path)
+    #     width, height = img.size
+
+    #     # ---- Auto-adjust downsample (avoid memory pressure for huge images) ----
+    #     # Target: longest side ~1800 pixels for Qmap grid
+    #     import math
+    #     target_side = 1800
+    #     dyn = max(1, math.ceil(max(width, height) / target_side))
+    #     downsample_factor = max(downsample_factor, dyn)
+
+    #     # Safe ceil division, ensure at least 1
+    #     ds_w = max(1, math.ceil(width  / downsample_factor))
+    #     ds_h = max(1, math.ceil(height / downsample_factor))
+
+    #     # === Step 2: Initialize Qmap & FM storage ===
+    #     # uint16 as count limit 65535, will be clipped to 8-bit for output
+    #     qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
+    #     fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
+    #     fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
+
+    #     # === Step 3: Load detection JSON ===
+    #     with open(json_file_path, "r") as f:
+    #         detections = json.load(f)
+
+    #     # Helper: robustly parse center
+    #     def parse_center(v):
+    #         # Supports [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
+    #         if isinstance(v, (list, tuple)) and len(v) >= 2:
+    #             return int(v[0]), int(v[1])
+    #         if isinstance(v, str):
+    #             s = v.strip().replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+    #             s = s.replace(",", " ")
+    #             parts = [p for p in s.split() if p]
+    #             if len(parts) >= 2:
+    #                 return int(float(parts[0])), int(float(parts[1]))
+    #         raise ValueError(f"Unrecognized center format: {v!r}")
+
+    #     # === Step 4: Fill Qmap & FM data ===
+    #     for cell in detections:
+    #         try:
+    #             class_label = cell.get("class")
+    #             if class_label not in class_to_idx:
+    #                 continue
+
+    #             cx, cy = parse_center(cell.get("center"))
+    #             x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
+    #             if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
+    #                 si = class_to_idx[class_label]
+    #                 # Avoid uint16 overflow
+    #                 if qmap[si, y_ds, x_ds] < 65535:
+    #                     qmap[si, y_ds, x_ds] += 1
+
+    #                 fm = float(cell.get("FM", 0.0) or 0.0)
+    #                 fm_map[y_ds, x_ds] += fm
+    #                 if fm_count[y_ds, x_ds] < 65535:
+    #                     fm_count[y_ds, x_ds] += 1
+
+    #         except Exception as e:
+    #             print(f"Error processing cell {cell}: {e}")
+
+    #     # === Step 5: Compute MAS map ===
+    #     # Weights as per your setting
+    #     weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
+    #     qmap_float = qmap.astype(np.float32)
+
+    #     numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
+    #     denominator = np.sum(qmap_float, axis=0)                     # (H,W)
+    #     # Avoid division by 0
+    #     safe_den = np.where(denominator > 0, denominator, 1.0)
+    #     mas_map = numerator / safe_den
+
+    #     # Normalize to 0~255 (if all zero, just give 0)
+    #     mas_max = float(mas_map.max()) if mas_map.size else 0.0
+    #     if mas_max > 0:
+    #         mas_map = (mas_map / mas_max) * 255.0
+    #     else:
+    #         mas_map = np.zeros_like(mas_map, dtype=np.float32)
+    #     mas_map = np.clip(mas_map, 0, 255).astype(np.uint8)
+
+    #     # === Step 6: Compute FM average map ===
+    #     fm_avg = np.zeros_like(fm_map, dtype=np.float32)
+    #     m = fm_count > 0
+    #     fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
+    #     fm_max = float(fm_avg.max()) if fm_avg.size else 0.0
+    #     if fm_max > 0:
+    #         fm_avg = (fm_avg / fm_max) * 255.0
+    #     fm_avg = np.clip(fm_avg, 0, 255).astype(np.uint8)
+
+    #     # === Step 7: Prepare final Qmap ===
+    #     qmap_u8 = np.clip(qmap, 0, 255).astype(np.uint8)  # counts to 8-bit
+    #     final_qmap = np.concatenate(
+    #         [mas_map[None, :, :], qmap_u8, fm_avg[None, :, :]],
+    #         axis=0
+    #     )  # (8, H, W)
+
+    #     # === Step 8: Save as .nii ===
+    #     final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, C)
+    #     final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
+    #     final_qmap = np.flip(final_qmap, axis=0)
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     output_path = os.path.join(output_dir, "qmap.nii")
+    #     nib.save(nib.Nifti1Image(final_qmap, affine=np.eye(4)), output_path)
     def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
         """
         Generate a Qmap from the input image and detection JSON file.
@@ -506,44 +620,42 @@ class YOLOPipeline:
                 print(f"Error processing cell {cell}: {e}")
 
         # === Step 5: Compute MAS map ===
-        # Weights as per your setting
         weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
         qmap_float = qmap.astype(np.float32)
 
         numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
-        denominator = np.sum(qmap_float, axis=0)                     # (H,W)
-        # Avoid division by 0
-        safe_den = np.where(denominator > 0, denominator, 1.0)
-        mas_map = numerator / safe_den
+        denominator = np.sum(qmap_float, axis=0)                    # (H,W)
 
-        # Normalize to 0~255 (if all zero, just give 0)
-        mas_max = float(mas_map.max()) if mas_map.size else 0.0
-        if mas_max > 0:
-            mas_map = (mas_map / mas_max) * 255.0
-        else:
-            mas_map = np.zeros_like(mas_map, dtype=np.float32)
-        mas_map = np.clip(mas_map, 0, 255).astype(np.uint8)
+        # 避免除零：沒有細胞時給 0
+        mas_map = np.zeros_like(denominator, dtype=np.float32)
+        valid = denominator > 0
+        mas_map[valid] = numerator[valid] / denominator[valid]  # 值域 0~1 浮點
+        # 不再 normalize，不轉 uint8，維持 float32
 
         # === Step 6: Compute FM average map ===
         fm_avg = np.zeros_like(fm_map, dtype=np.float32)
         m = fm_count > 0
         fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
-        fm_max = float(fm_avg.max()) if fm_avg.size else 0.0
-        if fm_max > 0:
-            fm_avg = (fm_avg / fm_max) * 255.0
-        fm_avg = np.clip(fm_avg, 0, 255).astype(np.uint8)
 
-        # === Step 7: Prepare final Qmap ===
-        qmap_u8 = np.clip(qmap, 0, 255).astype(np.uint8)  # counts to 8-bit
+        # === Step 7: Prepare final Qmap (all float32) ===
+        # 把 6 類 count 轉成 float32
+        qmap_f32 = qmap.astype(np.float32)   # (6, H, W)
+
+        # 合併成 8 個 slice: [MAS, R, H, B, A, RD, HR, FM_avg]
         final_qmap = np.concatenate(
-            [mas_map[None, :, :], qmap_u8, fm_avg[None, :, :]],
+            [mas_map[None, :, :], qmap_f32, fm_avg[None, :, :]],
             axis=0
-        )  # (8, H, W)
+        )  # shape = (8, H, W), dtype=float32
 
-        # === Step 8: Save as .nii ===
-        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, C)
+        # === Step 8: Save as .nii (float32) ===
+        # Rearrange to (H, W, C) for NIfTI
+        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, 8)
         final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
         final_qmap = np.flip(final_qmap, axis=0)
+
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "qmap.nii")
-        nib.save(nib.Nifti1Image(final_qmap, affine=np.eye(4)), output_path)
+        output_path = os.path.join(output_dir, "qmap_float32.nii")
+
+        img = nib.Nifti1Image(final_qmap.astype(np.float32), affine=np.eye(4))
+        img.header.set_data_dtype(np.float32)  # 確保 dtype 為 float32
+        nib.save(img, output_path)

@@ -181,13 +181,13 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const pos = stagePos[stage] ?? '0%';
       const idx = stageIdx[stage] ?? 1;
 
-      // 節點亮起（<= 目前站）
+      // Highlight nodes
       nodes.forEach((el, i) => el.classList.toggle('active', i < idx));
 
       // Blue track
       if (track) track.style.setProperty('--progress-pct', pos);
 
-      // pace：後段給久一點比較合理
+      // pace
       let ms = 800;
       if (stage === 'gray') ms = 650;
       else if (stage === 'cut') ms = 800;
