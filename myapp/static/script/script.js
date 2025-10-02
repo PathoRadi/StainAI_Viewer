@@ -296,16 +296,41 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         $dd.hide();
         $('.menu-click-shield').remove();
 
-        // 0 組（圖片 + boxes + ROI）
+        // 0 組（圖片 + boxes + ROI）→ 保持原先的合成輸出
         if (toBeTaken === 'displayedImage-wrapper') {
-          await exportCompositePNG();      // ← 走合成輸出
+          await exportCompositePNG();
           return;
         }
 
-        // 1/2/3 組（Bar Chart）：照舊 html2canvas
+        // 1/2/3/4 組（Bar Chart）→ 快速路徑：如果是 <canvas> 直接 toBlob，不走 html2canvas
         const target = document.getElementById(toBeTaken);
         if (!target) return;
 
+        if (target instanceof HTMLCanvasElement) {
+          // 確保畫面已是最新（通常 Chart.js 會即時繪好，這裡僅保險起見）
+          try { target.getContext('2d')?.save(); } catch(_) {}
+
+          if (target.toBlob) {
+            target.toBlob(blob => {
+              if (!blob) return;
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.download = 'barchart.png';
+              a.href = url;
+              a.click();
+              URL.revokeObjectURL(url);
+            }, 'image/png');
+          } else {
+            // 極少數環境沒有 toBlob：退回 dataURL
+            const a = document.createElement('a');
+            a.download = 'barchart.png';
+            a.href = target.toDataURL('image/png');
+            a.click();
+          }
+          return; // ✅ 直接結束（不再進入 html2canvas）
+        }
+
+        // 其餘元素（非 canvas）才用 html2canvas（保留你原本的縮放上限邏輯）
         const MAX_MP = 4e6;
         const w = target.clientWidth, h = target.clientHeight;
         const dpr = window.devicePixelRatio || 1;
@@ -361,9 +386,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 
     // Initialize screenshot functionality
-    // window.takeScreenshot('#take-screenshot-btn0', '#screenshot-menu-btn0', 
-    //   '#screenshot-dropdown0', 'displayedImage-wrapper'
-    // );
     [0,1,2,3].forEach(i => {
       window.takeScreenshot(
         `#take-screenshot-btn${i}`,
