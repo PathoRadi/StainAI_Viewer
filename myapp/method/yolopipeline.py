@@ -2,9 +2,9 @@ import os
 import json
 import re
 import torch
+import gc
 import numpy as np
 import nibabel as nib
-import math
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from .bounding_box_filter import BoundingBoxFilter
@@ -101,13 +101,13 @@ class YOLOPipeline:
         return np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
     
     def _list_patch_files(self):
-        """回傳 patches_dir 內實際存在的影像檔（依檔名排序）"""
+        """Return actual image files present in patches_dir (sorted by filename)"""
         import glob
         exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff')
         files = []
         for e in exts:
             files.extend(glob.glob(os.path.join(self.patches_dir, e)))
-        # 依檔名自然排序（可避免 patch_100_0 在 patch_2_0 前面的問題）
+        # Sort filenames naturally (prevents patch_100_0 appearing before patch_2_0)
         try:
             from natsort import natsorted
             files = natsorted(files)
@@ -116,7 +116,7 @@ class YOLOPipeline:
         return files
 
     def _load_np(self, path):
-        """讀檔成 RGB np.uint8（Ultralytics 可以直接吃 list[np.ndarray]）"""
+        """Load image file as RGB np.uint8 (Ultralytics can directly accept list[np.ndarray])"""
         with Image.open(path) as im:
             if im.mode != 'RGB':
                 im = im.convert('RGB')
@@ -124,18 +124,17 @@ class YOLOPipeline:
         
     def process_patches(
         self,
-        max_batch: int = 8,      # GPU 建議 8；CPU 可用 2
+        max_batch: int = 8,      # suggestion: GPU 8; CPU 2
         min_batch: int = 1,
         workers: int = 4,
         device=None,
         half: bool = True,
     ):
         """
-        以「實際存在的 patch 檔案 → numpy 陣列」做批次推論；
-        任何缺檔/單張讀取錯誤都會被跳過，不會讓整批失敗。
-        回傳: (all_bbox: ndarray[M,4], all_labels: ndarray[M])
+        Perform batch inference on actual existing patch files converted to numpy arrays.
+        Any missing files or single-image read errors will be skipped and will not cause the whole batch to fail.
+        Returns: (all_bbox: ndarray[M,4], all_labels: ndarray[M])
         """
-        import gc
 
         dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
         use_half = bool(half and (dev != 'cpu'))
@@ -144,10 +143,10 @@ class YOLOPipeline:
 
         files = self._list_patch_files()
         if not files:
-            # 沒有任何 patch → 回空結果
+            # No patches found → return empty result
             return np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
 
-        # 解析每個檔名的位移 (off_y, off_x)；遇到不符合命名規則者直接跳過
+        # Parse offset (off_y, off_x) from each filename; skip files not matching naming convention
         valid = []
         offsets = []
         for fp in files:
@@ -174,7 +173,7 @@ class YOLOPipeline:
                 batch_files   = files[i:i+bs]
                 batch_offsets = offsets[i:i+bs]
 
-                # 1) 讀取成 numpy 陣列；任何讀檔失敗直接跳過，不放進這個 batch
+                # 1) Read as numpy arrays; skip any read errors, do not include in this batch
                 arrs, offs = [], []
                 for fp, (oy, ox) in zip(batch_files, batch_offsets):
                     try:
@@ -186,25 +185,25 @@ class YOLOPipeline:
                         continue
 
                 if not arrs:
-                    # 這一批通通讀不到，就當作處理成功往前推進
+                    # All files in this batch failed to read, treat as processed and move forward
                     i += bs
                     break
 
                 try:
-                    # 2) 推論（直接吃 list[np.ndarray]）
+                    # 2) Inference (directly accepts list[np.ndarray])
                     preds = self.model.predict(
                         source=arrs,
                         imgsz=640,
                         device=dev,
-                        half=False,          # predict 會自己處理 dtype；也可依需要設 True
+                        half=False,          # predict will handle dtype; set True if needed
                         conf=0.25,
                         iou=0.45,
                         stream=False,
                         verbose=False
                     )
 
-                    # 3) 後處理：把每張的框從 patch 座標轉回全圖座標，並套用你的濾波規則
-                    #    平行處理只跑 CPU/Numpy，不會佔顯存
+                    # 3) Post-processing: convert boxes from patch coordinates to full image coordinates, apply filtering rules
+                    #    Parallel processing only uses CPU/Numpy, does not use GPU memory
                     def _post_one(res, off_y, off_x):
                         if res.boxes.xywh.numel():
                             xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
@@ -235,7 +234,7 @@ class YOLOPipeline:
                         futs = []
                         for res, (oy, ox) in zip(preds, offs):
                             futs.append(ex.submit(_post_one, res, oy, ox))
-                            # 釋放 GPU 參考
+                            # Release GPU reference
                             del res
                         for fut in as_completed(futs):
                             bb, lb = fut.result()
@@ -243,7 +242,7 @@ class YOLOPipeline:
                                 all_boxes.append(bb)
                                 all_labels.append(lb)
 
-                    # 這一批成功
+                    # This batch succeeded
                     i += bs
                     if torch.cuda.is_available() and dev != 'cpu':
                         torch.cuda.empty_cache()
@@ -435,157 +434,45 @@ class YOLOPipeline:
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
-    # def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=50):
-    #     """
-    #     Generate a Qmap from the input image and detection JSON file.
-    #     Slices order in output: [MAS, R, H, B, A, RD, HR, FM_avg]
-    #     """
-
-    #     # === Class to Slice Mapping (6 classes only) ===
-    #     class_to_idx = {"R": 0, "H": 1, "B": 2, "A": 3, "RD": 4, "HR": 5}
-    #     num_classes = len(class_to_idx)
-
-    #     # === Step 1: Get image dimensions ===
-    #     img = Image.open(input_image_path)
-    #     width, height = img.size
-
-    #     # ---- Auto-adjust downsample (avoid memory pressure for huge images) ----
-    #     # Target: longest side ~1800 pixels for Qmap grid
-    #     import math
-    #     target_side = 1800
-    #     dyn = max(1, math.ceil(max(width, height) / target_side))
-    #     downsample_factor = max(downsample_factor, dyn)
-
-    #     # Safe ceil division, ensure at least 1
-    #     ds_w = max(1, math.ceil(width  / downsample_factor))
-    #     ds_h = max(1, math.ceil(height / downsample_factor))
-
-    #     # === Step 2: Initialize Qmap & FM storage ===
-    #     # uint16 as count limit 65535, will be clipped to 8-bit for output
-    #     qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
-    #     fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
-    #     fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
-
-    #     # === Step 3: Load detection JSON ===
-    #     with open(json_file_path, "r") as f:
-    #         detections = json.load(f)
-
-    #     # Helper: robustly parse center
-    #     def parse_center(v):
-    #         # Supports [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
-    #         if isinstance(v, (list, tuple)) and len(v) >= 2:
-    #             return int(v[0]), int(v[1])
-    #         if isinstance(v, str):
-    #             s = v.strip().replace("[", "").replace("]", "").replace("(", "").replace(")", "")
-    #             s = s.replace(",", " ")
-    #             parts = [p for p in s.split() if p]
-    #             if len(parts) >= 2:
-    #                 return int(float(parts[0])), int(float(parts[1]))
-    #         raise ValueError(f"Unrecognized center format: {v!r}")
-
-    #     # === Step 4: Fill Qmap & FM data ===
-    #     for cell in detections:
-    #         try:
-    #             class_label = cell.get("class")
-    #             if class_label not in class_to_idx:
-    #                 continue
-
-    #             cx, cy = parse_center(cell.get("center"))
-    #             x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
-    #             if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
-    #                 si = class_to_idx[class_label]
-    #                 # Avoid uint16 overflow
-    #                 if qmap[si, y_ds, x_ds] < 65535:
-    #                     qmap[si, y_ds, x_ds] += 1
-
-    #                 fm = float(cell.get("FM", 0.0) or 0.0)
-    #                 fm_map[y_ds, x_ds] += fm
-    #                 if fm_count[y_ds, x_ds] < 65535:
-    #                     fm_count[y_ds, x_ds] += 1
-
-    #         except Exception as e:
-    #             print(f"Error processing cell {cell}: {e}")
-
-    #     # === Step 5: Compute MAS map ===
-    #     # Weights as per your setting
-    #     weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
-    #     qmap_float = qmap.astype(np.float32)
-
-    #     numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
-    #     denominator = np.sum(qmap_float, axis=0)                     # (H,W)
-    #     # Avoid division by 0
-    #     safe_den = np.where(denominator > 0, denominator, 1.0)
-    #     mas_map = numerator / safe_den
-
-    #     # Normalize to 0~255 (if all zero, just give 0)
-    #     mas_max = float(mas_map.max()) if mas_map.size else 0.0
-    #     if mas_max > 0:
-    #         mas_map = (mas_map / mas_max) * 255.0
-    #     else:
-    #         mas_map = np.zeros_like(mas_map, dtype=np.float32)
-    #     mas_map = np.clip(mas_map, 0, 255).astype(np.uint8)
-
-    #     # === Step 6: Compute FM average map ===
-    #     fm_avg = np.zeros_like(fm_map, dtype=np.float32)
-    #     m = fm_count > 0
-    #     fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
-    #     fm_max = float(fm_avg.max()) if fm_avg.size else 0.0
-    #     if fm_max > 0:
-    #         fm_avg = (fm_avg / fm_max) * 255.0
-    #     fm_avg = np.clip(fm_avg, 0, 255).astype(np.uint8)
-
-    #     # === Step 7: Prepare final Qmap ===
-    #     qmap_u8 = np.clip(qmap, 0, 255).astype(np.uint8)  # counts to 8-bit
-    #     final_qmap = np.concatenate(
-    #         [mas_map[None, :, :], qmap_u8, fm_avg[None, :, :]],
-    #         axis=0
-    #     )  # (8, H, W)
-
-    #     # === Step 8: Save as .nii ===
-    #     final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, C)
-    #     final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
-    #     final_qmap = np.flip(final_qmap, axis=0)
-    #     os.makedirs(output_dir, exist_ok=True)
-    #     output_path = os.path.join(output_dir, "qmap.nii")
-    #     nib.save(nib.Nifti1Image(final_qmap, affine=np.eye(4)), output_path)
-    def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
+    def qmap(self, input_image_path, json_file_path, output_dir):
         """
-        Generate a Qmap from the input image and detection JSON file.
-        Slices order in output: [MAS, R, H, B, A, RD, HR, FM_avg]
+        Qmap with 9 slices:
+        [original image, MAS, R, H, B, A, RD, HR, FM]
         """
 
-        # === Class to Slice Mapping (6 classes only) ===
-        class_to_idx = {"R": 0, "H": 1, "B": 2, "A": 3, "RD": 4, "HR": 5}
-        num_classes = len(class_to_idx)
 
-        # === Step 1: Get image dimensions ===
-        img = Image.open(input_image_path)
-        width, height = img.size
+        # ---- read origial image：without normalize ----
+        try:
+            with Image.open(input_image_path) as im:
+                if im.mode in ("L", "I;16", "I", "F"):     # Single channel → directly take array
+                    orig_np = np.array(im)
+                else:                                      # RGB/RGBA → grayscale
+                    orig_np = np.array(im.convert("L"))
+        except Exception as e:
+            print(f"[qmap] fallback to self.gray_np because open({input_image_path}) failed: {e}")
+            orig_np = self.gray_np
 
-        # ---- Auto-adjust downsample (avoid memory pressure for huge images) ----
-        # Target: longest side ~1800 pixels for Qmap grid
-        import math
-        target_side = 1800
-        dyn = max(1, math.ceil(max(width, height) / target_side))
-        downsample_factor = max(downsample_factor, dyn)
+        # Get H, W
+        if orig_np.ndim == 3:
+            orig_np = orig_np[..., 0]
+        H, W = int(orig_np.shape[0]), int(orig_np.shape[1])
+        original = orig_np.astype(np.float32)  # only change to float32 type
 
-        # Safe ceil division, ensure at least 1
-        ds_w = max(1, math.ceil(width  / downsample_factor))
-        ds_h = max(1, math.ceil(height / downsample_factor))
+        # ---- preparing each slice ----
+        mas_map   = np.zeros((H, W), dtype=np.float32)
+        class_names = ["R", "H", "B", "A", "RD", "HR"]
+        class_to_idx = {name: i for i, name in enumerate(class_names)}   # R=0..HR=5
+        class_maps = np.zeros((len(class_names), H, W), dtype=np.float32)
+        fm_map    = np.zeros((H, W), dtype=np.float32)
 
-        # === Step 2: Initialize Qmap & FM storage ===
-        # uint16 as count limit 65535, will be clipped to 8-bit for output
-        qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
-        fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
-        fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
+        # MAS weights for each class
+        mas_weight = {"R": 0.0, "H": 0.33, "B": 0.66, "A": 1.0, "RD": 0.0, "HR": 0.66}
 
-        # === Step 3: Load detection JSON ===
+        # ---- read JSON ----
         with open(json_file_path, "r") as f:
             detections = json.load(f)
 
-        # Helper: robustly parse center
         def parse_center(v):
-            # Supports [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
             if isinstance(v, (list, tuple)) and len(v) >= 2:
                 return int(v[0]), int(v[1])
             if isinstance(v, str):
@@ -596,66 +483,51 @@ class YOLOPipeline:
                     return int(float(parts[0])), int(float(parts[1]))
             raise ValueError(f"Unrecognized center format: {v!r}")
 
-        # === Step 4: Fill Qmap & FM data ===
+        # ---- write center pixel data to each slice ----
         for cell in detections:
             try:
-                class_label = cell.get("class")
-                if class_label not in class_to_idx:
+                # Compatible with "class" / "type", and normalize to uppercase
+                cls_raw = cell.get("class", cell.get("type", None))
+                if cls_raw is None:
+                    continue
+                cls = str(cls_raw).strip().upper()
+                if cls not in class_to_idx:
                     continue
 
                 cx, cy = parse_center(cell.get("center"))
-                x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
-                if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
-                    si = class_to_idx[class_label]
-                    # Avoid uint16 overflow
-                    if qmap[si, y_ds, x_ds] < 65535:
-                        qmap[si, y_ds, x_ds] += 1
+                if not (0 <= cx < W and 0 <= cy < H):
+                    continue
 
-                    fm = float(cell.get("FM", 0.0) or 0.0)
-                    fm_map[y_ds, x_ds] += fm
-                    if fm_count[y_ds, x_ds] < 65535:
-                        fm_count[y_ds, x_ds] += 1
+                # Class map
+                ci = class_to_idx[cls]
+                class_maps[ci, cy, cx] = 1.0
+
+                # MAS（determined by class）
+                mas_val = float(mas_weight.get(cls, 0.0))
+                if mas_val > mas_map[cy, cx]:
+                    mas_map[cy, cx] = mas_val
+
+                # FM（determined by FM value）
+                fm_val = float(cell.get("FM", 0.0) or 0.0)
+                if fm_val > fm_map[cy, cx]:
+                    fm_map[cy, cx] = fm_val
 
             except Exception as e:
-                print(f"Error processing cell {cell}: {e}")
+                print(f"[qmap] Error processing cell {cell}: {e}")
 
-        # === Step 5: Compute MAS map ===
-        weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
-        qmap_float = qmap.astype(np.float32)
-
-        numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
-        denominator = np.sum(qmap_float, axis=0)                    # (H,W)
-
-        # 避免除零：沒有細胞時給 0
-        mas_map = np.zeros_like(denominator, dtype=np.float32)
-        valid = denominator > 0
-        mas_map[valid] = numerator[valid] / denominator[valid]  # 值域 0~1 浮點
-        # 不再 normalize，不轉 uint8，維持 float32
-
-        # === Step 6: Compute FM average map ===
-        fm_avg = np.zeros_like(fm_map, dtype=np.float32)
-        m = fm_count > 0
-        fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
-
-        # === Step 7: Prepare final Qmap (all float32) ===
-        # 把 6 類 count 轉成 float32
-        qmap_f32 = qmap.astype(np.float32)   # (6, H, W)
-
-        # 合併成 8 個 slice: [MAS, R, H, B, A, RD, HR, FM_avg]
+        # ---- combine to 9 slices ----
         final_qmap = np.concatenate(
-            [mas_map[None, :, :], qmap_f32, fm_avg[None, :, :]],
+            [original[None, :, :], mas_map[None, :, :], class_maps, fm_map[None, :, :]],
             axis=0
-        )  # shape = (8, H, W), dtype=float32
+        )  # (9, H, W)
 
-        # === Step 8: Save as .nii (float32) ===
-        # Rearrange to (H, W, C) for NIfTI
-        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, 8)
+        # ---- save as slices .nii file----
+        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, 9)
         final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
         final_qmap = np.flip(final_qmap, axis=0)
 
         os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "qmap_float32.nii")
-
+        out = os.path.join(output_dir, "qmap.nii")
         img = nib.Nifti1Image(final_qmap.astype(np.float32), affine=np.eye(4))
-        img.header.set_data_dtype(np.float32)  # 確保 dtype 為 float32
-        nib.save(img, output_path)
+        img.header.set_data_dtype(np.float32)
+        nib.save(img, out)
