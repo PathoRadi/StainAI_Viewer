@@ -216,7 +216,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       icon.classList.remove('bump'); void icon.offsetWidth; icon.classList.add('bump');
     };
 
-    // 原本是 'gray'，改成 'idle'，避免一開始就重複 bump 一次
+    // was 'gray' originally，changed to 'idle' to prevent bump repeatedly at the start
     gotoStage('idle');
 
     clearInterval(_progressTimer);
@@ -226,7 +226,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         .then(({ stage }) => {
           gotoStage(stage);
           if (stage === 'done' || stage === 'error') {
-            stopStageWatcher(); // overlay 會在外面 finally 關閉
+            stopStageWatcher(); // overlay will finally closed outside
           }
         })
         .catch(() => {});
@@ -380,15 +380,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           initCheckboxes(window.bboxData, newChart);
           const idx = parseInt(canvas.id.replace('barChart',''), 10);
           if (idx === 1) {
-            updateChart(window.bboxData, newChart);     // #1 塞滿全圖
+            updateChart(window.bboxData, newChart);     // full image results
           } else {
-            newChart.data.datasets[0].data = [0,0,0,0,0,0]; // 其他預設空白
+            newChart.data.datasets[0].data = [0,0,0,0,0,0]; // others: start empty
             newChart.update();
           }
           window.chartRefs.push(newChart);
         });
       }
-      // 若現有總數少於 2，補齊到 2（#1 在 wrappers、#2 在 wrappers1）
+      // If the current total is less than 2, add charts to make it 2 (#1 in wrappers, #2 in wrappers1)
       const totalNow = document.querySelectorAll('.barChart-wrapper').length;
       if (totalNow === 0) {
        const c1 = addBarChart('barChart-wrappers');
@@ -431,9 +431,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.chartRefs.forEach(chart => {
           const isChart1 = chart?.canvas?.id === 'barChart1';
           if (isChart1) {
-            updateChart(window.bboxData, chart);             // #1: 全圖結果
+            updateChart(window.bboxData, chart);             // #1: full image results
           } else {
-            chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: 初始空白
+            chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: start empty
             chart.update();
           }
         });

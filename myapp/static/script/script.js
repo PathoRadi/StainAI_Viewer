@@ -40,11 +40,11 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       colorPickerId:    'color-picker',
       layerManagerApi,
       onApplyFilters: () => {
-        // 1) redraw all boxes from your detection data
+        // 1) Redraw all boxes from your detection data
         drawBbox(window.bboxData);
-        // 2) make every box visible
+        // 2) Make every box visible
         showAllBoxes();
-        // 3) reset filter checkboxes to All
+        // 3) Reset filter checkboxes to All
         $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
@@ -69,7 +69,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     // Theme toggle
     const toggle = document.getElementById('theme-toggle');
     const modeText = document.getElementById('theme-mode-text');
-    // on load, restore:
+    // On load, restore:
     const saved = localStorage.getItem('theme');
     if (saved === 'light') {
       toggle.checked = true;
@@ -152,7 +152,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       RD: 'rgba(0,210,210,0.30)',
       HR: 'rgba(0,0,204,0.30)'
     };
-    // check what cell types are selected（determine what boxes should be drawed on the screenshot）
+    // Check what cell types are selected (determine what boxes should be drawn on the screenshot)
     function getSelectedTypes() {
       return new Set(
         $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
@@ -162,7 +162,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     }
     async function exportCompositePNG() {
       const viewer = window.viewer;        // OpenSeadragon
-      const stage  = window.konvaStage;    // Konva Stage（konvaManager.js needs window.konvaStage = stage）
+      const stage  = window.konvaStage;    // Konva Stage (konvaManager.js needs window.konvaStage = stage)
       const wrap   = document.getElementById('displayedImage-wrapper');
       if (!viewer || !wrap) return;
 
@@ -182,20 +182,20 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         ctx.drawImage(baseCanvas, 0, 0, outW, outH);
       }
 
-      // 3) 疊 BBOX（只畫「目前勾選的 cell types」）
+      // 3) Overlay BBOX (only draw currently selected cell types)
       try {
         const selected = getSelectedTypes();                       // visible types
         const vp = viewer.viewport;
         const data = Array.isArray(window.bboxData) ? window.bboxData : [];
 
         data.forEach(d => {
-          if (!selected.has(d.type)) return;                       // non-visible type skip
+          if (!selected.has(d.type)) return;                       // skip non-visible type
 
-          // d.coords = [x1, y1, x2, y2]，單位：影像座標
+          // d.coords = [x1, y1, x2, y2], unit: image coordinates
           const x1 = d.coords[0], y1 = d.coords[1];
           const x2 = d.coords[2], y2 = d.coords[3];
 
-          // 影像座標 → Viewer 元素像素（與畫面 1:1）
+          // Image coordinates → Viewer element pixels (1:1 with screen)
           const p1 = vp.imageToViewerElementCoordinates(new OpenSeadragon.Point(x1, y1));
           const p2 = vp.imageToViewerElementCoordinates(new OpenSeadragon.Point(x2, y2));
 
@@ -204,7 +204,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           const pw = Math.abs(p2.x - p1.x);
           const ph = Math.abs(p2.y - p1.y);
 
-          // 半透明填色（與畫面一致）
+          // Semi-transparent fill (same as screen)
           ctx.fillStyle = BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)';
           ctx.fillRect(px, py, pw, ph);
         });
@@ -212,10 +212,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         console.warn('BBox draw skipped:', e);
       }
 
-      // 4) 疊 Konva ROI（與畫面一致）
+      // 4) Overlay Konva ROI (same as screen)
       if (stage && typeof stage.toCanvas === 'function') {
         try {
-          stage.draw(); // 確保最新
+          stage.draw(); // Ensure latest
           const roiCanvas = await stage.toCanvas({ pixelRatio: 1 });
           if (roiCanvas) ctx.drawImage(roiCanvas, 0, 0, outW, outH);
         } catch (e) {
@@ -223,7 +223,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         }
       }
 
-      // 5) 下載（toBlob 較快且省記憶體）
+      // 5) Download (toBlob is faster and saves memory)
       out.toBlob(blob => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
@@ -296,18 +296,18 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         $dd.hide();
         $('.menu-click-shield').remove();
 
-        // 0 組（圖片 + boxes + ROI）→ 保持原先的合成輸出
+        // 0 group (image + boxes + ROI) → keep original composite output
         if (toBeTaken === 'displayedImage-wrapper') {
           await exportCompositePNG();
           return;
         }
 
-        // 1/2/3/4 組（Bar Chart）→ 快速路徑：如果是 <canvas> 直接 toBlob，不走 html2canvas
+        // 1/2/3/4 group (Bar Chart) → fast path: if <canvas> use toBlob directly, skip html2canvas
         const target = document.getElementById(toBeTaken);
         if (!target) return;
 
         if (target instanceof HTMLCanvasElement) {
-          // 確保畫面已是最新（通常 Chart.js 會即時繪好，這裡僅保險起見）
+          // Ensure the screen is up to date (Chart.js usually draws instantly, just in case)
           try { target.getContext('2d')?.save(); } catch(_) {}
 
           if (target.toBlob) {
@@ -321,16 +321,16 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
               URL.revokeObjectURL(url);
             }, 'image/png');
           } else {
-            // 極少數環境沒有 toBlob：退回 dataURL
+            // Rare environments without toBlob: fallback to dataURL
             const a = document.createElement('a');
             a.download = 'barchart.png';
             a.href = target.toDataURL('image/png');
             a.click();
           }
-          return; // ✅ 直接結束（不再進入 html2canvas）
+          return; // ✅ End here (do not enter html2canvas)
         }
 
-        // 其餘元素（非 canvas）才用 html2canvas（保留你原本的縮放上限邏輯）
+        // Other elements (not canvas) use html2canvas (keep your original scaling logic)
         const MAX_MP = 4e6;
         const w = target.clientWidth, h = target.clientHeight;
         const dpr = window.devicePixelRatio || 1;
@@ -391,47 +391,47 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         `#take-screenshot-btn${i}`,
         `#screenshot-menu-btn${i}`,
         `#screenshot-dropdown${i}`,
-        i === 0 ? 'displayedImage-wrapper' : `barChart${i}` // ← 若你的圖表容器 id 不同，改這裡
+        i === 0 ? 'displayedImage-wrapper' : `barChart${i}` // ← If your chart container id is different, change here
       );
     });
 
   });
 
-  // ReadMe Page（PDF 版：overlay 用 iframe 顯示，Pop-out 直接開 PDF）
+  // ReadMe Page (PDF version: overlay uses iframe to display, Pop-out opens PDF directly)
   document.addEventListener('DOMContentLoaded', () => {
     const readmeBtn     = document.querySelector('.readme-btn');
     const readmePage    = document.getElementById('readme-page');   // overlay
     const closeBtn      = document.getElementById('readme-close-btn');
     const popoutBtn     = document.getElementById('readme-popout-btn');
-    const readmeIframe  = document.getElementById('readme-iframe'); // 需要在 HTML 的 .readme-box 內放一個 <iframe id="readme-iframe">
+    const readmeIframe  = document.getElementById('readme-iframe'); // You need to put <iframe id="readme-iframe"> inside .readme-box in HTML
 
-    // 你的 README PDF 路徑（放在 static 下即可）
-    // 常用參數：
-    //  - #toolbar=1   ：顯示工具列
-    //  - #navpanes=0  ：關閉側邊縮圖/大綱
-    //  - #view=FitH   ：水平置寬
-    //  - #page=1      ：開啟的頁碼
+    // Your README PDF path (just put it under static)
+    // Common parameters:
+    //  - #toolbar=1   : show toolbar
+    //  - #navpanes=0  : hide side thumbnails/outlines
+    //  - #view=FitH   : fit width horizontally
+    //  - #page=1      : open at page 1
     const README_PDF_URL = '/static/logo/readme_page.pdf';
 
-    // 打開 overlay
+    // Open overlay
     if (readmeBtn && readmePage && closeBtn && readmeIframe) {
       readmeBtn.addEventListener('click', () => {
-        // 每次開啟才設定 src，避免預載佔資源
+        // Set src each time opened to avoid preloading and resource usage
         readmeIframe.src = README_PDF_URL;
         readmePage.removeAttribute('hidden');
-        // 鎖背景滾動（可選）
+        // Lock background scroll (optional)
         document.documentElement.style.overflow = 'hidden';
       });
 
-      // 關閉 overlay
+      // Close overlay
       closeBtn.addEventListener('click', () => {
         readmePage.setAttribute('hidden', true);
-        // 釋放 PDF（可選）
+        // Release PDF (optional)
         // readmeIframe.src = '';
         document.documentElement.style.overflow = '';
       });
 
-      // ESC 關閉（可選）
+      // ESC to close (optional)
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && !readmePage.hasAttribute('hidden')) {
           readmePage.setAttribute('hidden', true);
@@ -443,10 +443,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       console.warn('README overlay elements not found in DOM (btn/page/close/iframe)');
     }
 
-    // Pop-out：新視窗直接開 PDF（使用瀏覽器原生 PDF 檢視器）
+    // Pop-out: open PDF in new window (uses browser's native PDF viewer)
     if (popoutBtn) {
       popoutBtn.addEventListener('click', () => {
-        // 新視窗大小可依你需求調整
+        // New window size can be adjusted as needed
         const w = Math.min(screen.availWidth - 100, 1200);
         const h = Math.min(screen.availHeight - 100, 900);
         window.open(README_PDF_URL, '_blank', `width=${w},height=${h},resizable=yes,scrollbars=yes,noopener`);
