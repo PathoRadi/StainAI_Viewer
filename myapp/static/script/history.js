@@ -136,7 +136,7 @@ export function initHistoryHandlers(historyStack) {
 
   /* ========= History Action Menu (align: menu TL = item BR) ========= */
 
-  /** 把所有移到 <body> 的選單放回各自的 history-entry（避免取消後失效） */
+  /** Move all menus that were moved to <body> back to their original history-entry (prevents issues after cancel) */
   function restoreMenusToOrigin() {
     $('.history-action-menu').each(function () {
       const $m = $(this);
@@ -145,28 +145,28 @@ export function initHistoryHandlers(historyStack) {
     });
   }
 
-  /** 開啟：menu 左上角精準對齊到 item 右下角（可用 offset 微調圓角/陰影） */
+  /** Open: precisely align menu's top-left to item's bottom-right (use offset to adjust for border-radius/shadow) */
   $(document).off('click.histMenu').on('click.histMenu', '.history-menu-btn', function (e) {
     e.stopPropagation();
 
-    // 關其他、清舊遮罩
+    // Close other menus and remove old shields
     $('.history-action-menu').hide();
     $('.menu-click-shield').remove();
 
     const $entry = $(this).closest('.history-entry');
-    const $item  = $entry.find('.history-item');       // ★ 錨點 = 整個 item
+    const $item  = $entry.find('.history-item');       // ★ Anchor = entire item
     const $menu  = $entry.find('.history-action-menu');
 
-    // 記住來源，等等收合時放回
+    // Remember origin, so we can move it back when closing
     $menu.data('originEntry', $entry);
 
-    // 先移到 body，避免父層 stacking context 影響
+    // Move to body to avoid parent stacking context issues
     $menu.appendTo('body');
 
-    // 量測 item 的 viewport 座標
+    // Measure item's viewport coordinates
     const itemRect = $item[0].getBoundingClientRect();
 
-    // 先把 menu 以不可見的方式顯示起來，量測寬高（避免 display:none 量不到）
+    // Temporarily show menu invisibly to measure width/height (can't measure if display:none)
     $menu.css({
       position: 'fixed',
       left: 0,
@@ -179,50 +179,50 @@ export function initHistoryHandlers(historyStack) {
     const menuW = $menu.outerWidth();
     const menuH = $menu.outerHeight();
 
-    // 需求：menu 左上角 = item 右下角（可用偏移微調）
-    const offsetX = -10;  // 依你的截圖微退 10px，想要貼齊就改成 0
+    // Requirement: menu top-left = item bottom-right (adjust offset as needed)
+    const offsetX = -10;  // Move back 10px for your screenshot; set to 0 for flush alignment
     const offsetY = -10;
     let left = Math.round(itemRect.right + offsetX);
     let top  = Math.round(itemRect.bottom + offsetY);
 
-    // 視窗邊界保護
+    // Window boundary protection
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    if (left + menuW > vw) left = vw - menuW;   // 右邊溢出 → 向左回退
-    if (top  + menuH > vh) top  = vh - menuH;   // 下邊溢出 → 向上回退
+    if (left + menuW > vw) left = vw - menuW;   // Overflow right → move left
+    if (top  + menuH > vh) top  = vh - menuH;   // Overflow bottom → move up
     if (left < 0) left = 0;
     if (top  < 0) top  = 0;
 
-    // 定位並顯示（解除 hidden）
+    // Position and show (remove hidden)
     $menu.css({
       left: left + 'px',
       top:  top  + 'px',
-      visibility: 'visible'    // 顯示
+      visibility: 'visible'    // Show
     });
 
-    // 透明遮罩，擋背景點擊（層級低於 menu）
+    // Transparent shield to block background clicks (layer below menu)
     const $shield = $('<div class="menu-click-shield"></div>')
       .css({ position: 'fixed', inset: 0, zIndex: 2500 })
       .appendTo('body');
 
-    // 點遮罩關閉
+    // Clicking shield closes menu
     $shield.on('click', function (ev) {
       ev.stopPropagation();
       $menu.hide();
       $(this).remove();
-      restoreMenusToOrigin();  // ★ 放回來源 entry
+      restoreMenusToOrigin();  // ★ Move back to origin entry
     });
   });
 
-  /** 全域點擊也關閉（避免殘留） */
+  /** Global click also closes menu (prevents leftovers) */
   $(document).off('click.histMenuClose').on('click.histMenuClose', function () {
     const $open = $('.history-action-menu:visible');
     if ($open.length) $open.hide();
     $('.menu-click-shield').remove();
-    restoreMenusToOrigin();  // ★ 放回來源 entry
+    restoreMenusToOrigin();  // ★ Move back to origin entry
   });
 
-  /** 可選：ESC 關閉 */
+  /** Optional: ESC key closes menu */
   $(document).off('keydown.histMenuEsc').on('keydown.histMenuEsc', function (ev) {
     if (ev.key === 'Escape') {
       const $open = $('.history-action-menu:visible');

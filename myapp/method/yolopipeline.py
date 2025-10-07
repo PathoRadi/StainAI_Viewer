@@ -6,7 +6,6 @@ import gc
 import numpy as np
 import nibabel as nib
 from PIL import Image
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from .bounding_box_filter import BoundingBoxFilter
 
 class YOLOPipeline:
@@ -439,24 +438,16 @@ class YOLOPipeline:
         Qmap with 9 slices:
         [original image, MAS, R, H, B, A, RD, HR, FM]
         """
-
-
-        # ---- read origial image：without normalize ----
-        try:
-            with Image.open(input_image_path) as im:
-                if im.mode in ("L", "I;16", "I", "F"):     # Single channel → directly take array
-                    orig_np = np.array(im)
-                else:                                      # RGB/RGBA → grayscale
-                    orig_np = np.array(im.convert("L"))
-        except Exception as e:
-            print(f"[qmap] fallback to self.gray_np because open({input_image_path}) failed: {e}")
-            orig_np = self.gray_np
+        # ---- read original image：without normalize ----
+        with Image.open(input_image_path) as im:
+            orig_np = np.array(im)
 
         # Get H, W
-        if orig_np.ndim == 3:
-            orig_np = orig_np[..., 0]
+        if orig_np.ndim == 3:                          # RGB
+            original = np.transpose(orig_np, (2,0,1)).astype(np.float32)  # (3,H,W)
+        else:
+            original = orig_np[None, :, :].astype(np.float32)             # (1,H,W)
         H, W = int(orig_np.shape[0]), int(orig_np.shape[1])
-        original = orig_np.astype(np.float32)  # only change to float32 type
 
         # ---- preparing each slice ----
         mas_map   = np.zeros((H, W), dtype=np.float32)
@@ -517,7 +508,7 @@ class YOLOPipeline:
 
         # ---- combine to 9 slices ----
         final_qmap = np.concatenate(
-            [original[None, :, :], mas_map[None, :, :], class_maps, fm_map[None, :, :]],
+            [original, mas_map[None,:,:], class_maps, fm_map[None,:,:]],
             axis=0
         )  # (9, H, W)
 
