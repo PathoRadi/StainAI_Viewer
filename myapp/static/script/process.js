@@ -23,10 +23,10 @@ export function addBarChart(barChartWrappers) {
   if (idx === 1) {
     // First barChart-wrapper: only barChart
     wrapper.innerHTML = `
+      <span class="chart-label">Full Image</span>
       <canvas class="barChart" id="barChart${idx}"
               width="400" height="200"
               style="margin-top:16px;"></canvas>
-      <span class="chart-label">Full Image</span>
       <div style="position: absolute; top: 1px; right: 8px;">
         <div class="screenshot-menu-wrapper">
           <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>

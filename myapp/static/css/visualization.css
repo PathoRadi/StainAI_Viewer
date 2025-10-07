@@ -396,9 +396,12 @@
     margin: 20px 15px 15px 15px;
 }
 .chart-label {
+    width: 130px;
+    height: 30px;
     font-size: 20px;
     font-weight: 500;
-    margin: 25px 0 0 10px;
+    text-align: center;
+    margin: 30px 0px 15px 30px;
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
     white-space: nowrap;           
