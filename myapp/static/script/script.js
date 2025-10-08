@@ -385,6 +385,54 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     };
 
 
+    // === Responsive scale for main-container (auto wrap) ===
+    const DESIGN_W   = 1720;  // 你的設計寬：圖像區(約1000) + 圖表區(約675) + 邊距，視實際可微調
+    const DESIGN_H   = 911;   // 你現在 main-container 的設計高度（用來修正縮放後高度）
+    const SIDEBAR_W  = 200;   // 左欄固定寬度
+
+    function ensureMainScale() {
+      const mc = document.querySelector('.main-container');
+      if (!mc) return null;
+
+      let ms = document.getElementById('main-scale');
+      if (!ms) {
+        // 動態建立縮放包裹，並把 main-container 的現有子節點整包移進來
+        ms = document.createElement('div');
+        ms.id = 'main-scale';
+        ms.style.transformOrigin = 'top left';
+        ms.style.width = DESIGN_W + 'px';
+
+        // 把原本 main-container 裡的東西搬到 #main-scale
+        const frag = document.createDocumentFragment();
+        while (mc.firstChild) frag.appendChild(mc.firstChild);
+        ms.appendChild(frag);
+        mc.appendChild(ms);
+      }
+      return ms;
+    }
+
+    function applyScale() {
+      const ms = ensureMainScale();
+      if (!ms) return;
+
+      // 可用寬度 = 視窗寬 - 左欄寬；不足就等比縮小，不會放大超過 1
+      const availableW = window.innerWidth  - SIDEBAR_W;
+      const availableH = window.innerHeight;          // 視窗可用高
+      const scale = Math.min(1, availableW / DESIGN_W, availableH / DESIGN_H);
+
+      ms.style.transform = `scale(${scale})`;
+
+      // 讓父層的實際高度與縮放後一致，避免底部大片空白或被裁切
+      ms.style.marginBottom = (DESIGN_H * (scale - 1)) + 'px';
+    }
+
+    // 初始化與監聽
+    applyScale();
+    window.addEventListener('resize', applyScale);
+    window.addEventListener('orientationchange', applyScale);
+
+
+
     // Initialize screenshot functionality
     [0,1,2,3].forEach(i => {
       window.takeScreenshot(

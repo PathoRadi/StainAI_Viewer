@@ -7,6 +7,7 @@
     left: 0;
     width: 200px;
     height: 100vh;
+    z-index: 3000;
     background: var(--bg-left);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
@@ -51,6 +52,8 @@
 .app-logo {
     width: 148px;
     height: 36px;
+    /* width: 118.4px;
+    height: 28.8px; */
     margin: 18px 18px 18px 18px;
 }
 

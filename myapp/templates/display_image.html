@@ -75,7 +75,7 @@
 
   <!-- ───── Drag & Drop / Click Upload Area ───── -->
   <div id="drop-zone">
-    <p>Drag &amp; Drop Image Here</p>
+    <p>Drag &amp; Drop Your Image Here</p>
     <button id="drop-upload-btn">Or Click to Upload</button>
     <input type="file" id="drop-upload-input" accept="image/*" style="display:none" />
 
@@ -119,8 +119,7 @@
 
   <!-- ───── MAIN PART ───── -->
   <div class="main-container" hidden>
-    <!-- Right Container -->
-    <div class="right-container">
+    <div id="main-scale">
       <!-- Image -->
       <div class="visualization-container" id="image-container">
         <!-- Box ROI Controls -->
@@ -263,14 +262,14 @@
         <div id="barChart-wrappers1">
         </div>
       </div>
-    </div>
-    <!-- Pop out window whether to delete the image -->
-    <div id="delete-modal-overlay" class="modal-overlay" hidden>
-      <div class="modal-box">
-        <p>Delete Project?</p>
-        <div class="modal-actions">
-          <button id="modal-cancel">Cancel</button>
-          <button id="modal-delete">Delete</button>
+      <!-- Pop out window whether to delete the image -->
+      <div id="delete-modal-overlay" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <p>Delete Project?</p>
+          <div class="modal-actions">
+            <button id="modal-cancel">Cancel</button>
+            <button id="modal-delete">Delete</button>
+          </div>
         </div>
       </div>
     </div>
