@@ -187,7 +187,7 @@ def detect_image(request):
             return HttpResponseServerError("detect failed during yolo")
         
         # --- 4) Processing Result ---
-        _set_progress_stage(project_name, 'proc')                 # Enter 4) yolo stage
+        _set_progress_stage(project_name, 'proc')                 # Enter 4) proc stage
         # Get display image size and URL ---
         disp_name = os.listdir(display_dir)[0]
         disp_path = os.path.join(display_dir, disp_name)

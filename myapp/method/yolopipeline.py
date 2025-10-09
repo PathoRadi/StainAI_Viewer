@@ -435,38 +435,210 @@ class YOLOPipeline:
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
-    def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=10):
+    # def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=10):
+    #     """
+    #     同時產生兩個 NIfTI：
+    #     1) qmap.nii                -> 7 slices: [original, R, H, B, A, RD, HR] （不 downsample）
+    #     2) MAS_FMmap_float32.nii   -> 3 slices: [original_ds, MAS, FM_avg]     （有 downsample）
+
+    #     downsample_factor 預設 10；並保留最長邊約 1800 的動態調整（取 max(downsample_factor, dyn)）。
+    #     """
+
+    #     os.makedirs(output_dir, exist_ok=True)
+
+    #     # === Step 0: 讀原圖（灰階、uint8 0~255）===
+    #     with Image.open(input_image_path) as im:
+    #         # 若不是灰階或 16bit → 轉灰階 8bit
+    #         if im.mode not in ("L", "I;16"):
+    #             im = im.convert("L")
+    #         if im.mode == "I;16":
+    #             im = im.convert("L")
+    #         gray_np = np.array(im)  # (H, W), uint8
+
+    #     original = gray_np[None, :, :].astype(np.float32)  # (1,H,W) float32 for NIfTI
+    #     H, W = gray_np.shape[0], gray_np.shape[1]
+
+    #     # === 共用：類別設定、JSON 載入與 center parser ===
+    #     class_names = ["R", "H", "B", "A", "RD", "HR"]
+    #     class_to_idx = {name: i for i, name in enumerate(class_names)}  # R=0..HR=5
+
+    #     with open(json_file_path, "r") as f:
+    #         detections = json.load(f)
+
+    #     def parse_center(v):
+    #         # 支援 [x,y] / "x y" / "x, y" / (x,y)
+    #         if isinstance(v, (list, tuple)) and len(v) >= 2:
+    #             return int(v[0]), int(v[1])
+    #         if isinstance(v, str):
+    #             s = v.strip().replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+    #             s = s.replace(",", " ")
+    #             parts = [p for p in s.split() if p]
+    #             if len(parts) >= 2:
+    #                 return int(float(parts[0])), int(float(parts[1]))
+    #         raise ValueError(f"Unrecognized center format: {v!r}")
+
+    #     # ==========================================================
+    #     # Part A: 產生 qmap（不 downsample，7 slices）
+    #     # ==========================================================
+    #     class_maps = np.zeros((len(class_names), H, W), dtype=np.float32)
+
+    #     for cell in detections:
+    #         try:
+    #             # 接受 "class" 或 "type"，並轉大寫
+    #             cls_raw = cell.get("class", cell.get("type", None))
+    #             if cls_raw is None:
+    #                 continue
+    #             cls = str(cls_raw).strip().upper()
+    #             if cls not in class_to_idx:
+    #                 continue
+
+    #             cx, cy = parse_center(cell.get("center"))
+    #             if not (0 <= cx < W and 0 <= cy < H):
+    #                 continue
+
+    #             ci = class_to_idx[cls]
+    #             class_maps[ci, cy, cx] = 1.0  # 寫中心像素
+    #         except Exception as e:
+    #             print(f"[qmap] Error processing cell {cell}: {e}")
+
+    #     final_qmap = np.concatenate([original, class_maps], axis=0)  # (7,H,W) float32
+    #     # NIfTI 為 (H,W,C)，且方向與你現有一致
+    #     qmap_vol = np.transpose(final_qmap, (1, 2, 0))  # (H,W,7)
+    #     qmap_vol = np.rot90(qmap_vol, k=1, axes=(0, 1))
+    #     qmap_vol = np.flip(qmap_vol, axis=0)
+
+    #     qmap_path = os.path.join(output_dir, "qmap.nii")
+    #     qmap_img = nib.Nifti1Image(qmap_vol.astype(np.float32), affine=np.eye(4))
+    #     qmap_img.header.set_data_dtype(np.float32)
+    #     nib.save(qmap_img, qmap_path)
+
+    #     # ==========================================================
+    #     # Part B: 產生 MAS_FMmap（downsample，3 slices: original_ds, MAS, FM_avg）
+    #     # ==========================================================
+    #     # Step B1: 設定 downsample 尺寸（保留你的 1800 保護）
+    #     width, height = W, H
+    #     target_side = 1800
+    #     dyn = max(1, math.ceil(max(width, height) / target_side))
+    #     ds_factor = max(int(downsample_factor), dyn)
+
+    #     ds_w = max(1, math.ceil(width  / ds_factor))
+    #     ds_h = max(1, math.ceil(height / ds_factor))
+
+    #     # Step B2: 初始化統計容器
+    #     num_classes = len(class_to_idx)
+    #     qmap_counts = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
+    #     fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
+    #     fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
+
+    #     # Step B3: 逐 cell 彙整到 downsample 格子
+    #     for cell in detections:
+    #         try:
+    #             cls = cell.get("class")
+    #             if cls is None:
+    #                 # 若來源是 "type" 且你也可能用到，可視需要加：cls = cell.get("type")
+    #                 continue
+    #             cls = str(cls).strip().upper()
+    #             if cls not in class_to_idx:
+    #                 continue
+
+    #             cx, cy = parse_center(cell.get("center"))
+    #             x_ds, y_ds = cx // ds_factor, cy // ds_factor
+    #             if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
+    #                 si = class_to_idx[cls]
+    #                 # 避免 uint16 overflow
+    #                 if qmap_counts[si, y_ds, x_ds] < 65535:
+    #                     qmap_counts[si, y_ds, x_ds] += 1
+
+    #                 fm_val = float(cell.get("FM", 0.0) or 0.0)
+    #                 fm_map[y_ds, x_ds] += fm_val
+    #                 if fm_count[y_ds, x_ds] < 65535:
+    #                     fm_count[y_ds, x_ds] += 1
+    #         except Exception as e:
+    #             print(f"[MAS_FMmap] Error processing cell {cell}: {e}")
+
+    #     # Step B4: 計算 MAS（沿用你的權重）
+    #     weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)  # 對應 [R,H,B,A,RD,HR]
+    #     qmap_f32 = qmap_counts.astype(np.float32)  # (6, ds_h, ds_w)
+
+    #     numerator = np.tensordot(qmap_f32, weights, axes=(0, 0))  # (ds_h, ds_w)
+    #     denominator = np.sum(qmap_f32, axis=0)                    # (ds_h, ds_w)
+
+    #     mas_map = np.zeros_like(denominator, dtype=np.float32)
+    #     valid = denominator > 0
+    #     mas_map[valid] = numerator[valid] / denominator[valid]  # 0~1 浮點
+
+    #     # Step B5: 計算 FM 平均
+    #     fm_avg = np.zeros_like(fm_map, dtype=np.float32)
+    #     m = fm_count > 0
+    #     fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
+
+    #     # Step B6: 產生 downsample 後的原圖（第一個 slice）
+    #     # 用 PIL resize 做平均化下採樣，保持與格點對齊
+    #     with Image.open(input_image_path) as im2:
+    #         if im2.mode not in ("L", "I;16"):
+    #             im2 = im2.convert("L")
+    #         if im2.mode == "I;16":
+    #             im2 = im2.convert("L")
+    #         im2_ds = im2.resize((ds_w, ds_h), resample=Image.BILINEAR)
+    #         original_ds = np.array(im2_ds).astype(np.float32)  # (ds_h, ds_w)
+
+    #     # Step B7: 組合 3 個 slice -> (3, ds_h, ds_w)
+    #     mas_fm_stack = np.stack([original_ds, mas_map, fm_avg], axis=0).astype(np.float32)
+
+    #     # 同樣轉為 (H,W,C) 並做方向處理
+    #     mas_fm_vol = np.transpose(mas_fm_stack, (1, 2, 0))  # (ds_h, ds_w, 3)
+    #     mas_fm_vol = np.rot90(mas_fm_vol, k=1, axes=(0, 1))
+    #     mas_fm_vol = np.flip(mas_fm_vol, axis=0)
+
+    #     mas_fm_path = os.path.join(output_dir, "MAS_FMmap.nii")
+    #     mas_fm_img = nib.Nifti1Image(mas_fm_vol.astype(np.float32), affine=np.eye(4))
+    #     mas_fm_img.header.set_data_dtype(np.float32)
+    #     nib.save(mas_fm_img, mas_fm_path)
+
+    #     return {"qmap_path": qmap_path, "mas_fmmap_path": mas_fm_path,
+    #             "qmap_shape": qmap_vol.shape, "mas_fm_shape": mas_fm_vol.shape,
+    #             "downsample_factor_used": ds_factor}
+
+
+
+    def qmap(self, input_image_path, json_file_path, output_dir, downsample_factor=250):
         """
-        同時產生兩個 NIfTI：
-        1) qmap.nii                -> 7 slices: [original, R, H, B, A, RD, HR] （不 downsample）
-        2) MAS_FMmap_float32.nii   -> 3 slices: [original_ds, MAS, FM_avg]     （有 downsample）
-
-        downsample_factor 預設 10；並保留最長邊約 1800 的動態調整（取 max(downsample_factor, dyn)）。
+        Generate a Qmap from the input image and detection JSON file.
+        Slices order in output: [MAS, R, H, B, A, RD, HR, FM_avg]
         """
 
-        os.makedirs(output_dir, exist_ok=True)
+        # === Class to Slice Mapping (6 classes only) ===
+        class_to_idx = {"R": 0, "H": 1, "B": 2, "A": 3, "RD": 4, "HR": 5}
+        num_classes = len(class_to_idx)
 
-        # === Step 0: 讀原圖（灰階、uint8 0~255）===
-        with Image.open(input_image_path) as im:
-            # 若不是灰階或 16bit → 轉灰階 8bit
-            if im.mode not in ("L", "I;16"):
-                im = im.convert("L")
-            if im.mode == "I;16":
-                im = im.convert("L")
-            gray_np = np.array(im)  # (H, W), uint8
+        # === Step 1: Get image dimensions ===
+        img = Image.open(input_image_path)
+        width, height = img.size
 
-        original = gray_np[None, :, :].astype(np.float32)  # (1,H,W) float32 for NIfTI
-        H, W = gray_np.shape[0], gray_np.shape[1]
+        # ---- Auto-adjust downsample (avoid memory pressure for huge images) ----
+        # Target: longest side ~1800 pixels for Qmap grid
+        import math
+        target_side = 1800
+        dyn = max(1, math.ceil(max(width, height) / target_side))
+        downsample_factor = max(downsample_factor, dyn)
 
-        # === 共用：類別設定、JSON 載入與 center parser ===
-        class_names = ["R", "H", "B", "A", "RD", "HR"]
-        class_to_idx = {name: i for i, name in enumerate(class_names)}  # R=0..HR=5
+        # Safe ceil division, ensure at least 1
+        ds_w = max(1, math.ceil(width  / downsample_factor))
+        ds_h = max(1, math.ceil(height / downsample_factor))
 
+        # === Step 2: Initialize Qmap & FM storage ===
+        # uint16 as count limit 65535, will be clipped to 8-bit for output
+        qmap = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
+        fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
+        fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
+
+        # === Step 3: Load detection JSON ===
         with open(json_file_path, "r") as f:
             detections = json.load(f)
 
+        # Helper: robustly parse center
         def parse_center(v):
-            # 支援 [x,y] / "x y" / "x, y" / (x,y)
+            # Supports [x, y] / [x y] / "x y" / "x, y" / [x,y] / (x,y)
             if isinstance(v, (list, tuple)) and len(v) >= 2:
                 return int(v[0]), int(v[1])
             if isinstance(v, str):
@@ -477,124 +649,66 @@ class YOLOPipeline:
                     return int(float(parts[0])), int(float(parts[1]))
             raise ValueError(f"Unrecognized center format: {v!r}")
 
-        # ==========================================================
-        # Part A: 產生 qmap（不 downsample，7 slices）
-        # ==========================================================
-        class_maps = np.zeros((len(class_names), H, W), dtype=np.float32)
-
+        # === Step 4: Fill Qmap & FM data ===
         for cell in detections:
             try:
-                # 接受 "class" 或 "type"，並轉大寫
-                cls_raw = cell.get("class", cell.get("type", None))
-                if cls_raw is None:
-                    continue
-                cls = str(cls_raw).strip().upper()
-                if cls not in class_to_idx:
+                class_label = cell.get("class")
+                if class_label not in class_to_idx:
                     continue
 
                 cx, cy = parse_center(cell.get("center"))
-                if not (0 <= cx < W and 0 <= cy < H):
-                    continue
-
-                ci = class_to_idx[cls]
-                class_maps[ci, cy, cx] = 1.0  # 寫中心像素
-            except Exception as e:
-                print(f"[qmap] Error processing cell {cell}: {e}")
-
-        final_qmap = np.concatenate([original, class_maps], axis=0)  # (7,H,W) float32
-        # NIfTI 為 (H,W,C)，且方向與你現有一致
-        qmap_vol = np.transpose(final_qmap, (1, 2, 0))  # (H,W,7)
-        qmap_vol = np.rot90(qmap_vol, k=1, axes=(0, 1))
-        qmap_vol = np.flip(qmap_vol, axis=0)
-
-        qmap_path = os.path.join(output_dir, "qmap.nii")
-        qmap_img = nib.Nifti1Image(qmap_vol.astype(np.float32), affine=np.eye(4))
-        qmap_img.header.set_data_dtype(np.float32)
-        nib.save(qmap_img, qmap_path)
-
-        # ==========================================================
-        # Part B: 產生 MAS_FMmap（downsample，3 slices: original_ds, MAS, FM_avg）
-        # ==========================================================
-        # Step B1: 設定 downsample 尺寸（保留你的 1800 保護）
-        width, height = W, H
-        target_side = 1800
-        dyn = max(1, math.ceil(max(width, height) / target_side))
-        ds_factor = max(int(downsample_factor), dyn)
-
-        ds_w = max(1, math.ceil(width  / ds_factor))
-        ds_h = max(1, math.ceil(height / ds_factor))
-
-        # Step B2: 初始化統計容器
-        num_classes = len(class_to_idx)
-        qmap_counts = np.zeros((num_classes, ds_h, ds_w), dtype=np.uint16)
-        fm_map = np.zeros((ds_h, ds_w), dtype=np.float32)
-        fm_count = np.zeros((ds_h, ds_w), dtype=np.uint16)
-
-        # Step B3: 逐 cell 彙整到 downsample 格子
-        for cell in detections:
-            try:
-                cls = cell.get("class")
-                if cls is None:
-                    # 若來源是 "type" 且你也可能用到，可視需要加：cls = cell.get("type")
-                    continue
-                cls = str(cls).strip().upper()
-                if cls not in class_to_idx:
-                    continue
-
-                cx, cy = parse_center(cell.get("center"))
-                x_ds, y_ds = cx // ds_factor, cy // ds_factor
+                x_ds, y_ds = cx // downsample_factor, cy // downsample_factor
                 if 0 <= x_ds < ds_w and 0 <= y_ds < ds_h:
-                    si = class_to_idx[cls]
-                    # 避免 uint16 overflow
-                    if qmap_counts[si, y_ds, x_ds] < 65535:
-                        qmap_counts[si, y_ds, x_ds] += 1
+                    si = class_to_idx[class_label]
+                    # Avoid uint16 overflow
+                    if qmap[si, y_ds, x_ds] < 65535:
+                        qmap[si, y_ds, x_ds] += 1
 
-                    fm_val = float(cell.get("FM", 0.0) or 0.0)
-                    fm_map[y_ds, x_ds] += fm_val
+                    fm = float(cell.get("FM", 0.0) or 0.0)
+                    fm_map[y_ds, x_ds] += fm
                     if fm_count[y_ds, x_ds] < 65535:
                         fm_count[y_ds, x_ds] += 1
+
             except Exception as e:
-                print(f"[MAS_FMmap] Error processing cell {cell}: {e}")
+                print(f"Error processing cell {cell}: {e}")
 
-        # Step B4: 計算 MAS（沿用你的權重）
-        weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)  # 對應 [R,H,B,A,RD,HR]
-        qmap_f32 = qmap_counts.astype(np.float32)  # (6, ds_h, ds_w)
+        # === Step 5: Compute MAS map ===
+        weights = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
+        qmap_float = qmap.astype(np.float32)
 
-        numerator = np.tensordot(qmap_f32, weights, axes=(0, 0))  # (ds_h, ds_w)
-        denominator = np.sum(qmap_f32, axis=0)                    # (ds_h, ds_w)
+        numerator = np.tensordot(qmap_float, weights, axes=(0, 0))  # (H,W)
+        denominator = np.sum(qmap_float, axis=0)                    # (H,W)
 
+        # 避免除零：沒有細胞時給 0
         mas_map = np.zeros_like(denominator, dtype=np.float32)
         valid = denominator > 0
-        mas_map[valid] = numerator[valid] / denominator[valid]  # 0~1 浮點
+        mas_map[valid] = numerator[valid] / denominator[valid]  # 值域 0~1 浮點
+        # 不再 normalize，不轉 uint8，維持 float32
 
-        # Step B5: 計算 FM 平均
+        # === Step 6: Compute FM average map ===
         fm_avg = np.zeros_like(fm_map, dtype=np.float32)
         m = fm_count > 0
         fm_avg[m] = fm_map[m] / fm_count[m].astype(np.float32)
 
-        # Step B6: 產生 downsample 後的原圖（第一個 slice）
-        # 用 PIL resize 做平均化下採樣，保持與格點對齊
-        with Image.open(input_image_path) as im2:
-            if im2.mode not in ("L", "I;16"):
-                im2 = im2.convert("L")
-            if im2.mode == "I;16":
-                im2 = im2.convert("L")
-            im2_ds = im2.resize((ds_w, ds_h), resample=Image.BILINEAR)
-            original_ds = np.array(im2_ds).astype(np.float32)  # (ds_h, ds_w)
+        # === Step 7: Prepare final Qmap (all float32) ===
+        # 把 6 類 count 轉成 float32
+        qmap_f32 = qmap.astype(np.float32)   # (6, H, W)
 
-        # Step B7: 組合 3 個 slice -> (3, ds_h, ds_w)
-        mas_fm_stack = np.stack([original_ds, mas_map, fm_avg], axis=0).astype(np.float32)
+        # 合併成 8 個 slice: [MAS, R, H, B, A, RD, HR, FM_avg]
+        final_qmap = np.concatenate(
+            [mas_map[None, :, :], qmap_f32, fm_avg[None, :, :]],
+            axis=0
+        )  # shape = (8, H, W), dtype=float32
 
-        # 同樣轉為 (H,W,C) 並做方向處理
-        mas_fm_vol = np.transpose(mas_fm_stack, (1, 2, 0))  # (ds_h, ds_w, 3)
-        mas_fm_vol = np.rot90(mas_fm_vol, k=1, axes=(0, 1))
-        mas_fm_vol = np.flip(mas_fm_vol, axis=0)
+        # === Step 8: Save as .nii (float32) ===
+        # Rearrange to (H, W, C) for NIfTI
+        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H, W, 8)
+        final_qmap = np.rot90(final_qmap, k=1, axes=(0, 1))
+        final_qmap = np.flip(final_qmap, axis=0)
 
-        mas_fm_path = os.path.join(output_dir, "MAS_FMmap.nii")
-        mas_fm_img = nib.Nifti1Image(mas_fm_vol.astype(np.float32), affine=np.eye(4))
-        mas_fm_img.header.set_data_dtype(np.float32)
-        nib.save(mas_fm_img, mas_fm_path)
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, "qmap_float32.nii")
 
-        return {"qmap_path": qmap_path, "mas_fmmap_path": mas_fm_path,
-                "qmap_shape": qmap_vol.shape, "mas_fm_shape": mas_fm_vol.shape,
-                "downsample_factor_used": ds_factor}
+        img = nib.Nifti1Image(final_qmap.astype(np.float32), affine=np.eye(4))
+        img.header.set_data_dtype(np.float32)  # 確保 dtype 為 float32
+        nib.save(img, output_path)
