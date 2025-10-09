@@ -386,9 +386,9 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 
     // === Responsive scale for main-container (auto wrap) ===
-    const DESIGN_W   = 1720;  // 你的設計寬：圖像區(約1000) + 圖表區(約675) + 邊距，視實際可微調
-    const DESIGN_H   = 911;   // 你現在 main-container 的設計高度（用來修正縮放後高度）
-    const SIDEBAR_W  = 200;   // 左欄固定寬度
+    const DESIGN_W   = 1720;  // main-container width
+    const DESIGN_H   = 911;   // main-container height
+    const SIDEBAR_W  = 200;   // Left sidebar width
 
     function ensureMainScale() {
       const mc = document.querySelector('.main-container');

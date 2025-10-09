@@ -232,15 +232,10 @@
 }
 .main-container[hidden] { display: none !important; }
 
-/* main-scale：整包等比縮放的容器 */
+/* main-scale: container for proportional scaling */
 #main-scale{
   transform-origin: top left;
-  width: 1720px;           /* 原始設計寬：1000px 圖區 + 675px 圖表 + 邊距（可依實際微調） */
+  width: 1720px;
   display: flex;
   flex-direction: row;
 }
-
-/* main-container 出現捲軸即可，不要把內容擠到左欄下 */
-/* .main-container{
-  overflow: auto;          
-} */
