@@ -46,7 +46,7 @@ class GrayScaleImage:
 
             # 3) if background is light, invert so cells go white on black
             if mean_bg > 127:
-                im_gray = ImageOps.invert(im_gray)
+                im_gray = ImageOps.invert(im_gray) 
 
             # 4) save with proper compression by extension
             filename = os.path.basename(self.image_path)
