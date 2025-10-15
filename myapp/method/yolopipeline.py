@@ -566,17 +566,54 @@ class YOLOPipeline:
         # 直接用進階索引向量化
         class_maps[ci, cy, cx] = 1.0
 
-        # ---- 7) 組裝並輸出 ----
-        final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)  # (9,H,W)
-        final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H,W,9)
+        # # ---- 7) 組裝並輸出 ----
+        # final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)  # (9,H,W)
+        # final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H,W,9)
 
-        # 與你原先的方向處理一致（如需要）
-        final_qmap = np.rot90(final_qmap, k=-3)
-        final_qmap = np.flip(final_qmap, axis=0)
+        # # 與你原先的方向處理一致（如需要）
+        # final_qmap = np.rot90(final_qmap, k=-3)
+        # final_qmap = np.flip(final_qmap, axis=0)
+
+        # os.makedirs(output_dir, exist_ok=True)
+        # out = os.path.join(output_dir, "qmap.nii.gz")
+        # img = nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4))
+        # img.header.set_data_dtype(np.float32)
+        # nib.save(img, out)
+
+        # print(f"[qmap] Saved: {out}")
+        # print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+
+
+        # ---- 7) 組裝並輸出（無 concat / 無 transpose / 無 rot90/flip）----
+        # 直接建立最終 (H, W, 9) 的輸出陣列，逐片寫入以避免大拷貝
+        final_out = np.empty((H, W, 9), dtype=np.float32)
+
+        # slice 0: original（原本是 (1,H,W)）；直接寫入
+        final_out[..., 0] = original[0]
+
+        # slice 1: MAS
+        final_out[..., 1] = mas_map
+
+        # slice 2..7: class maps（class_maps 形狀 (6,H,W)）
+        for i in range(class_maps.shape[0]):  # 0..5 -> R,H,B,A,RD,HR
+            final_out[..., 2 + i] = class_maps[i]
+
+        # slice 8: FM
+        final_out[..., 8] = fm_map
+
+        # 若你一定要維持原本 viewer 的方向（過去用 rot90/flip 矯正）：
+        # 建議改用 affine 處理方向，避免再做資料層級的大拷貝
+        # 這裡給一個等價的 affine（X 軸翻轉 + 軸交換）的示意，請視實際方向調整：
+        aff = np.eye(4, dtype=np.float32)
+        # 例如只要做上下翻轉，可用 Y 尺度 -1 並平移 H-1：
+        # aff[1,1] = -1; aff[1,3] = H - 1
+        # 依你原本 rot/flip 的實際需求調整；如不需矯正，保留單位矩陣即可。
 
         os.makedirs(output_dir, exist_ok=True)
         out = os.path.join(output_dir, "qmap.nii.gz")
-        img = nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4))
+
+        # 直接用 (H, W, 9) 儲存；NIfTI 第三軸 = slice/channel
+        img = nib.Nifti1Image(final_out, affine=aff)
         img.header.set_data_dtype(np.float32)
         nib.save(img, out)
 
