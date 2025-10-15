@@ -436,32 +436,187 @@ class YOLOPipeline:
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
+    # def qmap(self, input_image_path, json_file_path, output_dir, workers: int = 0):
+    #     """
+    #     Full-res Qmap with 9 slices (更快版):
+    #     [original, MAS, R, H, B, A, RD, HR, FM]
+    #     - 將重疊像素的「取最大」改為：排序 + 分段 reduce（np.maximum.reduceat）
+    #     - 類別圖中心像素標 1：維持純向量化
+    #     - 仍保留 NaN 以標示非中心像素
+    #     """
+    #     # ---- 1) 讀 original：單通道 8-bit → float32 ----
+    #     with Image.open(input_image_path) as im:
+    #         gray_u8 = np.asarray(im.convert("L"))  # (H,W) uint8
+    #     if gray_u8.ndim != 2:
+    #         raise ValueError(f"Grayscale image must be 2D, got {gray_u8.shape}")
+    #     H, W = gray_u8.shape
+    #     original = gray_u8.astype(np.float32, copy=False)[None, :, :]  # (1,H,W)
+
+    #     # ---- 2) 準備輸出陣列（NaN 表示非中心像素）----
+    #     class_names = ["R", "H", "B", "A", "RD", "HR"]
+    #     class_to_idx = {name: i for i, name in enumerate(class_names)}  # 0..5
+    #     mas_map  = np.full((H, W), np.nan, dtype=np.float32)
+    #     fm_map   = np.full((H, W), np.nan, dtype=np.float32)
+    #     class_maps = np.full((len(class_names), H, W), np.nan, dtype=np.float32)
+    #     # R, H, B, A, RD, HR → 對應 MAS 權重
+    #     mas_weight_lut = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
+
+    #     # ---- 3) 讀 JSON → 向量 ----
+    #     with open(json_file_path, "r", encoding="utf-8") as f:
+    #         detections = json.load(f)
+    #     if isinstance(detections, dict):
+    #         for k in ("detections", "objects", "cells"):
+    #             if k in detections and isinstance(detections[k], list):
+    #                 detections = detections[k]
+    #                 break
+    #     if not isinstance(detections, list):
+    #         raise ValueError("JSON detections must be a list.")
+
+    #     # 解析到 list（保留容錯）
+    #     cx_list, cy_list, ci_list, fm_list = [], [], [], []
+    #     for cell in detections:
+    #         cls_raw = cell.get("class", cell.get("type"))
+    #         if not cls_raw:
+    #             continue
+    #         cls = str(cls_raw).strip().upper()
+    #         if cls not in class_to_idx:
+    #             continue
+
+    #         c = cell.get("center")
+    #         if c is None:
+    #             continue
+    #         if isinstance(c, (list, tuple)) and len(c) >= 2:
+    #             cx, cy = c[0], c[1]
+    #         else:
+    #             s = str(c).translate(str.maketrans("[](),", "     ")).split()
+    #             if len(s) < 2:
+    #                 continue
+    #             cx, cy = s[0], s[1]
+    #         try:
+    #             cx = int(round(float(cx)))
+    #             cy = int(round(float(cy)))
+    #         except Exception:
+    #             continue
+
+    #         fm_val = cell.get("FM", 0.0) or 0.0
+    #         try:
+    #             fm_val = float(fm_val)
+    #         except Exception:
+    #             fm_val = 0.0
+
+    #         cx_list.append(cx); cy_list.append(cy)
+    #         ci_list.append(class_to_idx[cls])
+    #         fm_list.append(fm_val)
+
+    #     # 無偵測：直接輸出
+    #     if not cx_list:
+    #         final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)  # (9,H,W)
+    #         final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H,W,9)
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         out = os.path.join(output_dir, "qmap.nii.gz")
+    #         nib.save(nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4)), out)
+    #         print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #         return
+
+    #     # ---- 4) 轉成 NumPy 陣列並做畫布邊界過濾 ----
+    #     cx = np.asarray(cx_list, dtype=np.int32)
+    #     cy = np.asarray(cy_list, dtype=np.int32)
+    #     ci = np.asarray(ci_list, dtype=np.int16)
+    #     fv = np.asarray(fm_list, dtype=np.float32)
+
+    #     valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= 0) & (ci < len(class_names))
+    #     if not np.any(valid):
+    #         final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)
+    #         final_qmap = np.transpose(final_qmap, (1, 2, 0))
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         out = os.path.join(output_dir, "qmap.nii.gz")
+    #         nib.save(nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4)), out)
+    #         print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #         return
+
+    #     cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
+
+    #     # ---- 5) MAS / FM：用「排序 + 分段 reduce(max)」一次寫入（比 maximum.at 更快、記憶體友善）----
+    #     # 線性索引：同一像素會聚在一起
+    #     lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+    #     order = np.argsort(lin, kind="mergesort")  # 穩定排序，利於 reduceat
+    #     lin_s  = lin[order]
+    #     ci_s   = ci[order]
+    #     fv_s   = fv[order]
+
+    #     # 對應的 MAS 權重
+    #     mas_vals_s = mas_weight_lut[ci_s]
+
+    #     # 找每個 group（相同 lin）的起點
+    #     group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
+    #     lin_unique   = lin_s[group_starts]
+
+    #     # 分段最大值（每個像素一個值）
+    #     mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
+    #     fm_max  = np.maximum.reduceat(fv_s,       group_starts)
+
+    #     # 寫回 2D 畫布（先變平面再還原）
+    #     mas_flat = mas_map.ravel()
+    #     fm_flat  = fm_map.ravel()
+    #     # 只對出現過的像素寫入最大值
+    #     mas_flat[lin_unique] = mas_max
+    #     fm_flat[lin_unique]  = fm_max
+
+    #     # ---- 6) 類別圖：中心像素標 1（重複寫 1 沒關係；維持 NaN 非中心像素）----
+    #     # 直接用進階索引向量化
+    #     class_maps[ci, cy, cx] = 1.0
+
+    #     # ---- 7) 組裝並輸出（無 concat / 無 transpose / 無 rot90/flip）----
+    #     # 直接建立最終 (H, W, 9) 的輸出陣列，逐片寫入以避免大拷貝
+    #     final_out = np.empty((H, W, 9), dtype=np.float32)
+
+    #     # slice 0: original（原本是 (1,H,W)）；直接寫入
+    #     final_out[..., 0] = original[0]
+
+    #     # slice 1: MAS
+    #     final_out[..., 1] = mas_map
+
+    #     # slice 2..7: class maps（class_maps 形狀 (6,H,W)）
+    #     for i in range(class_maps.shape[0]):  # 0..5 -> R,H,B,A,RD,HR
+    #         final_out[..., 2 + i] = class_maps[i]
+
+    #     # slice 8: FM
+    #     final_out[..., 8] = fm_map
+
+    #     # 若你一定要維持原本 viewer 的方向（過去用 rot90/flip 矯正）：
+    #     # 建議改用 affine 處理方向，避免再做資料層級的大拷貝
+    #     # 這裡給一個等價的 affine（X 軸翻轉 + 軸交換）的示意，請視實際方向調整：
+    #     aff = np.eye(4, dtype=np.float32)
+    #     # 例如只要做上下翻轉，可用 Y 尺度 -1 並平移 H-1：
+    #     # aff[1,1] = -1; aff[1,3] = H - 1
+    #     # 依你原本 rot/flip 的實際需求調整；如不需矯正，保留單位矩陣即可。
+
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     out = os.path.join(output_dir, "qmap.nii.gz")
+
+    #     # 直接用 (H, W, 9) 儲存；NIfTI 第三軸 = slice/channel
+    #     img = nib.Nifti1Image(final_out, affine=aff)
+    #     img.header.set_data_dtype(np.float32)
+    #     nib.save(img, out)
+
+    #     print(f"[qmap] Saved: {out}")
+    #     print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+
     def qmap(self, input_image_path, json_file_path, output_dir, workers: int = 0):
-        """
-        Full-res Qmap with 9 slices (更快版):
-        [original, MAS, R, H, B, A, RD, HR, FM]
-        - 將重疊像素的「取最大」改為：排序 + 分段 reduce（np.maximum.reduceat）
-        - 類別圖中心像素標 1：維持純向量化
-        - 仍保留 NaN 以標示非中心像素
-        """
-        # ---- 1) 讀 original：單通道 8-bit → float32 ----
+        # ---- 1) 讀 original → 直接寫到 final_out[...,0] ----
         with Image.open(input_image_path) as im:
             gray_u8 = np.asarray(im.convert("L"))  # (H,W) uint8
-        if gray_u8.ndim != 2:
-            raise ValueError(f"Grayscale image must be 2D, got {gray_u8.shape}")
         H, W = gray_u8.shape
-        original = gray_u8.astype(np.float32, copy=False)[None, :, :]  # (1,H,W)
 
-        # ---- 2) 準備輸出陣列（NaN 表示非中心像素）----
+        # ---- NEW: 直接配置最終輸出，整段運算都寫在這裡面 ----
+        final_out = np.full((H, W, 9), np.nan, dtype=np.float32)
+        final_out[..., 0] = gray_u8.astype(np.float32, copy=False)  # original
+
         class_names = ["R", "H", "B", "A", "RD", "HR"]
         class_to_idx = {name: i for i, name in enumerate(class_names)}  # 0..5
-        mas_map  = np.full((H, W), np.nan, dtype=np.float32)
-        fm_map   = np.full((H, W), np.nan, dtype=np.float32)
-        class_maps = np.full((len(class_names), H, W), np.nan, dtype=np.float32)
-        # R, H, B, A, RD, HR → 對應 MAS 權重
         mas_weight_lut = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
 
-        # ---- 3) 讀 JSON → 向量 ----
+        # ---- 3) 讀 JSON ----
         with open(json_file_path, "r", encoding="utf-8") as f:
             detections = json.load(f)
         if isinstance(detections, dict):
@@ -469,35 +624,37 @@ class YOLOPipeline:
                 if k in detections and isinstance(detections[k], list):
                     detections = detections[k]
                     break
-        if not isinstance(detections, list):
-            raise ValueError("JSON detections must be a list.")
+        if not isinstance(detections, list) or not detections:
+            # 直接存檔（只有 original；其他都是 NaN）
+            os.makedirs(output_dir, exist_ok=True)
+            out = os.path.join(output_dir, "qmap.nii.gz")
+            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
+            print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+            return
 
-        # 解析到 list（保留容錯）
+        # ---- 4) 向量化解析 ----
         cx_list, cy_list, ci_list, fm_list = [], [], [], []
         for cell in detections:
             cls_raw = cell.get("class", cell.get("type"))
-            if not cls_raw:
+            if not cls_raw: 
                 continue
             cls = str(cls_raw).strip().upper()
             if cls not in class_to_idx:
                 continue
-
             c = cell.get("center")
-            if c is None:
+            if c is None: 
                 continue
             if isinstance(c, (list, tuple)) and len(c) >= 2:
                 cx, cy = c[0], c[1]
             else:
                 s = str(c).translate(str.maketrans("[](),", "     ")).split()
-                if len(s) < 2:
+                if len(s) < 2: 
                     continue
                 cx, cy = s[0], s[1]
             try:
-                cx = int(round(float(cx)))
-                cy = int(round(float(cy)))
+                cx = int(round(float(cx))); cy = int(round(float(cy)))
             except Exception:
                 continue
-
             fm_val = cell.get("FM", 0.0) or 0.0
             try:
                 fm_val = float(fm_val)
@@ -508,17 +665,13 @@ class YOLOPipeline:
             ci_list.append(class_to_idx[cls])
             fm_list.append(fm_val)
 
-        # 無偵測：直接輸出
         if not cx_list:
-            final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)  # (9,H,W)
-            final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H,W,9)
             os.makedirs(output_dir, exist_ok=True)
             out = os.path.join(output_dir, "qmap.nii.gz")
-            nib.save(nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4)), out)
+            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
             print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
             return
 
-        # ---- 4) 轉成 NumPy 陣列並做畫布邊界過濾 ----
         cx = np.asarray(cx_list, dtype=np.int32)
         cy = np.asarray(cy_list, dtype=np.int32)
         ci = np.asarray(ci_list, dtype=np.int16)
@@ -526,93 +679,41 @@ class YOLOPipeline:
 
         valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= 0) & (ci < len(class_names))
         if not np.any(valid):
-            final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)
-            final_qmap = np.transpose(final_qmap, (1, 2, 0))
             os.makedirs(output_dir, exist_ok=True)
             out = os.path.join(output_dir, "qmap.nii.gz")
-            nib.save(nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4)), out)
+            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
             print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
             return
 
         cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
 
-        # ---- 5) MAS / FM：用「排序 + 分段 reduce(max)」一次寫入（比 maximum.at 更快、記憶體友善）----
-        # 線性索引：同一像素會聚在一起
+        # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
         lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
-        order = np.argsort(lin, kind="mergesort")  # 穩定排序，利於 reduceat
+        order = np.argsort(lin, kind="mergesort")
         lin_s  = lin[order]
         ci_s   = ci[order]
         fv_s   = fv[order]
 
-        # 對應的 MAS 權重
         mas_vals_s = mas_weight_lut[ci_s]
-
-        # 找每個 group（相同 lin）的起點
         group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
         lin_unique   = lin_s[group_starts]
 
-        # 分段最大值（每個像素一個值）
         mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
         fm_max  = np.maximum.reduceat(fv_s,       group_starts)
 
-        # 寫回 2D 畫布（先變平面再還原）
-        mas_flat = mas_map.ravel()
-        fm_flat  = fm_map.ravel()
-        # 只對出現過的像素寫入最大值
-        mas_flat[lin_unique] = mas_max
-        fm_flat[lin_unique]  = fm_max
+        y_u = (lin_unique // W).astype(np.intp)
+        x_u = (lin_unique %  W).astype(np.intp)
 
-        # ---- 6) 類別圖：中心像素標 1（重複寫 1 沒關係；維持 NaN 非中心像素）----
-        # 直接用進階索引向量化
-        class_maps[ci, cy, cx] = 1.0
+        final_out[y_u, x_u, 7] = mas_max  # MAS
+        final_out[y_u, x_u, 8] = fm_max   # FM
 
-        # # ---- 7) 組裝並輸出 ----
-        # final_qmap = np.concatenate([original, mas_map[None], class_maps, fm_map[None]], axis=0)  # (9,H,W)
-        # final_qmap = np.transpose(final_qmap, (1, 2, 0))  # (H,W,9)
+        # ---- 6) 類別通道：一次性高維進階索引 → 直接寫 final_out ----
+        final_out[cy, cx, 1 + ci] = 1.0
 
-        # # 與你原先的方向處理一致（如需要）
-        # final_qmap = np.rot90(final_qmap, k=-3)
-        # final_qmap = np.flip(final_qmap, axis=0)
-
-        # os.makedirs(output_dir, exist_ok=True)
-        # out = os.path.join(output_dir, "qmap.nii.gz")
-        # img = nib.Nifti1Image(final_qmap.astype(np.float32, copy=False), affine=np.eye(4))
-        # img.header.set_data_dtype(np.float32)
-        # nib.save(img, out)
-
-        # print(f"[qmap] Saved: {out}")
-        # print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
-
-
-        # ---- 7) 組裝並輸出（無 concat / 無 transpose / 無 rot90/flip）----
-        # 直接建立最終 (H, W, 9) 的輸出陣列，逐片寫入以避免大拷貝
-        final_out = np.empty((H, W, 9), dtype=np.float32)
-
-        # slice 0: original（原本是 (1,H,W)）；直接寫入
-        final_out[..., 0] = original[0]
-
-        # slice 1: MAS
-        final_out[..., 1] = mas_map
-
-        # slice 2..7: class maps（class_maps 形狀 (6,H,W)）
-        for i in range(class_maps.shape[0]):  # 0..5 -> R,H,B,A,RD,HR
-            final_out[..., 2 + i] = class_maps[i]
-
-        # slice 8: FM
-        final_out[..., 8] = fm_map
-
-        # 若你一定要維持原本 viewer 的方向（過去用 rot90/flip 矯正）：
-        # 建議改用 affine 處理方向，避免再做資料層級的大拷貝
-        # 這裡給一個等價的 affine（X 軸翻轉 + 軸交換）的示意，請視實際方向調整：
+        # ---- 7) 存檔（維持 float32；如需方向校正可改 affine）----
         aff = np.eye(4, dtype=np.float32)
-        # 例如只要做上下翻轉，可用 Y 尺度 -1 並平移 H-1：
-        # aff[1,1] = -1; aff[1,3] = H - 1
-        # 依你原本 rot/flip 的實際需求調整；如不需矯正，保留單位矩陣即可。
-
         os.makedirs(output_dir, exist_ok=True)
         out = os.path.join(output_dir, "qmap.nii.gz")
-
-        # 直接用 (H, W, 9) 儲存；NIfTI 第三軸 = slice/channel
         img = nib.Nifti1Image(final_out, affine=aff)
         img.header.set_data_dtype(np.float32)
         nib.save(img, out)
