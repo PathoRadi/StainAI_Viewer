@@ -68,9 +68,10 @@ export function updateHistoryUI(historyStack) {
   const container = $('#history-container');
   container.empty();
   historyStack.forEach((item, idx) => {
+    const demoClass = item.demo ? ' is-demo' : '';
     const entry = $(`
       <div class="history-entry">
-        <button class="history-item" data-idx="${idx}">
+        <button class="history-item${demoClass}" data-idx="${idx}">
           <img class="file_icon" src="/static/logo/file_icon.png">
           ${item.name}<span class="history-menu-btn">⋯</span>
         </button>

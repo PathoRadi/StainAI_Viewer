@@ -44,6 +44,9 @@
     </div>
     <!-- Left Container Lowwer Part -->
     <div class="left-container-bottom">
+      <button id="try-btn" class="try-btn">
+        <img class="try-btn-icon" src="{% static 'logo/try_icon.png' %}">
+      </button>
       <!-- ReadMe -->
       <button class="readme-btn">
         <img class="readme-btn-icon" src="{% static 'logo/readme_icon.png' %}">
@@ -75,9 +78,16 @@
 
   <!-- ───── Drag & Drop / Click Upload Area ───── -->
   <div id="drop-zone">
-    <p>Drag &amp; Drop Your Image Here</p>
+    <p>Drag &amp; Drop Image Here</p>
     <button id="drop-upload-btn">Or Click to Upload</button>
     <input type="file" id="drop-upload-input" accept="image/*" style="display:none" />
+
+    <!-- ─── Try Demo Image Button (hidden until upload) ─── -->
+    <div id="demo-preview-card" hidden>
+      <button id="demo-close" aria-label="Close">✕</button>
+      <div class="demo-title">Try Dragging & Dropping the Demo Image </div>
+      <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" alt="demo preview">
+    </div>
 
     <!-- ─── Preview + Start Button (hidden until upload) ─── -->
     <div id="preview-container">

@@ -31,6 +31,23 @@
     cursor: pointer;
     margin-bottom: 8px;
 }
+.history-item:hover {
+    background: var(--bg-history-item-hover);
+}
+.history-item.selected {
+    background: var(--bg-history-item-hover);
+}
+.history-item:hover .history-menu-btn {
+    display: block;
+}
+.history-item.is-demo {
+    background: var(--bg-history-item);   
+    color: var(--text-history-item);
+}
+.history-item.is-demo:hover,
+.history-item.is-demo.selected {
+    background: linear-gradient(90deg, rgb(233, 121, 189) 0%, rgb(194, 106, 189) 50%, rgb(150, 89, 189) 100%);  
+}
 .history-menu-btn {
     position: absolute;
     top: 50%;
@@ -44,15 +61,6 @@
     line-height: 1;
     cursor: pointer;
     padding: 0;
-}
-.history-item:hover {
-    background: var(--bg-history-item-hover);
-}
-.history-item.selected {
-    background: var(--bg-history-item-hover);
-}
-.history-item:hover .history-menu-btn {
-    display: block;
 }
 .history-action-menu {
     position: absolute;

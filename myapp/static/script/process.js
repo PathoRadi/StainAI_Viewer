@@ -249,10 +249,17 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
 
 
-
+  window.__uploadFileViaDropZone = function(file){
+    handleFileUpload(file, UPLOAD_IMAGE_URL);
+  };
 
   // Handle file upload to server
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
+    const name = (file?.name || '').toLowerCase();
+    if (name === 'demo.jpg' || name === 'demo.jpeg') {
+      window.isDemoUpload = true;
+    }
+
     const fd = new FormData();
     fd.append('image', file);
 
@@ -289,9 +296,27 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('hover'); });
   dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('hover'); });
-  dropZone.addEventListener('drop',      e => { e.preventDefault(); dropZone.classList.remove('hover'); handleFileUpload(e.dataTransfer.files[0], UPLOAD_IMAGE_URL); });
-  dropUploadBtn.addEventListener('click',    () => dropUploadInput.click());
-  dropUploadInput.addEventListener('change', () => handleFileUpload(dropUploadInput.files[0], UPLOAD_IMAGE_URL));
+  dropZone.addEventListener('drop',      e => { 
+    e.preventDefault();
+    dropZone.classList.remove('hover');
+
+    const isDemoDnD = Array.from(e.dataTransfer.types || []).includes('text/x-stain-demo');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+
+    if (isDemoDnD) {
+      window.isDemoUpload = true;
+    } else {
+      const name = (f?.name || '').toLowerCase();
+      window.isDemoUpload = (name === 'demo.jpg' || name === 'demo.jpeg');
+    }
+    handleFileUpload(f, UPLOAD_IMAGE_URL);
+  });
+  dropUploadBtn.addEventListener('click',    () => {
+    dropUploadInput.click()
+  });
+  dropUploadInput.addEventListener('change', () => {
+    handleFileUpload(dropUploadInput.files[0], UPLOAD_IMAGE_URL)
+  });
 
   startDetectBtn.addEventListener('click', () => {
     const parts      = window.imgPath.split('/');
@@ -413,8 +438,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         displayUrl: d.display_url,
         boxes:      window.bboxData.slice(),
         origSize:   d.orig_size,
-        dispSize:   d.display_size
+        dispSize:   d.display_size,
+        demo:       !!window.isDemoUpload
       });
+      window.isDemoUpload = false;
       import('./history.js').then(mod => {
         mod.updateHistoryUI(historyStack);
         setTimeout(() => {  

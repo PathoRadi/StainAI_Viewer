@@ -445,6 +445,55 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
   });
 
+  // === Try Demo Image Button & Logic ===
+  const $drop = $('#drop-zone');
+  const $main = $('.main-container');
+  const $card = $('#demo-preview-card');
+  const $demoImg = $('#demo-preview-img');
+
+  // 1) 左側 Try 按鈕：回到首頁 + 顯示 demo 小框
+  $('#try-btn').on('click', () => {
+    // 回首頁視圖
+    $main.prop('hidden', true);
+    $drop.show();
+
+    // 顯示 demo 預覽卡
+    $card.removeAttr('hidden');
+
+    // 確保 Start Detection 初始狀態（避免殘留 disable）
+    $('#start-detect-btn').prop('disabled', true);
+    $('#preview-container').hide();
+  });
+
+  // 2) 關閉 demo 小框（可選）
+  $('#demo-close').on('click', () => {
+    $card.attr('hidden', true);
+  });
+
+  // 3) 點擊預覽圖：抓取 static/demo/demo.jpg → 轉 File → 借用既有上傳流程
+  $demoImg.on('click', async () => {
+    try {
+      const resp = await fetch("{% static 'demo/demo.jpg' %}");
+      const blob = await resp.blob();
+      const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+
+      if (typeof window.__uploadFileViaDropZone === 'function') {
+        // 這會啟動原本的 handleFileUpload：顯示 preview、啟用 Start Detection
+        window.isDemoUpload = true;
+        window.__uploadFileViaDropZone(file);
+      }
+    } catch (e) {
+      console.error('Demo image load failed:', e);
+      alert('Failed to load demo image.');
+    }
+  });
+  $demoImg.attr('draggable', true).on('dragstart', (e) => {
+    const dt = e.originalEvent.dataTransfer;
+    // 投遞一個自訂型別，讓 drop 區能判斷來源
+    dt.setData('text/x-stain-demo', '1');
+  });
+
+
   // ReadMe Page (PDF version: overlay uses iframe to display, Pop-out opens PDF directly)
   document.addEventListener('DOMContentLoaded', () => {
     const readmeBtn     = document.querySelector('.readme-btn');
