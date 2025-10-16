@@ -119,15 +119,32 @@ export function initHistoryHandlers(historyStack) {
       drawBbox(window.bboxData);
 
       if (window.chartRefs && window.chartRefs.length) {
-        window.chartRefs.forEach(chart => {
+        window.chartRefs.forEach((chart, i) => {
+          // Re-bind filter checkboxes (each chart needs its own)
           initCheckboxes(window.bboxData, chart);
           $('#checkbox_All').prop('checked', true);
-          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-            .prop('checked', true);
+          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
           showAllBoxes();
-          updateChart(window.bboxData, chart);
+
+          if (i === 0) {
+            // For the first barChart: keep "whole image" logic
+            updateChart(window.bboxData, chart);
+              } else {
+            // For the 2nd/3rd/4th: reset data and uncheck the ROI checkbox for that panel
+            chart.data.datasets[0].data = [0,0,0,0,0,0];
+            chart.update();
+
+            const panel = document.getElementById(`roi-container${i+1}`);
+            if (panel) {
+              $(panel).find('.roi-checkbox').prop('checked', false);
+            }
+          }
         });
+
+        // Re-render ROI list and each panel's state (charts with unchecked ROI will stay at 0)
+        if (typeof window.renderROIList === 'function') window.renderROIList();
       } else {
+        // If there are no charts, still create the first one ("whole image") — keep original logic
         window.chartRefs = [];
         const c1 = addBarChart();
         window.chartRefs.push(c1);
