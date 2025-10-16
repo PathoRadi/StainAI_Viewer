@@ -61,6 +61,7 @@ class CutImage:
             filepath = os.path.join(out_dir, f"patch_{y}_{x}.png")
             # PIL PNG parameter: compress_level=0~9 (1 is similar to your original OpenCV 1, faster)
             patch_img.save(filepath, format="PNG", compress_level=1)
+            del patch_arr
             return filepath
 
         max_workers = max_workers or (os.cpu_count() or 8) * 2

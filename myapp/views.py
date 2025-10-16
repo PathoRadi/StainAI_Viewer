@@ -6,6 +6,7 @@ import shutil
 import zipfile
 import tempfile
 import logging
+import gc
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -166,6 +167,7 @@ def detect_image(request):
         # --- 1) Convert to grayscale (PIL version) ---
         _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
         GrayScaleImage(orig_path, project_dir).rgb_to_gray()
+        gc.collect()
 
         # --- 2) Cut patch (PIL version) ---
         _set_progress_stage(project_name, 'cut')                  # Enter 2) cut stage
@@ -173,6 +175,7 @@ def detect_image(request):
         gray_name = os.listdir(gray_dir)[0]
         gray_path = os.path.join(gray_dir, gray_name)
         CutImage(gray_path, project_dir).cut()
+        gc.collect()
 
         # --- 3) YOLO pipeline ---
         _set_progress_stage(project_name, 'yolo')                 # Enter 3) yolo stage
@@ -185,6 +188,8 @@ def detect_image(request):
             logger.exception("YOLO inference failed")
             _set_progress_stage(project_name, 'error')            # Failure → mark as error
             return HttpResponseServerError("detect failed during yolo")
+        
+        gc.collect()
         
         # --- 4) Processing Result ---
         _set_progress_stage(project_name, 'proc')                 # Enter 4) proc stage
@@ -206,8 +211,11 @@ def detect_image(request):
             p = os.path.join(project_dir, folder)
             shutil.rmtree(p, ignore_errors=True)
 
+        gc.collect()
+
         # --- 5) Finished ---
         _set_progress_stage(project_name, 'done')               # Enter 5) done stage
+        gc.collect()
 
         return JsonResponse({
             'boxes': detections,
