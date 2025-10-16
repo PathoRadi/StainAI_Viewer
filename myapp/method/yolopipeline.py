@@ -7,6 +7,7 @@ import math
 import numpy as np
 import nibabel as nib
 from PIL import Image
+import logging
 from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -21,6 +22,8 @@ class YOLOPipeline:
         self.output_dir = output_dir
         self.gray_image_path = gray_image_path
         self.gray_img = Image.open(self.gray_image_path)
+        self.project = os.path.basename(os.path.normpath(output_dir))  # e.g. <project_name>
+        self.log = logging.getLogger(f"stainai.pipeline.{self.project}")
 
         self.result_dir      = os.path.join(output_dir, "result")
         self.annotated_dir = os.path.join(output_dir, "annotated")
@@ -54,14 +57,17 @@ class YOLOPipeline:
 
         # 1. Process patches to get bounding boxes and labels
         bbox, labels = self.process_patches()
+        self.log.info(f"Detected {len(bbox)} objects from {self.large_img_path}")
         gc.collect()
 
         # 2. Save results to JSON
         self.save_results(bbox, labels)
+        self.log.info(f"Results saved to {self.result_dir}")
         gc.collect()
 
         # 3. Generate annotated image
         self.annotate_large_image(bbox, labels)
+        self.log.info(f"Annotated image saved to {self.annotated_dir}")
         gc.collect()
 
         # 4. Generate Qmap from the large image and JSON results
@@ -75,6 +81,7 @@ class YOLOPipeline:
                 'type': self.class_mapping[cls][0]
             })
         del bbox, labels
+        self.log.info(f"Qmap generation started for {self.large_img_path}")
         gc.collect()
 
         self.qmap(
@@ -82,6 +89,7 @@ class YOLOPipeline:
             os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json"),
             self.qmap_dir
         )
+        self.log.info(f"Qmap saved to {self.qmap_dir}")
         gc.collect()
 
         return detections
