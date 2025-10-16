@@ -310,6 +310,9 @@
     z-index: 1000;
     overflow: hidden;
 }
+#screenshot-dropdown0 {
+    height: 30px;
+}
 #screenshot-dropdown1 {
     height: 30px;
 }

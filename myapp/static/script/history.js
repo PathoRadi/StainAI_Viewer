@@ -343,5 +343,9 @@ export function initHistoryHandlers(historyStack) {
     document.body.appendChild(form);
     form.submit();
     form.remove();
+
+    $('.history-action-menu').hide();
+    $('.menu-click-shield').remove();
+    restoreMenusToOrigin();
   });
 }

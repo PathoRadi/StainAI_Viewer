@@ -508,5 +508,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     previewContainer.style.display = 'none';
     previewImg.src                 = '';
     window.imgPath                 = '';
+
+    const demoCard = document.getElementById('demo-preview-card');
+    if (demoCard) demoCard.setAttribute('hidden', true);
   });
 }
