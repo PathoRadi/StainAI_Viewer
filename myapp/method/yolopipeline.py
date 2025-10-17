@@ -9,6 +9,8 @@ from PIL import Image, ImageDraw
 import logging
 from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor
+import tempfile
+import tifffile as tiff
 
 
 class YOLOPipeline:
@@ -77,6 +79,18 @@ class YOLOPipeline:
         # )
         # self.log.info(f"Qmap saved to {self.qmap_dir}")
         # gc.collect()
+
+        json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
+        out_tif   = os.path.join(self.qmap_dir, os.path.basename(self.large_img_path)[:-4] + "_qmap.tif")
+        self.qmap_to_bigtiff(
+            input_image_path=self.large_img_path,
+            json_file_path=json_path,
+            output_tiff_path=out_tif,
+            compress="zlib",        # 或 "zstd"（若你的環境支援）
+            tile_size=512
+        )
+        self.log.info(f"Qmap BigTIFF saved to {out_tif}")
+        gc.collect()
 
         return detections
 
@@ -579,3 +593,162 @@ class YOLOPipeline:
 
         print(f"[qmap] Saved: {out}")
         print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+
+    # --- 在 class YOLOPipeline 裡面新增： ---
+    @staticmethod
+    def _paint_points_into_memmap(mem, H, W, points, value_fn):
+        """
+        將 detections 以「點」畫進 memmap(float32)。
+        - points: list[dict]，每個 dict 至少要有 cx, cy
+        - value_fn(pt)->float，決定畫上的值（例如 1.0、pt["MAS"]、pt["FM"]）
+        覆蓋策略：取最大值（適合 MAS/FM/MAX 密度）；若要計數可改成 += 1
+        """
+        for pt in points:
+            cx = int(pt["cx"]); cy = int(pt["cy"])
+            if 0 <= cy < H and 0 <= cx < W:
+                v = float(value_fn(pt))
+                # 取最大值避免同一像素被多次命中時覆蓋較小值
+                mem[cy, cx] = max(mem[cy, cx], v)
+
+    def _parse_detections_from_json(self, json_file_path):
+        """
+        讀取 self.save_results() 產生的 JSON，輸出 points list:
+        [{'cx':int,'cy':int,'cls':str,'MAS':float,'FM':float}, ...]
+        與依類別分組的 dict。
+        """
+        with open(json_file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            for k in ("detections", "objects", "cells"):
+                if k in data and isinstance(data[k], list):
+                    data = data[k]
+                    break
+        if not isinstance(data, list):
+            return [], {}
+
+        # class 名稱順序與你原本一致
+        class_names = ["R", "H", "B", "A", "RD", "HR"]
+        by_class = {c: [] for c in class_names}
+        points   = []
+
+        for cell in data:
+            cls_raw = cell.get("class", cell.get("type"))
+            if not cls_raw:
+                continue
+            cls = str(cls_raw).strip().upper()
+            if cls not in by_class:
+                continue
+
+            c = cell.get("center")
+            if c is None:
+                continue
+            if isinstance(c, (list, tuple)) and len(c) >= 2:
+                cx, cy = c[0], c[1]
+            else:
+                s = str(c).translate(str.maketrans("[](),", "     ")).split()
+                if len(s) < 2:
+                    continue
+                cx, cy = s[0], s[1]
+            try:
+                cx = int(round(float(cx))); cy = int(round(float(cy)))
+            except Exception:
+                continue
+
+            FM  = float(cell.get("FM", 0.0) or 0.0)
+            MAS = float(cell.get("MAS", 0.0) or 0.0)
+
+            pt = {"cx": cx, "cy": cy, "cls": cls, "FM": FM, "MAS": MAS}
+            points.append(pt)
+            by_class[cls].append(pt)
+
+        return points, by_class
+
+
+    def qmap_to_bigtiff(
+        self,
+        input_image_path: str,
+        json_file_path: str,
+        output_tiff_path: str,
+        compress: str = "zlib",    # 若環境支援，可用 "zstd"
+        tile_size: int = 512
+    ):
+        """
+        以「逐頁串流」方式輸出多頁 BigTIFF：
+        Page 0: original (uint8)
+        Page 1..6: R, H, B, A, RD, HR (float32, 以點=1.0 或你要的值)
+        Page 7: MAS (float32, 以各點的 MAS 聚合；預設取最大值)
+        Page 8: FM  (float32, 以各點的 FM  聚合；預設取最大值)
+        """
+        # 1) 讀原圖（只保留 L8 以利 ImageJ 預覽與 ROI）
+        with Image.open(input_image_path) as im:
+            gray_u8 = np.asarray(im.convert("L"))
+        H, W = gray_u8.shape
+
+        # 2) 讀 detections
+        points, by_class = self._parse_detections_from_json(json_file_path)
+        if not points:
+            # 沒有偵測就只寫一頁 original，照樣是 BigTIFF
+            os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
+            with tiff.TiffWriter(output_tiff_path, bigtiff=True) as tw:
+                tw.write(
+                    gray_u8, dtype=np.uint8, photometric="minisblack",
+                    compression=compress, tile=(tile_size, tile_size),
+                    metadata={"Name": "original"}
+                )
+            self.log.info(f"[qmap_to_bigtiff] Saved: {output_tiff_path} (only original)")
+            return output_tiff_path
+
+        class_order = ["R", "H", "B", "A", "RD", "HR"]
+        tile = (tile_size, tile_size)
+        os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
+
+        # 3) 串流寫多頁 BigTIFF
+        with tiff.TiffWriter(output_tiff_path, bigtiff=True) as tw:
+            # Page 0: original
+            tw.write(
+                gray_u8, dtype=np.uint8, photometric="minisblack",
+                compression=compress, tile=tile, metadata={"Name": "original"}
+            )
+
+            # Pages 1..6: 類別頁（float32；這裡用 1.0 表示「命中」）
+            for c in class_order:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmp_path = os.path.join(tmpdir, f"page_{c}.dat")
+                    mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+                    mem[:] = 0.0
+
+                    self._paint_points_into_memmap(mem, H, W, by_class.get(c, []), value_fn=lambda pt: 1.0)
+
+                    tw.write(
+                        mem, dtype=np.float32, photometric="minisblack",
+                        compression=compress, tile=tile, metadata={"Name": c}
+                    )
+                    del mem  # 釋放
+
+            # Page 7: MAS（取最大值；若要平均或加總可自行改 value 與聚合策略）
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = os.path.join(tmpdir, f"page_MAS.dat")
+                mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+                mem[:] = 0.0
+                self._paint_points_into_memmap(mem, H, W, points, value_fn=lambda pt: pt["MAS"])
+                tw.write(
+                    mem, dtype=np.float32, photometric="minisblack",
+                    compression=compress, tile=tile, metadata={"Name": "MAS"}
+                )
+                del mem
+
+            # Page 8: FM（取最大值）
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = os.path.join(tmpdir, f"page_FM.dat")
+                mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+                mem[:] = 0.0
+                self._paint_points_into_memmap(mem, H, W, points, value_fn=lambda pt: pt["FM"])
+                tw.write(
+                    mem, dtype=np.float32, photometric="minisblack",
+                    compression=compress, tile=tile, metadata={"Name": "FM"}
+                )
+                del mem
+
+        self.log.info(f"[qmap_to_bigtiff] Saved: {output_tiff_path}")
+        self.log.info("Page order = [original, R, H, B, A, RD, HR, MAS, FM]")
+        return output_tiff_path

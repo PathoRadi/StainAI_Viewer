@@ -375,8 +375,8 @@ def download_project(request):
 
     s = BytesIO()
     with zipfile.ZipFile(s, 'w', zipfile.ZIP_DEFLATED) as z:
-        # for sub in ('original_mmap', 'qmap', "result"):
-        for sub in ('original_mmap', "result"):
+        for sub in ('original_mmap', 'qmap', "result"):
+        # for sub in ('original_mmap', "result"):
             folder = os.path.join(project_dir, sub)
             if os.path.isdir(folder):
                 for root, _, files in os.walk(folder):
@@ -520,8 +520,8 @@ def download_project_with_rois(request):
                                    else zipfile.ZIP_DEFLATED
 
     with zipfile.ZipFile(tmpf, "w") as main_zip:
-        # for sub in ("original_mmap", "qmap", "result"):
-        for sub in ("original_mmap", "result"):
+        for sub in ("original_mmap", "qmap", "result"):
+        # for sub in ("original_mmap", "result"):
             folder = os.path.join(project_dir, sub)
             if os.path.isdir(folder):
                 for root, _, files in os.walk(folder):
