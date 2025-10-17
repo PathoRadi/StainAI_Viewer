@@ -3,13 +3,12 @@ import json
 import re
 import torch
 import gc
-import math
 import numpy as np
 import nibabel as nib
-from PIL import Image
+from PIL import Image, ImageDraw
 import logging
 from .bounding_box_filter import BoundingBoxFilter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 
 class YOLOPipeline:
@@ -61,7 +60,7 @@ class YOLOPipeline:
         gc.collect()
 
         # 2. Save results to JSON
-        self.save_results(bbox, labels)
+        detections = self.save_results(bbox, labels)
         self.log.info(f"Results saved to {self.result_dir}")
         gc.collect()
 
@@ -71,26 +70,13 @@ class YOLOPipeline:
         gc.collect()
 
         # 4. Generate Qmap from the large image and JSON results
-        detections = []
-        for box, lbl in zip(bbox, labels):
-            # If you want integer coordinates (recommended, more stable for frontend drawing)
-            coords = [int(v) for v in box]          # Or keep floats: [float(v) for v in box]
-            cls    = int(lbl) if hasattr(lbl, 'item') else int(lbl)
-            detections.append({
-                'coords': coords,
-                'type': self.class_mapping[cls][0]
-            })
-        del bbox, labels
-        self.log.info(f"Qmap generation started for {self.large_img_path}")
-        gc.collect()
-
-        self.qmap(
-            self.large_img_path,
-            os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json"),
-            self.qmap_dir
-        )
-        self.log.info(f"Qmap saved to {self.qmap_dir}")
-        gc.collect()
+        # self.qmap(
+        #     self.large_img_path,
+        #     os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json"),
+        #     self.qmap_dir
+        # )
+        # self.log.info(f"Qmap saved to {self.qmap_dir}")
+        # gc.collect()
 
         return detections
 
@@ -298,40 +284,64 @@ class YOLOPipeline:
         Save detection results to a JSON file in the result directory.
         Each detection includes bounding box, center coordinates, class label, and focus measure.
         """
-        detections = []
-        # Optional: use multithreading to compute FM for many boxes in parallel (NumPy releases GIL)
-        from concurrent.futures import ThreadPoolExecutor
+        # 1) Focus Measure calculation (Brenner)
         def _fm_one(box):
             x1,y1,x2,y2 = map(int, box)
             x1=max(0,x1); y1=max(0,y1); x2=min(self.gray_np.shape[1],x2); y2=min(self.gray_np.shape[0],y2)
-            if x2<=x1 or y2<=y1: return 0.0
-
+            if x2<=x1 or y2<=y1: 
+                return 0.0
             return self._brenner_np(self.gray_np[y1:y2, x1:x2])
         
         with ThreadPoolExecutor(max_workers=os.cpu_count() or 8) as ex:
             fm_list = list(ex.map(_fm_one, bbox))
-        for (box, lbl), fm in zip(zip(bbox, labels), fm_list):
-            x1,y1,x2,y2 = map(int, box)
-            w, h = x2-x1, y2-y1
-            cx, cy = x1 + w // 2, y1 + h // 2
 
-            detections.append({
-                "bbox": f"[{x1} {y1} {w} {h}]",
-                "center": f"[{cx} {cy}]",
-                "class":  self.class_mapping[lbl][0],
-                # "FM":  fm
-                "FM":    float(fm)
-            })
+
+        # 2) Prepare data to store(bbox, center, class, FM, MAS)
+        boxes = np.asarray(bbox, dtype=np.int32)
+        if boxes.size == 0:
+            fm_list = []
+            x1 = y1 = x2 = y2 = np.array([], dtype=np.int32)
+        else:
+            x1, y1, x2, y2 = boxes.T
+            w = x2 - x1
+            h = y2 - y1
+            cx = x1 + w // 2
+            cy = y1 + h // 2
+        
+        mas_weight = {'R': 0.0, 'H': 0.33, 'B': 0.66, 'A': 1.0, 'RD': 0.0, 'HR': 0.66}
+        labels_int = [int(l.item()) if hasattr(l, "item") else int(l) for l in labels]
+        classes    = [self.class_mapping[i][0] for i in labels_int]
+        mas_vals   = [float(mas_weight[c]) for c in classes]
+        detections = [{
+            "coords":   [int(xi1), int(yi1), int(xi2), int(yi2)],
+            "type": cls,
+        } for xi1, yi1, xi2, yi2, cls in zip(x1, y1, x2, y2, classes)]
+        detections_json = [
+            {
+                "bbox":   f"[{xi} {yi} {wi} {hi}]",
+                "center": f"[{cxi} {cyi}]",
+                "class":  cls,
+                "FM":     float(fm),
+                "MAS":    mv,
+            }
+            for xi, yi, wi, hi, cxi, cyi, cls, fm, mv
+            in zip(x1, y1, w, h, cx, cy, classes, fm_list, mas_vals)
+        ]
+
+
+        # 3) Save to JSON
         base = os.path.splitext(os.path.basename(self.large_img_path))[0] + ".json"
-        with open(os.path.join(self.result_dir, base), "w") as f:
-            json.dump(detections, f, indent=2)    
+        with open(os.path.join(self.result_dir, base), "w", encoding="utf-8") as f:
+            json.dump(detections_json, f, ensure_ascii=False, indent=2)
+
+        return detections
 
     def annotate_large_image(self, bbox, labels, alpha=0.3, max_side=6000):
         """
         For very large images: draw boxes on a downsampled image to avoid loading a huge RGBA overlay.
         Outputs <original_filename>_annotated_preview.jpg
         """
-        from PIL import Image, ImageDraw
+        
 
         try:
             base_img = Image.open(self.large_img_path).convert("RGB")
@@ -536,47 +546,25 @@ class YOLOPipeline:
 
         cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
 
-        # # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
-        # lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
-        # order = np.argsort(lin, kind="mergesort")
-        # lin_s  = lin[order]
-        # ci_s   = ci[order]
-        # fv_s   = fv[order]
+        # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
+        lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+        order = np.argsort(lin, kind="mergesort")
+        lin_s  = lin[order]
+        ci_s   = ci[order]
+        fv_s   = fv[order]
 
-        # mas_vals_s = mas_weight_lut[ci_s]
-        # group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
-        # lin_unique   = lin_s[group_starts]
+        mas_vals_s = mas_weight_lut[ci_s]
+        group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
+        lin_unique   = lin_s[group_starts]
 
-        # mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
-        # fm_max  = np.maximum.reduceat(fv_s,       group_starts)
+        mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
+        fm_max  = np.maximum.reduceat(fv_s,       group_starts)
 
-        # y_u = (lin_unique // W).astype(np.intp)
-        # x_u = (lin_unique %  W).astype(np.intp)
+        y_u = (lin_unique // W).astype(np.intp)
+        x_u = (lin_unique %  W).astype(np.intp)
 
-        # final_out[y_u, x_u, 7] = mas_max  # MAS
-        # final_out[y_u, x_u, 8] = fm_max   # FM
-
-
-        # ---- 5) MAS / FM：O(n) 聚合，無排序、無臨時大陣列 ----
-        # 先把 MAS/FM 兩個通道填成 -inf（運算結束再換回 NaN）
-        neg_inf = np.array(-np.inf, dtype=np.float32)
-        final_out[..., 7].fill(neg_inf)  # MAS 通道（倒數第二片）
-        final_out[..., 8].fill(neg_inf)  # FM  通道（最後一片）
-
-        # 準備寫入的值
-        mas_vals = mas_weight_lut[ci].astype(np.float32, copy=False)   # 每個偵測點的 MAS 權重
-        fm_vals  = fv.astype(np.float32, copy=False)                    # 每個偵測點的 FM 值
-
-        # 直接對 final_out 的通道做「分組最大值」聚合（多重鍵=像素座標）
-        np.maximum.at(final_out[..., 7], (cy, cx), mas_vals)      # MAS 聚合 → ch 7
-        np.maximum.at(final_out[..., 8], (cy, cx), fm_vals)       # FM  聚合 → ch 8
-
-        # 把仍為 -inf 的像素改回 NaN（代表該像素沒有任何細胞）
-        mask_nan = np.isneginf(final_out[..., 7])
-        final_out[..., 7][mask_nan] = np.nan
-        mask_nan = np.isneginf(final_out[..., 8])
-        final_out[..., 8][mask_nan] = np.nan
-
+        final_out[y_u, x_u, 7] = mas_max  # MAS
+        final_out[y_u, x_u, 8] = fm_max   # FM
 
         # ---- 6) 類別通道：一次性高維進階索引 → 直接寫 final_out ----
         final_out[cy, cx, 1 + ci] = 1.0
