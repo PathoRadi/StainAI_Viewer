@@ -458,7 +458,9 @@ class YOLOPipeline:
         H, W = gray_u8.shape
 
         # ---- NEW: 直接配置最終輸出，整段運算都寫在這裡面 ----
-        final_out = np.full((H, W, 9), np.nan, dtype=np.float32)
+        low_mem = True
+        dtype = np.float16 if low_mem else np.float32
+        final_out = np.full((H, W, 9), np.nan, dtype=dtype)
         final_out[..., 0] = gray_u8.astype(np.float32, copy=False)  # original
 
         class_names = ["R", "H", "B", "A", "RD", "HR"]
@@ -536,25 +538,47 @@ class YOLOPipeline:
 
         cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
 
-        # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
-        lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
-        order = np.argsort(lin, kind="mergesort")
-        lin_s  = lin[order]
-        ci_s   = ci[order]
-        fv_s   = fv[order]
+        # # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
+        # lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+        # order = np.argsort(lin, kind="mergesort")
+        # lin_s  = lin[order]
+        # ci_s   = ci[order]
+        # fv_s   = fv[order]
 
-        mas_vals_s = mas_weight_lut[ci_s]
-        group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
-        lin_unique   = lin_s[group_starts]
+        # mas_vals_s = mas_weight_lut[ci_s]
+        # group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
+        # lin_unique   = lin_s[group_starts]
 
-        mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
-        fm_max  = np.maximum.reduceat(fv_s,       group_starts)
+        # mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
+        # fm_max  = np.maximum.reduceat(fv_s,       group_starts)
 
-        y_u = (lin_unique // W).astype(np.intp)
-        x_u = (lin_unique %  W).astype(np.intp)
+        # y_u = (lin_unique // W).astype(np.intp)
+        # x_u = (lin_unique %  W).astype(np.intp)
 
-        final_out[y_u, x_u, 7] = mas_max  # MAS
-        final_out[y_u, x_u, 8] = fm_max   # FM
+        # final_out[y_u, x_u, 7] = mas_max  # MAS
+        # final_out[y_u, x_u, 8] = fm_max   # FM
+
+
+        # ---- 5) MAS / FM：O(n) 聚合，無排序、無臨時大陣列 ----
+        # 先把 MAS/FM 兩個通道填成 -inf（運算結束再換回 NaN）
+        neg_inf = np.array(-np.inf, dtype=dtype)
+        final_out[..., 7].fill(neg_inf)  # MAS 通道（倒數第二片）
+        final_out[..., 8].fill(neg_inf)  # FM  通道（最後一片）
+
+        # 準備寫入的值
+        mas_vals = mas_weight_lut[ci].astype(dtype, copy=False)   # 每個偵測點的 MAS 權重
+        fm_vals  = fv.astype(dtype, copy=False)                    # 每個偵測點的 FM 值
+
+        # 直接對 final_out 的通道做「分組最大值」聚合（多重鍵=像素座標）
+        np.maximum.at(final_out[..., 7], (cy, cx), mas_vals)      # MAS 聚合 → ch 7
+        np.maximum.at(final_out[..., 8], (cy, cx), fm_vals)       # FM  聚合 → ch 8
+
+        # 把仍為 -inf 的像素改回 NaN（代表該像素沒有任何細胞）
+        mask_nan = np.isneginf(final_out[..., 7])
+        final_out[..., 7][mask_nan] = np.nan
+        mask_nan = np.isneginf(final_out[..., 8])
+        final_out[..., 8][mask_nan] = np.nan
+
 
         # ---- 6) 類別通道：一次性高維進階索引 → 直接寫 final_out ----
         final_out[cy, cx, 1 + ci] = 1.0
@@ -563,8 +587,11 @@ class YOLOPipeline:
         aff = np.eye(4, dtype=np.float32)
         os.makedirs(output_dir, exist_ok=True)
         out = os.path.join(output_dir, "qmap.nii")
-        img = nib.Nifti1Image(final_out, affine=aff)
-        img.header.set_data_dtype(np.float32)
+        # img = nib.Nifti1Image(final_out, affine=aff)
+        img = nib.Nifti1Image(final_out.astype(np.float32, copy=False), affine=aff) \
+                if not low_mem else nib.Nifti1Image(final_out, affine=aff)
+        # img.header.set_data_dtype(np.float32)
+        img.header.set_data_dtype(np.float32 if not low_mem else final_out.dtype)
         nib.save(img, out)
 
         print(f"[qmap] Saved: {out}")
