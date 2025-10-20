@@ -13,6 +13,7 @@ from tifffile import imwrite
 import tempfile
 import tifffile as tiff
 
+
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
 
@@ -751,7 +752,6 @@ class YOLOPipeline:
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return output_tiff_path
 
-
     def qmap_nifti_streaming(
         self,
         input_image_path: str,
@@ -759,121 +759,135 @@ class YOLOPipeline:
         output_dir: str,
         *,
         tmp_dir: str | None = None,
-        gzip: bool = True,          # True → .nii.gz；False → .nii
-        write_nan: bool = False     # True → 未命中處寫 NaN（較慢、I/O 大）；False → 寫 0
+        gzip: bool = True,
+        write_nan: bool = True,   # 你要「非中心像素全 NaN」，就保持 True
     ):
         """
-        以『磁碟 memmap 串流』的方式輸出 NIfTI：
-        Slice 0: original (uint8→float32)
-        Slice 1..6: R,H,B,A,RD,HR (float32; 命中=1.0)
-        Slice 7: MAS (float32; 每像素最大值)
-        Slice 8: FM  (float32; 每像素最大值)
-
-        相較於舊 qmap()：不會在 RAM 建立 (H,W,9) 的大陣列；所有寫入都走 memmap。
+        大圖優化 NIfTI（.nii/.nii.gz）：
+        - memmap 形狀 = (H, W, 9) 避免存檔轉置
+        - 只對有資料的 slice 做 NaN 初始化
+        - 類別層一次性 scatter，MAS/FM 用 maximum.at 聚合
         """
-        # ---- 1) 原圖 → gray_u8 ----
-        with Image.open(input_image_path) as im:
-            gray_u8 = np.asarray(im.convert("L"))
+        # 0) 原圖
+        try:
+            gray_u8 = self.gray_np
+            if gray_u8.ndim != 2 or gray_u8.dtype != np.uint8:
+                raise ValueError
+        except Exception:
+            with Image.open(input_image_path) as im:
+                gray_u8 = np.asarray(im.convert("L"))
         H, W = gray_u8.shape
 
-        # ---- 2) 讀 detections（沿用你現有 parser）----
-        # 會回傳 points 與 by_class：
-        #   points: [{'cx','cy','cls','FM','MAS'}, ...]
-        #   by_class: {'R':[...], 'H':[...], ...}
-        points, by_class = self._parse_detections_from_json(json_file_path)
+        # 1) detections
+        points, _ = self._parse_detections_from_json(json_file_path)
         class_order = ["R", "H", "B", "A", "RD", "HR"]
+        cls2i = {c: i for i, c in enumerate(class_order)}
 
-        # ---- 3) 準備輸出檔名 ----
         os.makedirs(output_dir, exist_ok=True)
         out_path = os.path.join(output_dir, "qmap.nii.gz" if gzip else "qmap.nii")
 
-        # ---- 4) 先在磁碟建立 memmap 檔案 (num_slices, H, W) ----
+        # 2) memmap (H, W, 9)
         num_slices = 9
         tmp_root = tmp_dir or output_dir
         os.makedirs(tmp_root, exist_ok=True)
         memmap_path = os.path.join(tmp_root, "qmap_memmap.dat")
+        mm = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(H, W, num_slices))
 
-        # mode="w+"：建立可讀寫檔案；注意：初始化大量 NaN 會很慢，因此預設寫 0 更快
-        mm = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(num_slices, H, W))
+        # slice 0: 原圖 → float32
+        mm[..., 0] = gray_u8.astype(np.float32, copy=False)
+
+        # 若沒有任何點：只輸出原圖（其餘 slice 不動）
+        if not points:
+            if write_nan:
+                mm[..., 1:9].fill(np.nan)
+            img = nib.Nifti1Image(mm, affine=np.eye(4, dtype=np.float32))
+            img.header.set_data_dtype(np.float32)
+            nib.save(img, out_path)
+            # 釋放/清理
+            del mm
+            try:
+                os.remove(memmap_path)
+            except Exception:
+                pass
+            self.log.info("[qmap_nifti_streaming] Saved (no detections): %s", out_path)
+            return out_path
+
+        # 3) 拉成向量
+        N = len(points)
+        cx  = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=N)
+        cy  = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=N)
+        FM  = np.fromiter((float(p.get("FM", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+        MAS = np.fromiter((float(p.get("MAS", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+        ci  = np.fromiter((cls2i.get(p["cls"], -1) for p in points), dtype=np.int16, count=N)
+
+        valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= -1) & (ci < len(class_order))
+        if not np.any(valid):
+            if write_nan:
+                mm[..., 1:9].fill(np.nan)
+            img = nib.Nifti1Image(mm, affine=np.eye(4, dtype=np.float32))
+            img.header.set_data_dtype(np.float32)
+            nib.save(img, out_path)
+            del mm
+            try:
+                os.remove(memmap_path)
+            except Exception:
+                pass
+            self.log.info("[qmap_nifti_streaming] Saved (no valid points): %s", out_path)
+            return out_path
+
+        cx, cy, ci, FM, MAS = cx[valid], cy[valid], ci[valid], FM[valid], MAS[valid]
+
+        # 4) unique pixel 索引
+        lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+        u, inv = np.unique(lin, return_inverse=True)
+        yu = (u // W).astype(np.intp)
+        xu = (u %  W).astype(np.intp)
+
+        # 5) 僅對需要的 slice 做 NaN 初始化
+        # 類別層
+        present_class = [np.any(ci == k) for k in range(len(class_order))]
+        for k, has_any in enumerate(present_class, start=1):     # slices 1..6
+            if write_nan and has_any:
+                mm[..., k].fill(np.nan)
+        # MAS/FM
         if write_nan:
-            mm[:] = np.nan
-        else:
-            mm[:] = 0.0
+            mm[..., 1:7].fill(np.nan)
+            mm[..., 7].fill(np.nan)
+            mm[..., 8].fill(np.nan)
 
-        # Slice 0: original（float32）
-        mm[0, :, :] = gray_u8.astype(np.float32, copy=False)
+        # 6) 類別層：>0 → 1.0
+        for k in range(len(class_order)):   # k: 0..5
+            mask = (ci == k)
+            if not np.any(mask):
+                continue
+            hit_counts = np.bincount(inv[mask], minlength=u.size)
+            idx = hit_counts > 0
+            mm[yu[idx], xu[idx], 1 + k] = 1.0   # slice 1..6
 
-        # ---- 5) 類別 slices（1..6）— 直接在 memmap 上作業 ----
-        for i, c in enumerate(class_order, start=1):
-            arr = mm[i]
-            for pt in by_class.get(c, []):
-                cx = int(pt["cx"]); cy = int(pt["cy"])
-                if 0 <= cy < H and 0 <= cx < W:
-                    # 若想看到更明顯的點，可改成畫小圓（半徑 r），但 I/O 會增大
-                    # 這裡採用取最大值避免覆蓋
-                    v = 1.0
-                    cur = arr[cy, cx]
-                    if not np.isnan(cur):
-                        arr[cy, cx] = v if write_nan else max(cur, v)
-                    else:
-                        arr[cy, cx] = v
+        # 7) MAS / FM：每像素最大值
+        mas_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+        np.maximum.at(mas_tmp, inv, MAS)
+        mas_tmp[~np.isfinite(mas_tmp)] = np.nan
+        mm[yu, xu, 7] = mas_tmp
 
-        # ---- 6) MAS / FM（7, 8）— 用「線性 index → 最大值」策略聚合後再寫入 ----
-        if points:
-            cx = np.array([int(p["cx"]) for p in points], dtype=np.int32)
-            cy = np.array([int(p["cy"]) for p in points], dtype=np.int32)
-            valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
-            if np.any(valid):
-                cx = cx[valid]; cy = cy[valid]
-                lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
-                order = np.argsort(lin, kind="mergesort")
-                lin_s = lin[order]
+        fm_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+        np.maximum.at(fm_tmp, inv, FM)
+        fm_tmp[~np.isfinite(fm_tmp)] = np.nan
+        mm[yu, xu, 8] = fm_tmp
 
-                # MAS
-                mas_vals = np.array([float(points[i]["MAS"] or 0.0) for i in np.nonzero(valid)[0]], dtype=np.float32)
-                mas_s = mas_vals[order]
-                group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
-                lin_u = lin_s[group_starts]
-                mas_max = np.maximum.reduceat(mas_s, group_starts)
-                yu = (lin_u // W).astype(np.intp)
-                xu = (lin_u %  W).astype(np.intp)
-                # 寫入 slice 7
-                mm[7, yu, xu] = np.maximum(mm[7, yu, xu], mas_max) if not write_nan else mas_max
+        # 8) 直接存（不需要轉置；不要先 del mm）
+        img = nib.Nifti1Image(mm, affine=np.eye(4, dtype=np.float32))
+        img.header.set_data_dtype(np.float32)
+        nib.save(img, out_path)
 
-                # FM
-                fm_vals = np.array([float(points[i]["FM"] or 0.0) for i in np.nonzero(valid)[0]], dtype=np.float32)
-                fm_s = fm_vals[order]
-                fm_max = np.maximum.reduceat(fm_s, group_starts)
-                # 寫入 slice 8
-                mm[8, yu, xu] = np.maximum(mm[8, yu, xu], fm_max) if not write_nan else fm_max
-
-        # 確保 memmap 落盤
-        mm.flush()
+        # 釋放 + 刪暫存
         del mm
         gc.collect()
-
-        # ---- 7) 用 nibabel 存成 NIfTI（從 memmap 再讀，不會整塊進 RAM）----
-        # 重新以唯讀 memmap 打開，避免被誤改
-        mm_r = np.memmap(memmap_path, dtype=np.float32, mode="r", shape=(num_slices, H, W))
-
-        # 注意：NIfTI 的維度慣例是 (X, Y, Z, T)...，我們這裡要 (H, W, Z)
-        # 當前 mm_r 形狀是 (Z, H, W)，所以需要轉軸 → (H, W, Z)
-        data_proxy = np.transpose(mm_r, (1, 2, 0))  # (H, W, 9)
-
-        aff = np.eye(4, dtype=np.float32)
-        img = nib.Nifti1Image(data_proxy, affine=aff)
-        img.header.set_data_dtype(np.float32)
-
-        nib.save(img, out_path)  # 自動 .nii 或 .nii.gz
-        del mm_r
-        gc.collect()
-
-        # ---- 8) 清理臨時 memmap 檔案（NIfTI 已經寫好）----
         try:
             os.remove(memmap_path)
         except Exception:
             pass
 
-        self.log.info("[qmap_nifti_streaming] Saved: %s", out_path)
+        self.log.info("[qmap_nifti_streaming] FAST Saved: %s", out_path)
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return out_path
