@@ -9,9 +9,9 @@ from PIL import Image, ImageDraw
 import logging
 from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor
+from tifffile import imwrite
 import tempfile
 import tifffile as tiff
-
 
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
@@ -80,16 +80,24 @@ class YOLOPipeline:
         # self.log.info(f"Qmap saved to {self.qmap_dir}")
         # gc.collect()
 
+        # json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
+        # out_tif   = os.path.join(self.qmap_dir, os.path.basename(self.large_img_path)[:-4] + "_qmap.tif")
+        # self.qmap_to_bigtiff(
+        #     input_image_path=self.large_img_path,
+        #     json_file_path=json_path,
+        #     output_tiff_path=out_tif,
+        #     compress="zlib",        # 或 "zstd"（若你的環境支援）
+        #     tile_size=512
+        # )
         json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
-        out_tif   = os.path.join(self.qmap_dir, os.path.basename(self.large_img_path)[:-4] + "_qmap.tif")
-        self.qmap_to_bigtiff(
+        self.qmap_nifti_streaming(
             input_image_path=self.large_img_path,
             json_file_path=json_path,
-            output_tiff_path=out_tif,
-            compress="zlib",        # 或 "zstd"（若你的環境支援）
-            tile_size=512
+            output_dir=self.qmap_dir,
+            gzip=False,         # 產生 qmap.nii.gz or qmap.nii
+            write_nan=True   # 0 比 NaN 更省 I/O；若你一定要 NaN 可設 True，但會慢
         )
-        self.log.info(f"Qmap BigTIFF saved to {out_tif}")
+        self.log.info(f"Qmap saved to {self.qmap_dir}")
         gc.collect()
 
         return detections
@@ -663,92 +671,209 @@ class YOLOPipeline:
 
         return points, by_class
 
-
     def qmap_to_bigtiff(
         self,
         input_image_path: str,
         json_file_path: str,
         output_tiff_path: str,
-        compress: str = "zlib",    # 若環境支援，可用 "zstd"
+        compress: str = "zlib",
         tile_size: int = 512
     ):
         """
-        以「逐頁串流」方式輸出多頁 BigTIFF：
-        Page 0: original (uint8)
-        Page 1..6: R, H, B, A, RD, HR (float32, 以點=1.0 或你要的值)
-        Page 7: MAS (float32, 以各點的 MAS 聚合；預設取最大值)
-        Page 8: FM  (float32, 以各點的 FM  聚合；預設取最大值)
+        以「單一 stack」的方式輸出 BigTIFF（ImageJ 相容）：
+        Slice 0: original（float32）
+        Slice 1..6: R, H, B, A, RD, HR（float32，命中=1.0）
+        Slice 7: MAS（float32，像素最大值）
+        Slice 8: FM  （float32，像素最大值）
+        開 ImageJ 時會顯示為 9-slice 的同一個影像，而不是 9 個 series。
         """
-        # 1) 讀原圖（只保留 L8 以利 ImageJ 預覽與 ROI）
+        # 1) 讀原圖並轉 L8
         with Image.open(input_image_path) as im:
             gray_u8 = np.asarray(im.convert("L"))
         H, W = gray_u8.shape
 
-        # 2) 讀 detections
+        # 2) 讀偵測
         points, by_class = self._parse_detections_from_json(json_file_path)
-        if not points:
-            # 沒有偵測就只寫一頁 original，照樣是 BigTIFF
-            os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
-            with tiff.TiffWriter(output_tiff_path, bigtiff=True) as tw:
-                tw.write(
-                    gray_u8, dtype=np.uint8, photometric="minisblack",
-                    compression=compress, tile=(tile_size, tile_size),
-                    metadata={"Name": "original"}
-                )
-            self.log.info(f"[qmap_to_bigtiff] Saved: {output_tiff_path} (only original)")
-            return output_tiff_path
 
+        # 3) 準備 (9, H, W) float32 的 stack
         class_order = ["R", "H", "B", "A", "RD", "HR"]
-        tile = (tile_size, tile_size)
+        num_slices = 9
+        # 若擔心超大張，可改用 memmap：np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(num_slices, H, W))
+        stack = np.zeros((num_slices, H, W), dtype=np.float32)
+
+        # Slice 0: original 轉 float32（保留原始灰階值）
+        stack[0] = gray_u8.astype(np.float32, copy=False)
+
+        # Slice 1..6: 各類別命中點
+        for i, c in enumerate(class_order, start=1):
+            # 直接在 stack[i] 畫點（最大值聚合）
+            arr = stack[i]
+            for pt in by_class.get(c, []):
+                cx = int(pt["cx"]); cy = int(pt["cy"])
+                if 0 <= cy < H and 0 <= cx < W:
+                    # 命中寫 1.0；若要計數可改成 arr[cy, cx] += 1
+                    arr[cy, cx] = max(arr[cy, cx], 1.0)
+
+        # Slice 7: MAS 最大值
+        for pt in points:
+            cx = int(pt["cx"]); cy = int(pt["cy"])
+            if 0 <= cy < H and 0 <= cx < W:
+                v = float(pt.get("MAS", 0.0) or 0.0)
+                stack[7, cy, cx] = max(stack[7, cy, cx], v)
+
+        # Slice 8: FM 最大值
+        for pt in points:
+            cx = int(pt["cx"]); cy = int(pt["cy"])
+            if 0 <= cy < H and 0 <= cx < W:
+                v = float(pt.get("FM", 0.0) or 0.0)
+                stack[8, cy, cx] = max(stack[8, cy, cx], v)
+
+        # 4) 寫成單一 BigTIFF Stack（ImageJ 相容）
         os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
 
-        # 3) 串流寫多頁 BigTIFF
-        with tiff.TiffWriter(output_tiff_path, bigtiff=True) as tw:
-            # Page 0: original
-            tw.write(
-                gray_u8, dtype=np.uint8, photometric="minisblack",
-                compression=compress, tile=tile, metadata={"Name": "original"}
-            )
+        # 提供 slice 標籤，ImageJ 會顯示在 Slice Label
+        labels = ["original", "R", "H", "B", "A", "RD", "HR", "MAS", "FM"]
 
-            # Pages 1..6: 類別頁（float32；這裡用 1.0 表示「命中」）
-            for c in class_order:
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    tmp_path = os.path.join(tmpdir, f"page_{c}.dat")
-                    mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
-                    mem[:] = 0.0
+        imwrite(
+            output_tiff_path,
+            stack,                       # (9, H, W) float32
+            bigtiff=True,
+            imagej=True,                 # 讓 ImageJ 當作 stack 開啟
+            metadata={
+                "axes": "ZYX",           # 9 個 Z-slices
+                "Labels": labels
+            },
+            compression=compress,
+            tile=(tile_size, tile_size)  # 也可拿掉 tile，視你的需要
+        )
 
-                    self._paint_points_into_memmap(mem, H, W, by_class.get(c, []), value_fn=lambda pt: 1.0)
-
-                    tw.write(
-                        mem, dtype=np.float32, photometric="minisblack",
-                        compression=compress, tile=tile, metadata={"Name": c}
-                    )
-                    del mem  # 釋放
-
-            # Page 7: MAS（取最大值；若要平均或加總可自行改 value 與聚合策略）
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmp_path = os.path.join(tmpdir, f"page_MAS.dat")
-                mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
-                mem[:] = 0.0
-                self._paint_points_into_memmap(mem, H, W, points, value_fn=lambda pt: pt["MAS"])
-                tw.write(
-                    mem, dtype=np.float32, photometric="minisblack",
-                    compression=compress, tile=tile, metadata={"Name": "MAS"}
-                )
-                del mem
-
-            # Page 8: FM（取最大值）
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmp_path = os.path.join(tmpdir, f"page_FM.dat")
-                mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
-                mem[:] = 0.0
-                self._paint_points_into_memmap(mem, H, W, points, value_fn=lambda pt: pt["FM"])
-                tw.write(
-                    mem, dtype=np.float32, photometric="minisblack",
-                    compression=compress, tile=tile, metadata={"Name": "FM"}
-                )
-                del mem
-
-        self.log.info(f"[qmap_to_bigtiff] Saved: {output_tiff_path}")
-        self.log.info("Page order = [original, R, H, B, A, RD, HR, MAS, FM]")
+        self.log.info(f"[qmap_to_bigtiff] Saved stack: {output_tiff_path}")
+        self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return output_tiff_path
+
+
+    def qmap_nifti_streaming(
+        self,
+        input_image_path: str,
+        json_file_path: str,
+        output_dir: str,
+        *,
+        tmp_dir: str | None = None,
+        gzip: bool = True,          # True → .nii.gz；False → .nii
+        write_nan: bool = False     # True → 未命中處寫 NaN（較慢、I/O 大）；False → 寫 0
+    ):
+        """
+        以『磁碟 memmap 串流』的方式輸出 NIfTI：
+        Slice 0: original (uint8→float32)
+        Slice 1..6: R,H,B,A,RD,HR (float32; 命中=1.0)
+        Slice 7: MAS (float32; 每像素最大值)
+        Slice 8: FM  (float32; 每像素最大值)
+
+        相較於舊 qmap()：不會在 RAM 建立 (H,W,9) 的大陣列；所有寫入都走 memmap。
+        """
+        # ---- 1) 原圖 → gray_u8 ----
+        with Image.open(input_image_path) as im:
+            gray_u8 = np.asarray(im.convert("L"))
+        H, W = gray_u8.shape
+
+        # ---- 2) 讀 detections（沿用你現有 parser）----
+        # 會回傳 points 與 by_class：
+        #   points: [{'cx','cy','cls','FM','MAS'}, ...]
+        #   by_class: {'R':[...], 'H':[...], ...}
+        points, by_class = self._parse_detections_from_json(json_file_path)
+        class_order = ["R", "H", "B", "A", "RD", "HR"]
+
+        # ---- 3) 準備輸出檔名 ----
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, "qmap.nii.gz" if gzip else "qmap.nii")
+
+        # ---- 4) 先在磁碟建立 memmap 檔案 (num_slices, H, W) ----
+        num_slices = 9
+        tmp_root = tmp_dir or output_dir
+        os.makedirs(tmp_root, exist_ok=True)
+        memmap_path = os.path.join(tmp_root, "qmap_memmap.dat")
+
+        # mode="w+"：建立可讀寫檔案；注意：初始化大量 NaN 會很慢，因此預設寫 0 更快
+        mm = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(num_slices, H, W))
+        if write_nan:
+            mm[:] = np.nan
+        else:
+            mm[:] = 0.0
+
+        # Slice 0: original（float32）
+        mm[0, :, :] = gray_u8.astype(np.float32, copy=False)
+
+        # ---- 5) 類別 slices（1..6）— 直接在 memmap 上作業 ----
+        for i, c in enumerate(class_order, start=1):
+            arr = mm[i]
+            for pt in by_class.get(c, []):
+                cx = int(pt["cx"]); cy = int(pt["cy"])
+                if 0 <= cy < H and 0 <= cx < W:
+                    # 若想看到更明顯的點，可改成畫小圓（半徑 r），但 I/O 會增大
+                    # 這裡採用取最大值避免覆蓋
+                    v = 1.0
+                    cur = arr[cy, cx]
+                    if not np.isnan(cur):
+                        arr[cy, cx] = v if write_nan else max(cur, v)
+                    else:
+                        arr[cy, cx] = v
+
+        # ---- 6) MAS / FM（7, 8）— 用「線性 index → 最大值」策略聚合後再寫入 ----
+        if points:
+            cx = np.array([int(p["cx"]) for p in points], dtype=np.int32)
+            cy = np.array([int(p["cy"]) for p in points], dtype=np.int32)
+            valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
+            if np.any(valid):
+                cx = cx[valid]; cy = cy[valid]
+                lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+                order = np.argsort(lin, kind="mergesort")
+                lin_s = lin[order]
+
+                # MAS
+                mas_vals = np.array([float(points[i]["MAS"] or 0.0) for i in np.nonzero(valid)[0]], dtype=np.float32)
+                mas_s = mas_vals[order]
+                group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
+                lin_u = lin_s[group_starts]
+                mas_max = np.maximum.reduceat(mas_s, group_starts)
+                yu = (lin_u // W).astype(np.intp)
+                xu = (lin_u %  W).astype(np.intp)
+                # 寫入 slice 7
+                mm[7, yu, xu] = np.maximum(mm[7, yu, xu], mas_max) if not write_nan else mas_max
+
+                # FM
+                fm_vals = np.array([float(points[i]["FM"] or 0.0) for i in np.nonzero(valid)[0]], dtype=np.float32)
+                fm_s = fm_vals[order]
+                fm_max = np.maximum.reduceat(fm_s, group_starts)
+                # 寫入 slice 8
+                mm[8, yu, xu] = np.maximum(mm[8, yu, xu], fm_max) if not write_nan else fm_max
+
+        # 確保 memmap 落盤
+        mm.flush()
+        del mm
+        gc.collect()
+
+        # ---- 7) 用 nibabel 存成 NIfTI（從 memmap 再讀，不會整塊進 RAM）----
+        # 重新以唯讀 memmap 打開，避免被誤改
+        mm_r = np.memmap(memmap_path, dtype=np.float32, mode="r", shape=(num_slices, H, W))
+
+        # 注意：NIfTI 的維度慣例是 (X, Y, Z, T)...，我們這裡要 (H, W, Z)
+        # 當前 mm_r 形狀是 (Z, H, W)，所以需要轉軸 → (H, W, Z)
+        data_proxy = np.transpose(mm_r, (1, 2, 0))  # (H, W, 9)
+
+        aff = np.eye(4, dtype=np.float32)
+        img = nib.Nifti1Image(data_proxy, affine=aff)
+        img.header.set_data_dtype(np.float32)
+
+        nib.save(img, out_path)  # 自動 .nii 或 .nii.gz
+        del mm_r
+        gc.collect()
+
+        # ---- 8) 清理臨時 memmap 檔案（NIfTI 已經寫好）----
+        try:
+            os.remove(memmap_path)
+        except Exception:
+            pass
+
+        self.log.info("[qmap_nifti_streaming] Saved: %s", out_path)
+        self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
+        return out_path
