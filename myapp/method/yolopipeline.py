@@ -788,7 +788,9 @@ class YOLOPipeline:
 
         # 2) memmap (H, W, 9)
         num_slices = 9
-        tmp_root = tmp_dir or output_dir
+        # tmp_root = tmp_dir or output_dir
+        ramdisk = "/dev/shm"
+        tmp_root = tmp_dir or (ramdisk if os.path.isdir(ramdisk) else output_dir)
         os.makedirs(tmp_root, exist_ok=True)
         memmap_path = os.path.join(tmp_root, "qmap_memmap.dat")
         mm = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(H, W, num_slices))
@@ -843,11 +845,6 @@ class YOLOPipeline:
         # 類別層
         if write_nan:
             _nan_fill_blocks(mm, start_z=1, end_z=9)
-        # MAS/FM
-        if write_nan:
-            mm[..., 1:7].fill(np.nan)
-            mm[..., 7].fill(np.nan)
-            mm[..., 8].fill(np.nan)
 
         # 6) 類別層：>0 → 1.0
         for k in range(len(class_order)):   # k: 0..5
