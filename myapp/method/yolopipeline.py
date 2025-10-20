@@ -95,7 +95,7 @@ class YOLOPipeline:
             input_image_path=self.large_img_path,
             json_file_path=json_path,
             output_dir=self.qmap_dir,
-            gzip=False,         # 產生 qmap.nii.gz or qmap.nii
+            gzip=True,         # 產生 qmap.nii.gz or qmap.nii
             write_nan=True   # 0 比 NaN 更省 I/O；若你一定要 NaN 可設 True，但會慢
         )
         self.log.info(f"Qmap saved to {self.qmap_dir}")
@@ -799,16 +799,13 @@ class YOLOPipeline:
         # 若沒有任何點：只輸出原圖（其餘 slice 不動）
         if not points:
             if write_nan:
-                mm[..., 1:9].fill(np.nan)
+                _nan_fill_blocks(mm, start_z=1, end_z=9)   # ← 新 helper，見下方
             img = nib.Nifti1Image(mm, affine=np.eye(4, dtype=np.float32))
             img.header.set_data_dtype(np.float32)
-            nib.save(img, out_path)
-            # 釋放/清理
+            nib.save(img, out_path if gzip else out_path.replace('.nii.gz', '.nii'))
             del mm
-            try:
-                os.remove(memmap_path)
-            except Exception:
-                pass
+            try: os.remove(memmap_path)
+            except Exception: pass
             self.log.info("[qmap_nifti_streaming] Saved (no detections): %s", out_path)
             return out_path
 
@@ -823,17 +820,16 @@ class YOLOPipeline:
         valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= -1) & (ci < len(class_order))
         if not np.any(valid):
             if write_nan:
-                mm[..., 1:9].fill(np.nan)
+                _nan_fill_blocks(mm, start_z=1, end_z=9)
             img = nib.Nifti1Image(mm, affine=np.eye(4, dtype=np.float32))
             img.header.set_data_dtype(np.float32)
-            nib.save(img, out_path)
+            nib.save(img, out_path if gzip else out_path.replace('.nii.gz', '.nii'))
             del mm
-            try:
-                os.remove(memmap_path)
-            except Exception:
-                pass
+            try: os.remove(memmap_path)
+            except Exception: pass
             self.log.info("[qmap_nifti_streaming] Saved (no valid points): %s", out_path)
             return out_path
+
 
         cx, cy, ci, FM, MAS = cx[valid], cy[valid], ci[valid], FM[valid], MAS[valid]
 
@@ -845,10 +841,8 @@ class YOLOPipeline:
 
         # 5) 僅對需要的 slice 做 NaN 初始化
         # 類別層
-        present_class = [np.any(ci == k) for k in range(len(class_order))]
-        for k, has_any in enumerate(present_class, start=1):     # slices 1..6
-            if write_nan and has_any:
-                mm[..., k].fill(np.nan)
+        if write_nan:
+            _nan_fill_blocks(mm, start_z=1, end_z=9)
         # MAS/FM
         if write_nan:
             mm[..., 1:7].fill(np.nan)
@@ -891,3 +885,26 @@ class YOLOPipeline:
         self.log.info("[qmap_nifti_streaming] FAST Saved: %s", out_path)
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return out_path
+
+# --- Helper Functions ---
+def _nan_fill_blocks(arr, *, start_z: int, end_z: int, block: int = 2048) -> None:
+    """
+    將 arr[..., start_z:end_z] 區塊化填為 NaN（使用 uint32 位元樣式，較快）。
+    arr 形狀: (H, W, Z)。start_z 包含，end_z 不含。
+    """
+    import numpy as np
+    H, W, Z = arr.shape
+    z0, z1 = int(start_z), int(end_z)
+    nan_u32 = np.uint32(0x7FC00000)     # float32 NaN 常見 bit pattern
+    for k in range(z0, z1):
+        # 逐塊走訪，減少單次巨大連續寫入造成的 I/O 擁塞
+        y = 0
+        while y < H:
+            y2 = min(y + block, H)
+            x = 0
+            while x < W:
+                x2 = min(x + block, W)
+                view = arr[y:y2, x:x2, k].view(np.uint32)
+                view[...] = nan_u32
+                x = x2
+            y = y2
