@@ -166,6 +166,7 @@ def detect_image(request):
     # --- 1) Convert to grayscale (PIL version) ---
     _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
     GrayScaleImage(orig_path, project_dir).rgb_to_gray()
+    GrayScaleImage(orig_path, project_dir, is_cut=False).rgb_to_gray()
     logger.info("Grayscale conversion done")
     gc.collect()
     
@@ -184,7 +185,10 @@ def detect_image(request):
     _set_progress_stage(project_name, 'yolo')                 # Enter 3) yolo stage
     model = get_yolo_model()
     patches_dir = os.path.join(project_dir, 'patches')
-    pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
+    qmap_dir = os.path.join(project_dir, 'qmap')
+    qmap_slice0_name = os.listdir(qmap_dir)[0]
+    qmap_slice0_path = os.path.join(qmap_dir, qmap_slice0_name)
+    pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, qmap_slice0_path, project_dir)
     detections = pipeline.run()
     logger.info("YOLO inference done")
     gc.collect()
@@ -275,9 +279,12 @@ def download_project(request):
             if os.path.isdir(folder):
                 for root, _, files in os.walk(folder):
                     for fn in files:
-                        path = os.path.join(root, fn)
-                        arcname = os.path.join(project_name, fn)  # zip root/<project>/<file>
-                        z.write(path, arcname)
+                        if fn == "gmap_slice0.png":
+                            continue  # skip qmap/gmap_slice0.png
+                        else:
+                            path = os.path.join(root, fn)
+                            arcname = os.path.join(project_name, fn)  # zip root/<project>/<file>
+                            z.write(path, arcname)
     s.seek(0)
     return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
 
@@ -420,11 +427,14 @@ def download_project_with_rois(request):
             if os.path.isdir(folder):
                 for root, _, files in os.walk(folder):
                     for fn in files:
-                        src = os.path.join(root, fn)
-                        arc = os.path.join(project_name, fn)
-                        ctype = _compress_type_for(fn)
-                        main_zip.write(src, arcname=arc, compress_type=ctype,
-                                       compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
+                        if fn == "gmap_slice0.png":
+                            continue  # skip qmap/gmap_slice0.png
+                        else:
+                            src = os.path.join(root, fn)
+                            arc = os.path.join(project_name, fn)
+                            ctype = _compress_type_for(fn)
+                            main_zip.write(src, arcname=arc, compress_type=ctype,
+                                        compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
 
         if rois:
             roi_buf = BytesIO()

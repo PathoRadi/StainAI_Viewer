@@ -15,13 +15,15 @@ import tifffile as tiff
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
 
-    def __init__(self, model, patches_dir, large_img_path, gray_image_path, output_dir):
+    def __init__(self, model, patches_dir, large_img_path, gray_image_path, qmap_slice0_path, output_dir):
         self.model = model
         self.patches_dir = patches_dir
         self.large_img_path = large_img_path
         self.output_dir = output_dir
         self.gray_image_path = gray_image_path
         self.gray_img = Image.open(self.gray_image_path)
+        self.qmap_slice0_path = qmap_slice0_path
+        self.qmap_slice0 = Image.open(self.qmap_slice0_path)
         self.project = os.path.basename(os.path.normpath(output_dir))  # e.g. <project_name>
         self.log = logging.getLogger(f"stainai.pipeline.{self.project}")
 
@@ -43,6 +45,7 @@ class YOLOPipeline:
             5: ['HR', (255,0,0)]
         }
         self.gray_np = np.asarray(self.gray_img.convert('L'), dtype=np.uint8)
+        self.qmap_np = np.asarray(self.qmap_slice0.convert('L'), dtype=np.uint8)
     
     def run(self):
         """
@@ -688,10 +691,13 @@ class YOLOPipeline:
                 y = y2
 
         # 1) 讀原圖
-        with Image.open(input_image_path) as im:
-            original_map = np.asarray(im.convert("L"))
-        H, W = original_map.shape[:2]
-        original_map = original_map.astype(np.float32, copy=False)
+        # with Image.open(input_image_path) as im:
+        #     original_map = np.asarray(im.convert("L"))
+        # H, W = original_map.shape[:2]
+        # original_map = original_map.astype(np.float32, copy=False)
+        qmap_u8 = self.qmap_np
+        H, W = qmap_u8.shape
+        original_map = qmap_u8.astype(np.float32, copy=False)
 
         # 2) 讀 detections → points / class map
         points, by_class = self._parse_detections_from_json(json_file_path)
