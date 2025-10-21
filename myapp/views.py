@@ -260,29 +260,29 @@ def delete_project(request):
         logger.exception("delete_project failed")
         return HttpResponseServerError("delete failed; see logs")
 
-@require_GET
-def download_project(request):
-    project_name = request.GET.get('project_name')
-    project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)
-    if not os.path.isdir(project_dir):
-        return HttpResponseNotFound('Project not found')
+# @require_GET
+# def download_project(request):
+#     project_name = request.GET.get('project_name')
+#     project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)
+#     if not os.path.isdir(project_dir):
+#         return HttpResponseNotFound('Project not found')
 
-    s = BytesIO()
-    with zipfile.ZipFile(s, 'w', zipfile.ZIP_DEFLATED) as z:
-        for sub in ('original_mmap', 'qmap', "result"):
-        # for sub in ('original_mmap', "result"):
-            folder = os.path.join(project_dir, sub)
-            if os.path.isdir(folder):
-                for root, _, files in os.walk(folder):
-                    for fn in files:
-                        if fn == "gmap_slice0.png":
-                            continue  # skip qmap/gmap_slice0.png
-                        else:
-                            path = os.path.join(root, fn)
-                            arcname = os.path.join(project_name, fn)  # zip root/<project>/<file>
-                            z.write(path, arcname)
-    s.seek(0)
-    return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
+#     s = BytesIO()
+#     with zipfile.ZipFile(s, 'w', zipfile.ZIP_DEFLATED) as z:
+#         for sub in ('original_mmap', 'qmap', "result"):
+#         # for sub in ('original_mmap', "result"):
+#             folder = os.path.join(project_dir, sub)
+#             if os.path.isdir(folder):
+#                 for root, _, files in os.walk(folder):
+#                     for fn in files:
+#                         if fn == "gmap_slice0.png":
+#                             continue  # skip qmap/gmap_slice0.png
+#                         else:
+#                             path = os.path.join(root, fn)
+#                             arcname = os.path.join(project_name, fn)  # zip root/<project>/<file>
+#                             z.write(path, arcname)
+#     s.seek(0)
+#     return FileResponse(s, as_attachment=True, filename=f"{project_name}.zip")
 
 # ------ TIFF helpers (Pillow read, no cv2) ------
 
