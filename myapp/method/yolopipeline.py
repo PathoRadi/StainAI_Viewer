@@ -81,25 +81,15 @@ class YOLOPipeline:
         # self.log.info(f"Qmap saved to {self.qmap_dir}")
         # gc.collect()
 
-        # json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
-        # out_tif   = os.path.join(self.qmap_dir, os.path.basename(self.large_img_path)[:-4] + "_qmap.tif")
-        # self.qmap_to_bigtiff(
-        #     input_image_path=self.large_img_path,
-        #     json_file_path=json_path,
-        #     output_tiff_path=out_tif,
-        #     compress="zlib",        # 或 "zstd"（若你的環境支援）
-        #     tile_size=512
-        # )
-
         json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
-        stack_path = os.path.join(self.qmap_dir, os.path.basename(self.large_img_path)[:-4] + "_qmap_stack.tif")
+        stack_path = os.path.join(self.qmap_dir, "qmap.tif")
 
         self.qmap_sparse_stack_tiff(
             input_image_path=self.large_img_path,
             json_file_path=json_path,
             output_tiff_path=stack_path,
             tile=(512,512),
-            compression="zstd",       # 沒有 imagecodecs 會自動回退 LZW
+            compression="zstd",
             compression_level=8,
             predictor=None,
             bigtiff=True,
@@ -609,21 +599,6 @@ class YOLOPipeline:
         print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
 
     # --- 在 class YOLOPipeline 裡面新增： ---
-    @staticmethod
-    def _paint_points_into_memmap(mem, H, W, points, value_fn):
-        """
-        將 detections 以「點」畫進 memmap(float32)。
-        - points: list[dict]，每個 dict 至少要有 cx, cy
-        - value_fn(pt)->float，決定畫上的值（例如 1.0、pt["MAS"]、pt["FM"]）
-        覆蓋策略：取最大值（適合 MAS/FM/MAX 密度）；若要計數可改成 += 1
-        """
-        for pt in points:
-            cx = int(pt["cx"]); cy = int(pt["cy"])
-            if 0 <= cy < H and 0 <= cx < W:
-                v = float(value_fn(pt))
-                # 取最大值避免同一像素被多次命中時覆蓋較小值
-                mem[cy, cx] = max(mem[cy, cx], v)
-
     def _parse_detections_from_json(self, json_file_path):
         """
         讀取 self.save_results() 產生的 JSON，輸出 points list:
@@ -677,87 +652,6 @@ class YOLOPipeline:
 
         return points, by_class
 
-    def qmap_to_bigtiff(
-        self,
-        input_image_path: str,
-        json_file_path: str,
-        output_tiff_path: str,
-        compress: str = "zlib",
-        tile_size: int = 512
-    ):
-        """
-        以「單一 stack」的方式輸出 BigTIFF（ImageJ 相容）：
-        Slice 0: original（float32）
-        Slice 1..6: R, H, B, A, RD, HR（float32，命中=1.0）
-        Slice 7: MAS（float32，像素最大值）
-        Slice 8: FM  （float32，像素最大值）
-        開 ImageJ 時會顯示為 9-slice 的同一個影像，而不是 9 個 series。
-        """
-        # 1) 讀原圖並轉 L8
-        with Image.open(input_image_path) as im:
-            gray_u8 = np.asarray(im.convert("L"))
-        H, W = gray_u8.shape
-
-        # 2) 讀偵測
-        points, by_class = self._parse_detections_from_json(json_file_path)
-
-        # 3) 準備 (9, H, W) float32 的 stack
-        class_order = ["R", "H", "B", "A", "RD", "HR"]
-        num_slices = 9
-        # 若擔心超大張，可改用 memmap：np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(num_slices, H, W))
-        stack = np.zeros((num_slices, H, W), dtype=np.float32)
-
-        # Slice 0: original 轉 float32（保留原始灰階值）
-        stack[0] = gray_u8.astype(np.float32, copy=False)
-
-        # Slice 1..6: 各類別命中點
-        for i, c in enumerate(class_order, start=1):
-            # 直接在 stack[i] 畫點（最大值聚合）
-            arr = stack[i]
-            for pt in by_class.get(c, []):
-                cx = int(pt["cx"]); cy = int(pt["cy"])
-                if 0 <= cy < H and 0 <= cx < W:
-                    # 命中寫 1.0；若要計數可改成 arr[cy, cx] += 1
-                    arr[cy, cx] = max(arr[cy, cx], 1.0)
-
-        # Slice 7: MAS 最大值
-        for pt in points:
-            cx = int(pt["cx"]); cy = int(pt["cy"])
-            if 0 <= cy < H and 0 <= cx < W:
-                v = float(pt.get("MAS", 0.0) or 0.0)
-                stack[7, cy, cx] = max(stack[7, cy, cx], v)
-
-        # Slice 8: FM 最大值
-        for pt in points:
-            cx = int(pt["cx"]); cy = int(pt["cy"])
-            if 0 <= cy < H and 0 <= cx < W:
-                v = float(pt.get("FM", 0.0) or 0.0)
-                stack[8, cy, cx] = max(stack[8, cy, cx], v)
-
-        # 4) 寫成單一 BigTIFF Stack（ImageJ 相容）
-        os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
-
-        # 提供 slice 標籤，ImageJ 會顯示在 Slice Label
-        labels = ["original", "R", "H", "B", "A", "RD", "HR", "MAS", "FM"]
-
-        imwrite(
-            output_tiff_path,
-            stack,                       # (9, H, W) float32
-            bigtiff=True,
-            imagej=True,                 # 讓 ImageJ 當作 stack 開啟
-            metadata={
-                "axes": "ZYX",           # 9 個 Z-slices
-                "Labels": labels
-            },
-            compression=compress,
-            tile=(tile_size, tile_size)  # 也可拿掉 tile，視你的需要
-        )
-
-        self.log.info(f"[qmap_to_bigtiff] Saved stack: {output_tiff_path}")
-        self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
-        return output_tiff_path
-    
-
     def qmap_sparse_stack_tiff(
         self,
         input_image_path: str,
@@ -800,15 +694,10 @@ class YOLOPipeline:
                 y = y2
 
         # 1) 讀原圖（灰階 → float32）
-        try:
-            gray_u8 = self.gray_np
-            if gray_u8.ndim != 2 or gray_u8.dtype != np.uint8:
-                raise ValueError
-        except Exception:
-            with Image.open(input_image_path) as im:
-                gray_u8 = np.asarray(im.convert("L"))
-        H, W = gray_u8.shape
-        gray_f32 = gray_u8.astype(np.float32, copy=False)
+        with Image.open(input_image_path) as im:
+            original_map = np.asarray(im.convert("L"))
+        H, W = original_map.shape[:2]
+        original_map = original_map.astype(np.float32, copy=False)
 
         # 2) 讀 detections → points / class map
         points, by_class = self._parse_detections_from_json(json_file_path)
@@ -846,7 +735,7 @@ class YOLOPipeline:
             if tile is not None:
                 kwargs0['tile'] = tile
 
-            tw.write(gray_f32, **kwargs0)
+            tw.write(original_map, **kwargs0)
 
             # --- Slice 1..6：類別（float32，背景 NaN，命中=1.0） ---
             for idx, c in enumerate(class_order, start=1):
