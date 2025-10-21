@@ -9,10 +9,8 @@ from PIL import Image, ImageDraw
 import logging
 from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor
-from tifffile import imwrite
 import tempfile
 import tifffile as tiff
-
 
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
@@ -88,7 +86,8 @@ class YOLOPipeline:
             input_image_path=self.large_img_path,
             json_file_path=json_path,
             output_tiff_path=stack_path,
-            tile=(512,512),
+            # tile=(512,512),
+            tile=(1024,1024),
             compression="zstd",
             compression_level=8,
             predictor=None,
@@ -652,199 +651,380 @@ class YOLOPipeline:
 
         return points, by_class
 
+    # def qmap_sparse_stack_tiff(
+    #     self,
+    #     input_image_path: str,
+    #     json_file_path: str,
+    #     output_tiff_path: str,
+    #     *,
+    #     tile=(512, 512),
+    #     compression: str = 'zstd',       # 若無 imagecodecs 會自動回退 LZW
+    #     compression_level: int = 10,     # zstd: 1~22，建議 5~10；LZW 無此參數
+    #     predictor: int | None = None,    # LZW/Deflate 可用 predictor=2
+    #     bigtiff: bool = True,            # 大圖建議 True
+    #     write_nan: bool = True,          # 類別 & MAS/FM 背景一律 NaN
+    # ):
+    #     """
+    #     產生單一多頁 TIFF（ImageJ 可視為 stack）：
+    #     Slices (共9):
+    #         0: original (float32, 灰階完整值)
+    #         1..6: R, H, B, A, RD, HR (float32, 中心像素=1.0，其他 NaN)
+    #         7: MAS (float32, 中心像素=值，其他 NaN)
+    #         8: FM  (float32, 中心像素=值，其他 NaN)
+    #     以串流方式逐頁寫入，避免巨大陣列進 RAM。
+    #     """
+    #     def _nan_fill_blocks(arr2d: np.ndarray, block: int = 4096):
+    #         """將 2D float32 陣列區塊化填 NaN（以 uint32 位元樣式加速）。"""
+    #         H, W = arr2d.shape
+    #         nan_u32 = np.uint32(0x7FC00000)
+    #         y = 0
+    #         view_u32 = arr2d.view(np.uint32)
+    #         while y < H:
+    #             y2 = min(y + block, H)
+    #             x = 0
+    #             while x < W:
+    #                 x2 = min(x + block, W)
+    #                 view_u32[y:y2, x:x2] = nan_u32
+    #                 x = x2
+    #             y = y2
+
+    #     # 1) 讀原圖
+    #     with Image.open(input_image_path) as im:
+    #         original_map = np.asarray(im.convert("L"))
+    #     H, W = original_map.shape[:2]
+    #     original_map = original_map.astype(np.float32, copy=False)
+
+    #     # 2) 讀 detections → points / class map
+    #     points, by_class = self._parse_detections_from_json(json_file_path)
+    #     class_order = ["R", "H", "B", "A", "RD", "HR"]
+
+    #     # 3) 壓縮參數處理（zstd -> fallback LZW）
+    #     if compression == 'zstd':
+    #         try:
+    #             import imagecodecs  # noqa: F401
+    #         except Exception:
+    #             compression = 'lzw'
+    #             predictor = 2
+    #             compression_level = None
+    #     comp_args = None
+    #     if compression == 'zstd' and compression_level is not None:
+    #         comp_args = dict(level=int(compression_level))
+
+    #     os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
+    #     tile = tuple(tile) if tile else None
+
+    #     # 4) 開始串流寫入
+    #     with tiff.TiffWriter(output_tiff_path, bigtiff=bool(bigtiff)) as tw:
+
+    #         # --- Slice 0: original (float32) ---
+    #         kwargs0 = dict(
+    #             dtype=np.float32,
+    #             photometric='minisblack',
+    #             compression=compression,
+    #             metadata=None
+    #         )
+    #         if comp_args:
+    #             kwargs0['compressionargs'] = comp_args
+    #         if compression in ('lzw', 'deflate') and predictor:
+    #             kwargs0['predictor'] = int(predictor)
+    #         if tile is not None:
+    #             kwargs0['tile'] = tile
+
+    #         tw.write(original_map, **kwargs0)
+
+    #         # --- Slice 1..6：類別（float32，背景 NaN，命中=1.0） ---
+    #         for idx, c in enumerate(class_order, start=1):
+    #             with tempfile.TemporaryDirectory() as tmpdir:
+    #                 tmp_path = os.path.join(tmpdir, f"cls_{c}.dat")
+    #                 mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+    #                 if write_nan:
+    #                     _nan_fill_blocks(mem)
+    #                 else:
+    #                     mem[:] = 0.0
+
+    #                 # 只在中心像素寫 1.0
+    #                 for pt in by_class.get(c, []):
+    #                     cx = int(pt["cx"]); cy = int(pt["cy"])
+    #                     if 0 <= cy < H and 0 <= cx < W:
+    #                         mem[cy, cx] = 1.0
+
+    #                 kwargs = dict(
+    #                     dtype=np.float32,
+    #                     photometric='minisblack',
+    #                     compression=compression,
+    #                     metadata=None
+    #                 )
+    #                 if comp_args:
+    #                     kwargs['compressionargs'] = comp_args
+    #                 if compression in ('lzw', 'deflate') and predictor:
+    #                     kwargs['predictor'] = int(predictor)
+    #                 if tile is not None:
+    #                     kwargs['tile'] = tile
+    #                 tw.write(mem, **kwargs)
+    #                 del mem  # 釋放 memmap
+
+    #         # --- Slice 7: MAS（float32，背景 NaN，命中=值（取最大）） ---
+    #         with tempfile.TemporaryDirectory() as tmpdir:
+    #             tmp_path = os.path.join(tmpdir, "MAS.dat")
+    #             mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+    #             if write_nan:
+    #                 _nan_fill_blocks(mem)
+    #             else:
+    #                 mem[:] = 0.0
+
+    #             # 以像素為單位取最大值
+    #             if points:
+    #                 cx = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=len(points))
+    #                 cy = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=len(points))
+    #                 vals = np.fromiter((float(p.get("MAS", 0.0) or 0.0) for p in points), dtype=np.float32, count=len(points))
+    #                 valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
+    #                 if np.any(valid):
+    #                     cx = cx[valid]; cy = cy[valid]; vals = vals[valid]
+    #                     # 逐點寫最大值（命中像素極少，直接逐點即可）
+    #                     for x, y, v in zip(cx, cy, vals):
+    #                         if write_nan:
+    #                             if np.isnan(mem[y, x]) or v > mem[y, x]:
+    #                                 mem[y, x] = v
+    #                         else:
+    #                             mem[y, x] = max(mem[y, x], v)
+
+    #             kwargs = dict(
+    #                 dtype=np.float32,
+    #                 photometric='minisblack',
+    #                 compression=compression,
+    #                 metadata=None
+    #             )
+    #             if comp_args:
+    #                 kwargs['compressionargs'] = comp_args
+    #             if compression in ('lzw', 'deflate') and predictor:
+    #                 kwargs['predictor'] = int(predictor)
+    #             if tile is not None:
+    #                 kwargs['tile'] = tile
+    #             tw.write(mem, **kwargs)
+    #             del mem
+
+    #         # --- Slice 8: FM（float32，背景 NaN，命中=值（取最大）） ---
+    #         with tempfile.TemporaryDirectory() as tmpdir:
+    #             tmp_path = os.path.join(tmpdir, "FM.dat")
+    #             mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+    #             if write_nan:
+    #                 _nan_fill_blocks(mem)
+    #             else:
+    #                 mem[:] = 0.0
+
+    #             if points:
+    #                 cx = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=len(points))
+    #                 cy = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=len(points))
+    #                 vals = np.fromiter((float(p.get("FM", 0.0) or 0.0) for p in points), dtype=np.float32, count=len(points))
+    #                 valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
+    #                 if np.any(valid):
+    #                     cx = cx[valid]; cy = cy[valid]; vals = vals[valid]
+    #                     for x, y, v in zip(cx, cy, vals):
+    #                         if write_nan:
+    #                             if np.isnan(mem[y, x]) or v > mem[y, x]:
+    #                                 mem[y, x] = v
+    #                         else:
+    #                             mem[y, x] = max(mem[y, x], v)
+
+    #             kwargs = dict(
+    #                 dtype=np.float32,
+    #                 photometric='minisblack',
+    #                 compression=compression,
+    #                 metadata=None
+    #             )
+    #             if comp_args:
+    #                 kwargs['compressionargs'] = comp_args
+    #             if compression in ('lzw', 'deflate') and predictor:
+    #                 kwargs['predictor'] = int(predictor)
+    #             if tile is not None:
+    #                 kwargs['tile'] = tile
+    #             tw.write(mem, **kwargs)
+    #             del mem
+
+    #     self.log.info("[qmap_sparse_stack_tiff] saved → %s", output_tiff_path)
+    #     self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
+    #     return output_tiff_path
+
+
     def qmap_sparse_stack_tiff(
         self,
         input_image_path: str,
         json_file_path: str,
         output_tiff_path: str,
         *,
-        tile=(512, 512),
-        compression: str = 'zstd',       # 若無 imagecodecs 會自動回退 LZW
-        compression_level: int = 10,     # zstd: 1~22，建議 5~10；LZW 無此參數
-        predictor: int | None = None,    # LZW/Deflate 可用 predictor=2
-        bigtiff: bool = True,            # 大圖建議 True
-        write_nan: bool = True,          # 類別 & MAS/FM 背景一律 NaN
+        tile=(1024, 1024),
+        compression: str = "zstd",        # 若無 imagecodecs 將自動回退 LZW
+        compression_level: int = 8,       # zstd 甜蜜點 5~8；LZW 無此參數
+        predictor: int | None = None,     # LZW/Deflate 可用 predictor=2
+        bigtiff: bool = True,             # 大圖建議 True
+        write_nan: bool = True            # 類別 & MAS/FM 背景一律 NaN
     ):
         """
-        產生單一多頁 TIFF（ImageJ 可視為 stack）：
-        Slices (共9):
-            0: original (float32, 灰階完整值)
-            1..6: R, H, B, A, RD, HR (float32, 中心像素=1.0，其他 NaN)
-            7: MAS (float32, 中心像素=值，其他 NaN)
-            8: FM  (float32, 中心像素=值，其他 NaN)
-        以串流方式逐頁寫入，避免巨大陣列進 RAM。
+        產生單一多頁 TIFF（ImageJ/Fiji 可視為 stack）：
+        Slice 0: 原圖 (RGB float32；若想灰階可改見註解)
+        Slice 1..6: R, H, B, A, RD, HR (float32；中心像素=1.0，其餘 NaN)
+        Slice 7: MAS (float32；中心像素=值(像素最大)，其餘 NaN)
+        Slice 8: FM  (float32；中心像素=值(像素最大)，其餘 NaN)
+        採向量化 + 串流寫入，避免巨大陣列進 RAM。
         """
-        import os, tempfile, numpy as np
+        import os, tempfile
+        import numpy as np
         import tifffile as tiff
         from PIL import Image
 
-        def _nan_fill_blocks(arr2d: np.ndarray, block: int = 4096):
-            """將 2D float32 陣列區塊化填 NaN（以 uint32 位元樣式加速）。"""
-            H, W = arr2d.shape
-            nan_u32 = np.uint32(0x7FC00000)
-            y = 0
-            view_u32 = arr2d.view(np.uint32)
-            while y < H:
-                y2 = min(y + block, H)
-                x = 0
-                while x < W:
-                    x2 = min(x + block, W)
-                    view_u32[y:y2, x:x2] = nan_u32
-                    x = x2
-                y = y2
-
-        # 1) 讀原圖（灰階 → float32）
+        # -----------------------
+        # 0) 讀原圖（保留 RGB 外觀）→ float32
+        # -----------------------
         with Image.open(input_image_path) as im:
-            original_map = np.asarray(im.convert("L"))
-        H, W = original_map.shape[:2]
-        original_map = original_map.astype(np.float32, copy=False)
+            rgb = np.asarray(im.convert("RGB"))   # (H, W, 3) uint8
+        H, W = rgb.shape[:2]
+        orig_f32 = rgb.astype(np.float32, copy=False)
 
-        # 2) 讀 detections → points / class map
-        points, by_class = self._parse_detections_from_json(json_file_path)
+        # 若你想存灰階而不是 RGB，改為：
+        # with Image.open(input_image_path) as im:
+        #     g = np.asarray(im.convert("L"))
+        # orig_f32 = g.astype(np.float32, copy=False)   # (H, W)
+
+        # -----------------------
+        # 1) 讀 detections → points/by_class（for safety 只用 points）
+        # -----------------------
+        points, _by_class = self._parse_detections_from_json(json_file_path)
         class_order = ["R", "H", "B", "A", "RD", "HR"]
 
-        # 3) 壓縮參數處理（zstd -> fallback LZW）
-        if compression == 'zstd':
+        # 一次拉成向量 + 過濾 + unique（後續類別/MAS/FM共用）
+        if points:
+            N = len(points)
+            cx  = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=N)
+            cy  = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=N)
+            FM  = np.fromiter((float(p.get("FM", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+            MAS = np.fromiter((float(p.get("MAS", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+            cls2i = {c: i for i, c in enumerate(class_order)}  # R..HR -> 0..5
+            ci  = np.fromiter((cls2i.get(p["cls"], -1) for p in points), dtype=np.int16, count=N)
+
+            valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= -1) & (ci < len(class_order))
+            cx, cy, ci, FM, MAS = cx[valid], cy[valid], ci[valid], FM[valid], MAS[valid]
+
+            if cx.size > 0:
+                lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+                u, inv = np.unique(lin, return_inverse=True)  # unique pixel ids & mapping
+                yu = (u // W).astype(np.intp)
+                xu = (u %  W).astype(np.intp)
+            else:
+                u = inv = yu = xu = None
+        else:
+            cx = cy = ci = FM = MAS = None
+            u = inv = yu = xu = None
+
+        # -----------------------
+        # 2) 壓縮參數（zstd -> fallback LZW）
+        # -----------------------
+        if compression == "zstd":
             try:
                 import imagecodecs  # noqa: F401
             except Exception:
-                compression = 'lzw'
+                compression = "lzw"
                 predictor = 2
                 compression_level = None
         comp_args = None
-        if compression == 'zstd' and compression_level is not None:
+        if compression == "zstd" and compression_level is not None:
             comp_args = dict(level=int(compression_level))
 
         os.makedirs(os.path.dirname(output_tiff_path), exist_ok=True)
         tile = tuple(tile) if tile else None
 
-        # 4) 開始串流寫入
+        # 通用寫入參數（單通道 slice）
+        def _page_kwargs():
+            kw = dict(dtype=np.float32, photometric="minisblack",
+                    compression=compression, metadata=None)
+            if comp_args:
+                kw["compressionargs"] = comp_args
+            if compression in ("lzw", "deflate") and predictor:
+                kw["predictor"] = int(predictor)
+            if tile is not None:
+                kw["tile"] = tile
+            return kw
+
+        # -----------------------
+        # 3) 將多頁串流寫入
+        # -----------------------
         with tiff.TiffWriter(output_tiff_path, bigtiff=bool(bigtiff)) as tw:
 
-            # --- Slice 0: original (float32) ---
-            kwargs0 = dict(
-                dtype=np.float32,
-                photometric='minisblack',
-                compression=compression,
-                metadata=None
-            )
-            if comp_args:
-                kwargs0['compressionargs'] = comp_args
-            if compression in ('lzw', 'deflate') and predictor:
-                kwargs0['predictor'] = int(predictor)
-            if tile is not None:
-                kwargs0['tile'] = tile
+            # Slice 0: 原圖（RGB float32 或單通道 float32）
+            if orig_f32.ndim == 3 and orig_f32.shape[2] == 3:
+                kw0 = dict(dtype=np.float32, photometric="rgb",
+                        compression=compression, metadata=None)
+                if comp_args:
+                    kw0["compressionargs"] = comp_args
+                if compression in ("lzw", "deflate") and predictor:
+                    kw0["predictor"] = int(predictor)
+                if tile is not None:
+                    kw0["tile"] = tile
+                tw.write(orig_f32, **kw0)
+            else:
+                tw.write(orig_f32, **_page_kwargs())
 
-            tw.write(original_map, **kwargs0)
+            # 共用暫存檔（RAM 磁碟優先）
+            ramdisk = "/dev/shm"
+            base_tmp = tempfile.TemporaryDirectory(dir=ramdisk if os.path.isdir(ramdisk) else None)
+            tmpdir = base_tmp.name
+            tmp_path = os.path.join(tmpdir, "page.dat")
 
-            # --- Slice 1..6：類別（float32，背景 NaN，命中=1.0） ---
-            for idx, c in enumerate(class_order, start=1):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    tmp_path = os.path.join(tmpdir, f"cls_{c}.dat")
-                    mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
-                    if write_nan:
-                        _nan_fill_blocks(mem)
-                    else:
-                        mem[:] = 0.0
+            # 工具：把 2D float32 一次性設為 NaN（uint32 bit pattern）
+            def _fill_nan_fast(arr2d: np.ndarray):
+                # 單次寫滿；必要時可改成分塊，但一般一口氣最快
+                arr2d.view(np.uint32)[...] = np.uint32(0x7FC00000)
 
-                    # 只在中心像素寫 1.0
-                    for pt in by_class.get(c, []):
-                        cx = int(pt["cx"]); cy = int(pt["cy"])
-                        if 0 <= cy < H and 0 <= cx < W:
-                            mem[cy, cx] = 1.0
-
-                    kwargs = dict(
-                        dtype=np.float32,
-                        photometric='minisblack',
-                        compression=compression,
-                        metadata=None
-                    )
-                    if comp_args:
-                        kwargs['compressionargs'] = comp_args
-                    if compression in ('lzw', 'deflate') and predictor:
-                        kwargs['predictor'] = int(predictor)
-                    if tile is not None:
-                        kwargs['tile'] = tile
-                    tw.write(mem, **kwargs)
-                    del mem  # 釋放 memmap
-
-            # --- Slice 7: MAS（float32，背景 NaN，命中=值（取最大）） ---
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmp_path = os.path.join(tmpdir, "MAS.dat")
+            # ------ Slice 1..6：六類別（>0 即命中=1.0） ------
+            for s_idx, cname in enumerate(class_order, start=1):  # 1..6
                 mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
                 if write_nan:
-                    _nan_fill_blocks(mem)
+                    _fill_nan_fast(mem)
                 else:
                     mem[:] = 0.0
 
-                # 以像素為單位取最大值
-                if points:
-                    cx = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=len(points))
-                    cy = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=len(points))
-                    vals = np.fromiter((float(p.get("MAS", 0.0) or 0.0) for p in points), dtype=np.float32, count=len(points))
-                    valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
-                    if np.any(valid):
-                        cx = cx[valid]; cy = cy[valid]; vals = vals[valid]
-                        # 逐點寫最大值（命中像素極少，直接逐點即可）
-                        for x, y, v in zip(cx, cy, vals):
-                            if write_nan:
-                                if np.isnan(mem[y, x]) or v > mem[y, x]:
-                                    mem[y, x] = v
-                            else:
-                                mem[y, x] = max(mem[y, x], v)
+                if u is not None and inv is not None:
+                    k = s_idx - 1  # 0..5
+                    mask = (ci == k)
+                    if np.any(mask):
+                        # 哪些 unique 像素被這個類別命中
+                        hit = np.bincount(inv[mask], minlength=u.size) > 0
+                        mem[yu[hit], xu[hit]] = 1.0
 
-                kwargs = dict(
-                    dtype=np.float32,
-                    photometric='minisblack',
-                    compression=compression,
-                    metadata=None
-                )
-                if comp_args:
-                    kwargs['compressionargs'] = comp_args
-                if compression in ('lzw', 'deflate') and predictor:
-                    kwargs['predictor'] = int(predictor)
-                if tile is not None:
-                    kwargs['tile'] = tile
-                tw.write(mem, **kwargs)
-                del mem
+                tw.write(mem, **_page_kwargs())
+                del mem  # 釋放 memmap
 
-            # --- Slice 8: FM（float32，背景 NaN，命中=值（取最大）） ---
-            with tempfile.TemporaryDirectory() as tmpdir:
-                tmp_path = os.path.join(tmpdir, "FM.dat")
-                mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
-                if write_nan:
-                    _nan_fill_blocks(mem)
-                else:
-                    mem[:] = 0.0
+            # ------ Slice 7：MAS（每像素最大） ------
+            mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+            if write_nan:
+                _fill_nan_fast(mem)
+            else:
+                mem[:] = 0.0
 
-                if points:
-                    cx = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=len(points))
-                    cy = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=len(points))
-                    vals = np.fromiter((float(p.get("FM", 0.0) or 0.0) for p in points), dtype=np.float32, count=len(points))
-                    valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H)
-                    if np.any(valid):
-                        cx = cx[valid]; cy = cy[valid]; vals = vals[valid]
-                        for x, y, v in zip(cx, cy, vals):
-                            if write_nan:
-                                if np.isnan(mem[y, x]) or v > mem[y, x]:
-                                    mem[y, x] = v
-                            else:
-                                mem[y, x] = max(mem[y, x], v)
+            if u is not None and inv is not None:
+                mas_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+                np.maximum.at(mas_tmp, inv, MAS)          # in-place 聚合
+                mas_tmp[~np.isfinite(mas_tmp)] = np.nan   # 無命中保持 NaN
+                mem[yu, xu] = mas_tmp
+            tw.write(mem, **_page_kwargs())
+            del mem
 
-                kwargs = dict(
-                    dtype=np.float32,
-                    photometric='minisblack',
-                    compression=compression,
-                    metadata=None
-                )
-                if comp_args:
-                    kwargs['compressionargs'] = comp_args
-                if compression in ('lzw', 'deflate') and predictor:
-                    kwargs['predictor'] = int(predictor)
-                if tile is not None:
-                    kwargs['tile'] = tile
-                tw.write(mem, **kwargs)
-                del mem
+            # ------ Slice 8：FM（每像素最大） ------
+            mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
+            if write_nan:
+                _fill_nan_fast(mem)
+            else:
+                mem[:] = 0.0
+
+            if u is not None and inv is not None:
+                fm_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+                np.maximum.at(fm_tmp, inv, FM)
+                fm_tmp[~np.isfinite(fm_tmp)] = np.nan
+                mem[yu, xu] = fm_tmp
+            tw.write(mem, **_page_kwargs())
+            del mem
+
+            # 關閉暫存
+            base_tmp.cleanup()
 
         self.log.info("[qmap_sparse_stack_tiff] saved → %s", output_tiff_path)
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
