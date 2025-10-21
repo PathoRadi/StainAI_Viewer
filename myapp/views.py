@@ -166,7 +166,6 @@ def detect_image(request):
     # --- 1) Convert to grayscale (PIL version) ---
     _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
     GrayScaleImage(orig_path, project_dir).rgb_to_gray()
-    GrayScaleImage(orig_path, project_dir, is_cut=False).rgb_to_gray()
     logger.info("Grayscale conversion done")
     gc.collect()
     
@@ -185,10 +184,7 @@ def detect_image(request):
     _set_progress_stage(project_name, 'yolo')                 # Enter 3) yolo stage
     model = get_yolo_model()
     patches_dir = os.path.join(project_dir, 'patches')
-    qmap_dir = os.path.join(project_dir, 'qmap')
-    qmap_slice0_name = os.listdir(qmap_dir)[0]
-    qmap_slice0_path = os.path.join(qmap_dir, qmap_slice0_name)
-    pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, qmap_slice0_path, project_dir)
+    pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
     detections = pipeline.run()
     logger.info("YOLO inference done")
     gc.collect()
