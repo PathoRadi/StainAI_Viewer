@@ -71,28 +71,29 @@ class YOLOPipeline:
         gc.collect()
 
         # 4. Generate Qmap from the large image and JSON results
-        # self.qmap(
-        #     self.large_img_path,
-        #     os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json"),
-        #     self.qmap_dir
-        # )
-        # self.log.info(f"Qmap saved to {self.qmap_dir}")
-        # gc.collect()
-
         json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
-        stack_path = os.path.join(self.qmap_dir, "qmap.tif")
-
-        self.qmap_sparse_stack_tiff(
+        self.qmap(
             input_image_path=self.large_img_path,
             json_file_path=json_path,
-            output_tiff_path=stack_path,
-            tile=(512,512),
-            compression="zstd",
-            compression_level=8,
-            predictor=None,
-            bigtiff=True,
-            write_nan=True
+            output_dir=self.qmap_dir,
         )
+        self.log.info(f"Qmap saved to {self.qmap_dir}")
+        gc.collect()
+
+        
+        # stack_path = os.path.join(self.qmap_dir, "qmap.tif")
+
+        # self.qmap_sparse_stack_tiff(
+        #     input_image_path=self.large_img_path,
+        #     json_file_path=json_path,
+        #     output_tiff_path=stack_path,
+        #     tile=(512,512),
+        #     compression="zstd",
+        #     compression_level=8,
+        #     predictor=None,
+        #     bigtiff=True,
+        #     write_nan=True
+        # )
 
         return detections
 
@@ -477,124 +478,124 @@ class YOLOPipeline:
         else:
             print(f"Warning: computed box ({left},{top})–({right},{bottom}) is invalid; no crop saved.")
 
-    def qmap(self, input_image_path, json_file_path, output_dir, workers: int = 0):
-        # ---- 1) 讀 original → 直接寫到 final_out[...,0] ----
-        with Image.open(input_image_path) as im:
-            gray_u8 = np.asarray(im.convert("L"))  # (H,W) uint8
-        H, W = gray_u8.shape
+    # def qmap(self, input_image_path, json_file_path, output_dir, workers: int = 0):
+    #     # ---- 1) 讀 original → 直接寫到 final_out[...,0] ----
+    #     with Image.open(input_image_path) as im:
+    #         gray_u8 = np.asarray(im.convert("L"))  # (H,W) uint8
+    #     H, W = gray_u8.shape
 
-        # ---- NEW: 直接配置最終輸出，整段運算都寫在這裡面 ----
-        final_out = np.full((H, W, 9), np.nan, dtype=np.float32)
-        final_out[..., 0] = gray_u8.astype(np.float32, copy=False)  # original
+    #     # ---- NEW: 直接配置最終輸出，整段運算都寫在這裡面 ----
+    #     final_out = np.full((H, W, 9), np.nan, dtype=np.float32)
+    #     final_out[..., 0] = gray_u8.astype(np.float32, copy=False)  # original
 
-        class_names = ["R", "H", "B", "A", "RD", "HR"]
-        class_to_idx = {name: i for i, name in enumerate(class_names)}  # 0..5
-        mas_weight_lut = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
+    #     class_names = ["R", "H", "B", "A", "RD", "HR"]
+    #     class_to_idx = {name: i for i, name in enumerate(class_names)}  # 0..5
+    #     mas_weight_lut = np.array([0.0, 0.33, 0.66, 1.0, 0.0, 0.66], dtype=np.float32)
 
-        # ---- 3) 讀 JSON ----
-        with open(json_file_path, "r", encoding="utf-8") as f:
-            detections = json.load(f)
-        if isinstance(detections, dict):
-            for k in ("detections", "objects", "cells"):
-                if k in detections and isinstance(detections[k], list):
-                    detections = detections[k]
-                    break
-        if not isinstance(detections, list) or not detections:
-            # 直接存檔（只有 original；其他都是 NaN）
-            os.makedirs(output_dir, exist_ok=True)
-            out = os.path.join(output_dir, "qmap.nii.gz")
-            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
-            print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
-            return
+    #     # ---- 3) 讀 JSON ----
+    #     with open(json_file_path, "r", encoding="utf-8") as f:
+    #         detections = json.load(f)
+    #     if isinstance(detections, dict):
+    #         for k in ("detections", "objects", "cells"):
+    #             if k in detections and isinstance(detections[k], list):
+    #                 detections = detections[k]
+    #                 break
+    #     if not isinstance(detections, list) or not detections:
+    #         # 直接存檔（只有 original；其他都是 NaN）
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         out = os.path.join(output_dir, "qmap.nii.gz")
+    #         nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
+    #         print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #         return
 
-        # ---- 4) 向量化解析 ----
-        cx_list, cy_list, ci_list, fm_list = [], [], [], []
-        for cell in detections:
-            cls_raw = cell.get("class", cell.get("type"))
-            if not cls_raw: 
-                continue
-            cls = str(cls_raw).strip().upper()
-            if cls not in class_to_idx:
-                continue
-            c = cell.get("center")
-            if c is None: 
-                continue
-            if isinstance(c, (list, tuple)) and len(c) >= 2:
-                cx, cy = c[0], c[1]
-            else:
-                s = str(c).translate(str.maketrans("[](),", "     ")).split()
-                if len(s) < 2: 
-                    continue
-                cx, cy = s[0], s[1]
-            try:
-                cx = int(round(float(cx))); cy = int(round(float(cy)))
-            except Exception:
-                continue
-            fm_val = cell.get("FM", 0.0) or 0.0
-            try:
-                fm_val = float(fm_val)
-            except Exception:
-                fm_val = 0.0
+    #     # ---- 4) 向量化解析 ----
+    #     cx_list, cy_list, ci_list, fm_list = [], [], [], []
+    #     for cell in detections:
+    #         cls_raw = cell.get("class", cell.get("type"))
+    #         if not cls_raw: 
+    #             continue
+    #         cls = str(cls_raw).strip().upper()
+    #         if cls not in class_to_idx:
+    #             continue
+    #         c = cell.get("center")
+    #         if c is None: 
+    #             continue
+    #         if isinstance(c, (list, tuple)) and len(c) >= 2:
+    #             cx, cy = c[0], c[1]
+    #         else:
+    #             s = str(c).translate(str.maketrans("[](),", "     ")).split()
+    #             if len(s) < 2: 
+    #                 continue
+    #             cx, cy = s[0], s[1]
+    #         try:
+    #             cx = int(round(float(cx))); cy = int(round(float(cy)))
+    #         except Exception:
+    #             continue
+    #         fm_val = cell.get("FM", 0.0) or 0.0
+    #         try:
+    #             fm_val = float(fm_val)
+    #         except Exception:
+    #             fm_val = 0.0
 
-            cx_list.append(cx); cy_list.append(cy)
-            ci_list.append(class_to_idx[cls])
-            fm_list.append(fm_val)
+    #         cx_list.append(cx); cy_list.append(cy)
+    #         ci_list.append(class_to_idx[cls])
+    #         fm_list.append(fm_val)
 
-        if not cx_list:
-            os.makedirs(output_dir, exist_ok=True)
-            out = os.path.join(output_dir, "qmap.nii.gz")
-            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
-            print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
-            return
+    #     if not cx_list:
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         out = os.path.join(output_dir, "qmap.nii.gz")
+    #         nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
+    #         print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #         return
 
-        cx = np.asarray(cx_list, dtype=np.int32)
-        cy = np.asarray(cy_list, dtype=np.int32)
-        ci = np.asarray(ci_list, dtype=np.int16)
-        fv = np.asarray(fm_list, dtype=np.float32)
+    #     cx = np.asarray(cx_list, dtype=np.int32)
+    #     cy = np.asarray(cy_list, dtype=np.int32)
+    #     ci = np.asarray(ci_list, dtype=np.int16)
+    #     fv = np.asarray(fm_list, dtype=np.float32)
 
-        valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= 0) & (ci < len(class_names))
-        if not np.any(valid):
-            os.makedirs(output_dir, exist_ok=True)
-            out = os.path.join(output_dir, "qmap.nii.gz")
-            nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
-            print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
-            return
+    #     valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= 0) & (ci < len(class_names))
+    #     if not np.any(valid):
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         out = os.path.join(output_dir, "qmap.nii.gz")
+    #         nib.save(nib.Nifti1Image(final_out, affine=np.eye(4, dtype=np.float32)), out)
+    #         print(f"[qmap] Saved: {out}\nSlice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #         return
 
-        cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
+    #     cx = cx[valid]; cy = cy[valid]; ci = ci[valid]; fv = fv[valid]
 
-        # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
-        lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
-        order = np.argsort(lin, kind="mergesort")
-        lin_s  = lin[order]
-        ci_s   = ci[order]
-        fv_s   = fv[order]
+    #     # ---- 5) MAS / FM：group-by pixel 做最大值，直接寫 final_out[...,1]/[...,8] ----
+    #     lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+    #     order = np.argsort(lin, kind="mergesort")
+    #     lin_s  = lin[order]
+    #     ci_s   = ci[order]
+    #     fv_s   = fv[order]
 
-        mas_vals_s = mas_weight_lut[ci_s]
-        group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
-        lin_unique   = lin_s[group_starts]
+    #     mas_vals_s = mas_weight_lut[ci_s]
+    #     group_starts = np.flatnonzero(np.r_[True, lin_s[1:] != lin_s[:-1]])
+    #     lin_unique   = lin_s[group_starts]
 
-        mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
-        fm_max  = np.maximum.reduceat(fv_s,       group_starts)
+    #     mas_max = np.maximum.reduceat(mas_vals_s, group_starts)
+    #     fm_max  = np.maximum.reduceat(fv_s,       group_starts)
 
-        y_u = (lin_unique // W).astype(np.intp)
-        x_u = (lin_unique %  W).astype(np.intp)
+    #     y_u = (lin_unique // W).astype(np.intp)
+    #     x_u = (lin_unique %  W).astype(np.intp)
 
-        final_out[y_u, x_u, 7] = mas_max  # MAS
-        final_out[y_u, x_u, 8] = fm_max   # FM
+    #     final_out[y_u, x_u, 7] = mas_max  # MAS
+    #     final_out[y_u, x_u, 8] = fm_max   # FM
 
-        # ---- 6) 類別通道：一次性高維進階索引 → 直接寫 final_out ----
-        final_out[cy, cx, 1 + ci] = 1.0
+    #     # ---- 6) 類別通道：一次性高維進階索引 → 直接寫 final_out ----
+    #     final_out[cy, cx, 1 + ci] = 1.0
 
-        # ---- 7) 存檔（維持 float32；如需方向校正可改 affine）----
-        aff = np.eye(4, dtype=np.float32)
-        os.makedirs(output_dir, exist_ok=True)
-        out = os.path.join(output_dir, "qmap.nii")
-        img = nib.Nifti1Image(final_out, affine=aff)
-        img.header.set_data_dtype(np.float32)
-        nib.save(img, out)
+    #     # ---- 7) 存檔（維持 float32；如需方向校正可改 affine）----
+    #     aff = np.eye(4, dtype=np.float32)
+    #     os.makedirs(output_dir, exist_ok=True)
+    #     out = os.path.join(output_dir, "qmap.nii")
+    #     img = nib.Nifti1Image(final_out, affine=aff)
+    #     img.header.set_data_dtype(np.float32)
+    #     nib.save(img, out)
 
-        print(f"[qmap] Saved: {out}")
-        print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
+    #     print(f"[qmap] Saved: {out}")
+    #     print("Slice order = [original, MAS, R, H, B, A, RD, HR, FM]")
 
     # --- 在 class YOLOPipeline 裡面新增： ---
     def _parse_detections_from_json(self, json_file_path):
@@ -762,7 +763,7 @@ class YOLOPipeline:
                     tw.write(mem, **kwargs)
                     del mem  # 釋放 memmap
 
-            # --- Slice 7: MAS（float32，背景 NaN，命中=值（取最大）） ---
+            # --- Slice 7: MAS ---
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp_path = os.path.join(tmpdir, "MAS.dat")
                 mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
@@ -802,7 +803,7 @@ class YOLOPipeline:
                 tw.write(mem, **kwargs)
                 del mem
 
-            # --- Slice 8: FM（float32，背景 NaN，命中=值（取最大）） ---
+            # --- Slice 8: FM ---
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp_path = os.path.join(tmpdir, "FM.dat")
                 mem = np.memmap(tmp_path, dtype=np.float32, mode="w+", shape=(H, W))
@@ -843,3 +844,131 @@ class YOLOPipeline:
         self.log.info("[qmap_sparse_stack_tiff] saved → %s", output_tiff_path)
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return output_tiff_path
+    
+    def qmap(
+        self,
+        input_image_path: str,
+        json_file_path: str,
+        output_dir: str,
+        *,
+        gzip: bool = True,          # True → .nii.gz；False → .nii
+        write_nan: bool = True      # 背景設為 NaN（符合你的規格）
+    ):
+        """
+        產生 NIfTI 32-bit float：9 slices
+        0: original 灰階（float32；完整灰階值）
+        1..6: R,H,B,A,RD,HR（float32；中心像素=1.0，其餘 NaN）
+        7: MAS（float32；中心像素=值(像素最大)，其餘 NaN）
+        8: FM （float32；中心像素=值(像素最大)，其餘 NaN）
+
+        大圖優化：
+        - (H,W,9) memmap，避免轉置
+        - 向量化：unique/bincount/maximum.at
+        - NaN 快速填充：uint32 bit pattern
+        - 暫存優先放 RAM 磁碟
+        """
+        # ---------- 0) 讀原圖 → 灰階 float32 ----------
+        # 若你有 self.gray_np 可用，亦可改為直接取用以省 I/O
+        with Image.open(input_image_path) as im:
+            g = np.asarray(im.convert("L"))
+        H, W = g.shape
+        g32 = g.astype(np.float32, copy=False)
+
+        # ---------- 1) 讀 detections（沿用你的 parser） ----------
+        points, _ = self._parse_detections_from_json(json_file_path)
+        class_order = ["R", "H", "B", "A", "RD", "HR"]
+        cls2i = {c: i for i, c in enumerate(class_order)}
+
+        # 一次拉向量 + 過濾 + unique
+        if points:
+            N = len(points)
+            cx  = np.fromiter((int(p["cx"]) for p in points), dtype=np.int32, count=N)
+            cy  = np.fromiter((int(p["cy"]) for p in points), dtype=np.int32, count=N)
+            FM  = np.fromiter((float(p.get("FM", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+            MAS = np.fromiter((float(p.get("MAS", 0.0) or 0.0) for p in points), dtype=np.float32, count=N)
+            ci  = np.fromiter((cls2i.get(p["cls"], -1) for p in points), dtype=np.int16, count=N)
+
+            valid = (cx >= 0) & (cx < W) & (cy >= 0) & (cy < H) & (ci >= -1) & (ci < len(class_order))
+            cx, cy, ci, FM, MAS = cx[valid], cy[valid], ci[valid], FM[valid], MAS[valid]
+            if cx.size > 0:
+                lin = cy.astype(np.int64) * np.int64(W) + cx.astype(np.int64)
+                u, inv = np.unique(lin, return_inverse=True)
+                yu = (u // W).astype(np.intp)
+                xu = (u %  W).astype(np.intp)
+            else:
+                u = inv = yu = xu = None
+        else:
+            cx = cy = ci = FM = MAS = None
+            u = inv = yu = xu = None
+
+        # ---------- 2) 建立 (H, W, 9) memmap ----------
+        os.makedirs(output_dir, exist_ok=True)
+        out_path = os.path.join(output_dir, "qmap.nii.gz" if gzip else "qmap.nii")
+
+        # 暫存優先 RAM 磁碟
+        ramdisk = "/dev/shm"
+        base_tmp = tempfile.TemporaryDirectory(dir=ramdisk if os.path.isdir(ramdisk) else None)
+        memmap_path = os.path.join(base_tmp.name, "qmap_memmap.dat")
+
+        mm = np.memmap(memmap_path, dtype=np.float32, mode="w+", shape=(H, W, 9))
+
+        # slice 0：原圖
+        mm[..., 0] = g32
+
+        # 工具：一次將 2D/3D float32 區段填 NaN（uint32 bit pattern）
+        def _fill_nan_2d(arr2d: np.ndarray):
+            arr2d.view(np.uint32)[...] = np.uint32(0x7FC00000)
+
+        # 先把 1..8 全部設成 NaN（符合規格：沒出現也要 NaN）
+        if write_nan:
+            for z in range(1, 9):
+                _fill_nan_2d(mm[..., z])
+        else:
+            mm[..., 1:9] = 0.0
+
+        # ---------- 3) 類別 1..6：命中=1.0（一次性 scatter） ----------
+        if u is not None and inv is not None:
+            for z in range(1, 7):        # 1..6 -> R..HR
+                k = z - 1                # 0..5
+                mask = (ci == k)
+                if np.any(mask):
+                    hit = np.bincount(inv[mask], minlength=u.size) > 0
+                    mm[yu[hit], xu[hit], z] = 1.0
+
+            # ---------- 4) MAS / FM：每像素最大值（np.maximum.at） ----------
+            if u.size > 0:
+                # MAS
+                mas_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+                np.maximum.at(mas_tmp, inv, MAS)              # in-place 聚合
+                mas_tmp[~np.isfinite(mas_tmp)] = np.nan       # 無命中保持 NaN
+                mm[yu, xu, 7] = mas_tmp
+
+                # FM
+                fm_tmp = np.full(u.size, -np.inf, dtype=np.float32)
+                np.maximum.at(fm_tmp, inv, FM)
+                fm_tmp[~np.isfinite(fm_tmp)] = np.nan
+                mm[yu, xu, 8] = fm_tmp
+
+        # 確保落盤
+        mm.flush()
+        del mm
+        gc.collect()
+
+        # ---------- 5) 存成 NIfTI（不需轉置） ----------
+        mm_r = np.memmap(memmap_path, dtype=np.float32, mode="r", shape=(H, W, 9))
+        aff = np.eye(4, dtype=np.float32)
+        img = nib.Nifti1Image(mm_r, affine=aff)
+        img.header.set_data_dtype(np.float32)
+        nib.save(img, out_path)
+        del mm_r
+        gc.collect()
+
+        # 清暫存
+        try:
+            base_tmp.cleanup()
+        except Exception:
+            pass
+
+        self.log.info("[qmap] Saved NIfTI → %s", out_path)
+        self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
+        return out_path
