@@ -72,28 +72,28 @@ class YOLOPipeline:
 
         # 4. Generate Qmap from the large image and JSON results
         json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")
-        self.qmap(
-            input_image_path=self.large_img_path,
-            json_file_path=json_path,
-            output_dir=self.qmap_dir,
-        )
-        self.log.info(f"Qmap saved to {self.qmap_dir}")
-        gc.collect()
-
-        
-        # stack_path = os.path.join(self.qmap_dir, "qmap.tif")
-
-        # self.qmap_sparse_stack_tiff(
+        # self.qmap(
         #     input_image_path=self.large_img_path,
         #     json_file_path=json_path,
-        #     output_tiff_path=stack_path,
-        #     tile=(512,512),
-        #     compression="zstd",
-        #     compression_level=8,
-        #     predictor=None,
-        #     bigtiff=True,
-        #     write_nan=True
+        #     output_dir=self.qmap_dir,
         # )
+        # self.log.info(f"Qmap saved to {self.qmap_dir}")
+        # gc.collect()
+
+        
+        stack_path = os.path.join(self.qmap_dir, "qmap.tif")
+
+        self.qmap_sparse_stack_tiff(
+            input_image_path=self.large_img_path,
+            json_file_path=json_path,
+            output_tiff_path=stack_path,
+            tile=(512,512),
+            compression="zstd",
+            compression_level=8,
+            predictor=None,
+            bigtiff=True,
+            write_nan=True
+        )
 
         return detections
 
