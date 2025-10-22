@@ -7,10 +7,10 @@ import zipfile
 import tempfile
 import logging
 import gc
+import numpy as np
+from tifffile import TiffWriter
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import numpy as np
 from PIL import Image
 from django.conf import settings
 from django.shortcuts import render
@@ -21,7 +21,7 @@ from django.http import (
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 from django.core.cache import cache
-from tifffile import TiffWriter
+
 
 # Your method / pipeline
 from .method.image_resizer import ImageResizer
@@ -31,15 +31,15 @@ from .method.yolopipeline import YOLOPipeline
 
 logger = logging.getLogger(__name__)
 
-
-# views.py 頂部（try 匯入）
+# ---------------------------
+# Progress tracking
+# ---------------------------
 try:
     from django_redis.exceptions import ConnectionInterrupted
 except Exception:
     class ConnectionInterrupted(Exception):
         pass
 
-# 替代版（只要沒多實例 scale-out 就可用）
 def _set_progress_stage(project, stage):
     pdir = os.path.join(settings.MEDIA_ROOT, project)
     os.makedirs(pdir, exist_ok=True)
@@ -59,6 +59,8 @@ def progress(request):
     resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp["Pragma"] = "no-cache"
     return resp
+
+
 
 
 
@@ -82,33 +84,9 @@ def get_yolo_model():
             raise
     return _YOLO_MODEL
 
-# ---------------------------
-# Helpers
-# ---------------------------
-def _image_size_wh(path: str):
-    """Read image size using Pillow. Returns (w, h)."""
-    with Image.open(path) as im:
-        return im.width, im.height
 
-def _to_media_url(abs_path: str) -> str:
-    """Convert absolute path to MEDIA URL usable by frontend."""
-    rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
-    return os.path.join(settings.MEDIA_URL, rel)
 
-# def _set_progress_stage(project: str, stage: str):
-#     """
-#     stage ∈ {'idle','gray','cut','yolo','done','error'}
-#     """
-#     cache.set(f"progress:{project}", stage, timeout=60*60)
 
-# @require_GET
-# def progress(request):
-#     """
-#     Get current progress stage for a project.
-#     """
-#     project = request.GET.get("project") or ""
-#     stage = cache.get(f"progress:{project}", "idle")
-#     return JsonResponse({"stage": stage})
 
 # ---------------------------
 # Views
@@ -119,13 +97,19 @@ def display_image(request):
     """
     return render(request, 'display_image.html')
 
+
+
+
+
+# ---------------------------
+# Upload Image
+# ---------------------------
 @csrf_exempt
 def upload_image(request):
     """
     Receive upload, save to media/<image_name>/original/,
     If any side >20000, do half resize; return MEDIA URL for direct display.
     """
-
     # check request method is POST and file is in request.FILES
     if request.method == 'POST' and request.FILES.get('image'):
         img = request.FILES['image']                                                # Get uploaded file
@@ -155,6 +139,14 @@ def upload_image(request):
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)                    # return error if not POST or no file
 
+
+
+
+
+
+# ---------------------------
+# Detection
+# ---------------------------
 @csrf_exempt
 def detect_image(request):
     """
@@ -259,6 +251,25 @@ def detect_image(request):
         'display_url': _to_media_url(disp_path),
     })
 
+# helper funtion: upload_image(), detect_image()
+def _image_size_wh(path: str):
+    """Read image size using Pillow. Returns (w, h)."""
+    with Image.open(path) as im:
+        return im.width, im.height
+    
+# helper funtion: upload_image(), detect_image()
+def _to_media_url(abs_path: str) -> str:
+    """Convert absolute path to MEDIA URL usable by frontend."""
+    rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
+    return os.path.join(settings.MEDIA_URL, rel)
+
+
+
+
+
+# ---------------------------
+# Reset
+# ---------------------------
 @csrf_exempt
 def reset_media(request):
     if request.method != 'POST':
@@ -275,6 +286,13 @@ def reset_media(request):
             logger.warning("failed to remove %s", path, exc_info=True)
     return JsonResponse({'ok': True})
 
+
+
+
+
+# ---------------------------
+# Delete project
+# ---------------------------
 @csrf_exempt
 def delete_project(request):
     if request.method != 'POST':
@@ -291,31 +309,13 @@ def delete_project(request):
         logger.exception("delete_project failed")
         return HttpResponseServerError("delete failed; see logs")
 
-# ------ TIFF helpers (Pillow read, no cv2) ------
 
-def _read_one(path):
-    """
-    Read an image using Pillow into a numpy array.
-    Returns (ndarray, photometric)
-    """
-    with Image.open(path) as im:
-        mode = im.mode
-        if mode == 'L':
-            arr = np.asarray(im)  # (H, W)
-            return arr, 'minisblack'
-        elif mode in ('RGB',):
-            arr = np.asarray(im)  # (H, W, 3)
-            return arr, 'rgb'
-        elif mode in ('RGBA', 'LA', 'P'):
-            im2 = im.convert('RGB')
-            arr = np.asarray(im2)
-            return arr, 'rgb'
-        else:
-            # Other modes convert to RGB
-            im2 = im.convert('RGB')
-            arr = np.asarray(im2)
-            return arr, 'rgb'
 
+
+
+# ---------------------------
+# Functions to create Mmap(.tiff)
+# ---------------------------
 def combine_to_tiff(
     img_paths, output_dir, *,
     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
@@ -387,8 +387,37 @@ def combine_to_tiff(
     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
     return out_path
 
-# ------ Download zip with ROI (no cv2) ------
+# helper function
+def _read_one(path):
+    """
+    Read an image using Pillow into a numpy array.
+    Returns (ndarray, photometric)
+    """
+    with Image.open(path) as im:
+        mode = im.mode
+        if mode == 'L':
+            arr = np.asarray(im)  # (H, W)
+            return arr, 'minisblack'
+        elif mode in ('RGB',):
+            arr = np.asarray(im)  # (H, W, 3)
+            return arr, 'rgb'
+        elif mode in ('RGBA', 'LA', 'P'):
+            im2 = im.convert('RGB')
+            arr = np.asarray(im2)
+            return arr, 'rgb'
+        else:
+            # Other modes convert to RGB
+            im2 = im.convert('RGB')
+            arr = np.asarray(im2)
+            return arr, 'rgb'
 
+
+
+
+
+# ---------------------------
+# Download
+# ---------------------------
 @csrf_exempt
 @require_POST
 def download_project_with_rois(request):
@@ -452,13 +481,13 @@ def download_project_with_rois(request):
     filename = f"{project_name}.zip"
     return FileResponse(tmpf, as_attachment=True, filename=filename, content_type="application/zip")
 
-
+# helper function
 def safe_filename(name: str) -> str:
     """Remove illegal characters to avoid filename errors"""
     name = (name or "ROI").strip() or "ROI"
     return re.sub(r'[\\/:*?"<>|]+', "_", name)
 
-
+# helper function
 def make_imagej_roi_bytes(points):
     """
     Convert [{'x':..,'y':..}, ...] to ImageJ .roi (polygon) binary.
