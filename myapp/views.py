@@ -415,6 +415,30 @@ def delete_project(request):
 
 #     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
 #     return out_path
+
+# # helper function
+# def _read_one(path):
+#     """
+#     Read an image using Pillow into a numpy array.
+#     Returns (ndarray, photometric)
+#     """
+#     with Image.open(path) as im:
+#         mode = im.mode
+#         if mode == 'L':
+#             arr = np.asarray(im)  # (H, W)
+#             return arr, 'minisblack'
+#         elif mode in ('RGB',):
+#             arr = np.asarray(im)  # (H, W, 3)
+#             return arr, 'rgb'
+#         elif mode in ('RGBA', 'LA', 'P'):
+#             im2 = im.convert('RGB')
+#             arr = np.asarray(im2)
+#             return arr, 'rgb'
+#         else:
+#             # Other modes convert to RGB
+#             im2 = im.convert('RGB')
+#             arr = np.asarray(im2)
+#             return arr, 'rgb'
 def combine_to_tiff(
     img_paths, output_dir, *,
     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
@@ -424,18 +448,17 @@ def combine_to_tiff(
     predictor=None,
     bigtiff=True,
     read_workers=None,
-    max_buffer_pages=4         # 新增：控制緩衝頁面數，降低峰值 RAM
+    max_buffer_pages=4
 ):
     """
     Combine multiple images into a multi-page TIFF, preserving input order.
-    - 行為不變：compat_mode=True → strip + LZW + predictor=2 + non-BigTIFF (除非 >4GB)
-    - 優化點：並行讀圖 + 主執行緒按序「邊到邊寫」，避免先累積全部頁面
-    - compat_mode 下自動設置 rowsperstrip，減少 strip switches，加速 LZW
+    - compat_mode=True → strip + LZW + predictor=2；仍維持「相容模式」行為
+    - 小圖/少頁（<=3）→ 走同步快路徑（更少 overhead）
+    - strip 模式時 rowsperstrip 設為整張高度（單 strip），極大幅減少 strip 切換
     """
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
 
-    # 0) 參數預處理（維持原有邏輯）
     read_workers = read_workers or max(4, (os.cpu_count() or 8))
     _compression = compression
     _tile = tile
@@ -450,7 +473,7 @@ def combine_to_tiff(
 
     if _compression == 'zstd':
         try:
-            import imagecodecs  # noqa
+            import imagecodecs  # noqa: F401
         except Exception:
             _compression = 'lzw'
             _predictor = 2
@@ -459,35 +482,6 @@ def combine_to_tiff(
     comp_args = None
     if _compression == 'zstd' and compression_level is not None:
         comp_args = dict(level=int(compression_level))
-
-    # 1) 建立讀圖執行緒池（保持輸入→輸出順序）
-    from concurrent.futures import ThreadPoolExecutor, Future
-    import queue, threading
-    read_q: "queue.Queue[tuple[int, tuple]]" = queue.Queue(maxsize=max_buffer_pages)
-    done_sentinel = object()
-
-    def reader():
-        with ThreadPoolExecutor(max_workers=read_workers) as ex:
-            futs: list[tuple[int, Future]] = []
-            for idx, p in enumerate(img_paths):
-                futs.append((idx, ex.submit(_read_one, p)))
-            # 依 index 排序，確保放入隊列時能維持可寫入的順序資訊
-            for idx, fu in futs:
-                arr, photometric = fu.result()
-                read_q.put((idx, (arr, photometric)))
-        read_q.put((len(img_paths), done_sentinel))  # 結束標記
-
-    t = threading.Thread(target=reader, daemon=True)
-    t.start()
-
-    # 2) 估算是否需要 BigTIFF（避免 >4GB 失敗）
-    #    流式下無法先總和；保留原邏輯：若使用者強制 bigtiff=True，一律開；若 compat_mode 強制 False，但尺寸大到需要，仍升級。
-    #    這裡採兩階段策略：先假設 _bigtiff，若 compat_mode=False 才允許 True。
-    force_bigtiff = _bigtiff
-
-    # 3) 寫入（按順序）
-    next_write = 0
-    buffer: dict[int, tuple] = {}
 
     def _write_one(tw, arr, photometric):
         kwargs = dict(photometric=photometric, compression=_compression, metadata=None)
@@ -498,30 +492,62 @@ def combine_to_tiff(
         if _tile is not None:
             kwargs['tile'] = _tile
         else:
-            # compat_mode: strip 模式 → 盡量拉大 rowsperstrip，降低 strip 數量，加快壓縮與寫入
-            # （保持 strip 邏輯不變；Windows Photos 仍可讀）
-            rows = arr.shape[0]
-            kwargs['rowsperstrip'] = max(16, min(8192, rows))
+            # **關鍵：單 strip**（仍是 strip 模式，邏輯不變，但最省 CPU）
+            kwargs['rowsperstrip'] = arr.shape[0]
         tw.write(arr, **kwargs)
 
-    # 先開檔（是否 BigTIFF：若 compat_mode=False，依使用者設定或資料量決定）
-    # 因為流式，先用使用者設定；若 compat_mode=True 仍會在 >4GB 自動切 BigTIFF（保持不爆）
-    with TiffWriter(out_path, bigtiff=force_bigtiff) as tw:
+    # --- Fast path：頁數很少（<=3）時，避免 thread/queue 開銷 ---
+    if len(img_paths) <= 3:
+        pages = []
         est_total = 0
+        for p in img_paths:
+            arr, pm = _read_one(p)     # 下方有微調：保證 uint8 C-order
+            pages.append((arr, pm))
+            est_total += arr.nbytes
+
+        need_bigtiff = est_total > (4 * 1024**3 - 65536)
+        with TiffWriter(out_path, bigtiff=(_bigtiff or need_bigtiff)) as tw:
+            for arr, pm in pages:
+                _write_one(tw, arr, pm)
+
+        logger.info("[TIFF] saved (fast path) → %s (compat_mode=%s)", out_path, compat_mode)
+        return out_path
+
+    # --- 多頁情境：保留你的「並行讀 + 流式按序寫」 ---
+    from concurrent.futures import ThreadPoolExecutor, Future, as_completed
+    import queue, threading
+    read_q: "queue.Queue[tuple[int, tuple]]" = queue.Queue(maxsize=max_buffer_pages)
+    done_sentinel = object()
+
+    def reader():
+        with ThreadPoolExecutor(max_workers=read_workers) as ex:
+            futs: list[tuple[int, Future]] = []
+            for idx, p in enumerate(img_paths):
+                futs.append((idx, ex.submit(_read_one, p)))
+            for idx, fu in futs:
+                arr, photometric = fu.result()
+                read_q.put((idx, (arr, photometric)))
+        read_q.put((len(img_paths), done_sentinel))
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+
+    force_bigtiff = _bigtiff
+    next_write = 0
+    buffer: dict[int, tuple] = {}
+    est_total = 0
+
+    with TiffWriter(out_path, bigtiff=force_bigtiff) as tw:
         while True:
             idx, payload = read_q.get()
             if payload is done_sentinel:
-                # 把緩存中剩餘的按序寫完
                 while next_write in buffer:
                     arr, pm = buffer.pop(next_write)
                     est_total += arr.nbytes
-                    # 若超過 4GB，升級 BigTIFF（與原版邏輯一致）
                     if (not force_bigtiff) and (est_total > (4 * 1024**3 - 65536)):
-                        tw._fh.close()  # 關閉舊檔頭
-                        # 重新開啟為 BigTIFF，再附加寫入（行為等同、檔名不變）
+                        tw._fh.close()
                         with TiffWriter(out_path, bigtiff=True, append=True) as tw2:
                             _write_one(tw2, arr, pm)
-                        # 後續都走 BigTIFF 追加
                         tw = TiffWriter(out_path, bigtiff=True, append=True)
                         force_bigtiff = True
                     else:
@@ -541,7 +567,6 @@ def combine_to_tiff(
                 else:
                     _write_one(tw, arr, pm)
                 next_write += 1
-                # 把緩衝裡連續可寫的都寫掉
                 while next_write in buffer:
                     arr2, pm2 = buffer.pop(next_write)
                     est_total += arr2.nbytes
@@ -555,36 +580,35 @@ def combine_to_tiff(
                         _write_one(tw, arr2, pm2)
                     next_write += 1
             else:
-                # 還沒到該寫的 index，先緩存，控制緩存頁數由 max_buffer_pages 決定
                 buffer[idx] = (arr, pm)
 
-    logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
+    logger.info("[TIFF] saved (stream) → %s (compat_mode=%s)", out_path, compat_mode)
     return out_path
 
 
-# helper function
 def _read_one(path):
     """
     Read an image using Pillow into a numpy array.
     Returns (ndarray, photometric)
+    - 調整：確保 uint8 + C-order，避免 tifffile 內部再複製一次
     """
     with Image.open(path) as im:
         mode = im.mode
         if mode == 'L':
-            arr = np.asarray(im)  # (H, W)
+            arr = np.asarray(im, dtype=np.uint8, order='C')
             return arr, 'minisblack'
         elif mode in ('RGB',):
-            arr = np.asarray(im)  # (H, W, 3)
+            arr = np.asarray(im, dtype=np.uint8, order='C')
             return arr, 'rgb'
         elif mode in ('RGBA', 'LA', 'P'):
             im2 = im.convert('RGB')
-            arr = np.asarray(im2)
+            arr = np.asarray(im2, dtype=np.uint8, order='C')
             return arr, 'rgb'
         else:
-            # Other modes convert to RGB
             im2 = im.convert('RGB')
-            arr = np.asarray(im2)
+            arr = np.asarray(im2, dtype=np.uint8, order='C')
             return arr, 'rgb'
+
 
 
 
