@@ -39,29 +39,27 @@ except Exception:
     class ConnectionInterrupted(Exception):
         pass
 
-def _safe_cache_set(k, v, ttl=3600):
-    try:
-        cache.set(k, v, timeout=ttl)
-    except ConnectionInterrupted:
-        pass
-
-def _safe_cache_get(k, default=None):
-    try:
-        return cache.get(k, default)
-    except ConnectionInterrupted:
-        return default
-
-def _set_progress_stage(project: str, stage: str):
-    _safe_cache_set(f"progress:{project}", stage, ttl=60*60)
+# 替代版（只要沒多實例 scale-out 就可用）
+def _set_progress_stage(project, stage):
+    pdir = os.path.join(settings.MEDIA_ROOT, project)
+    os.makedirs(pdir, exist_ok=True)
+    with open(os.path.join(pdir, "_progress.txt"), "w") as f:
+        f.write(stage)
 
 @require_GET
 def progress(request):
     project = request.GET.get("project") or ""
-    stage = _safe_cache_get(f"progress:{project}", "idle")
+    p = os.path.join(settings.MEDIA_ROOT, project, "_progress.txt")
+    try:
+        with open(p, "r") as f:
+            stage = f.read().strip()
+    except Exception:
+        stage = "idle"
     resp = JsonResponse({"stage": stage})
     resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp["Pragma"] = "no-cache"
     return resp
+
 
 
 # ---------------------------
