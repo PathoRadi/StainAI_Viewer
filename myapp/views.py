@@ -31,6 +31,39 @@ from .method.yolopipeline import YOLOPipeline
 
 logger = logging.getLogger(__name__)
 
+
+# views.py 頂部（try 匯入）
+try:
+    from django_redis.exceptions import ConnectionInterrupted
+except Exception:
+    class ConnectionInterrupted(Exception):
+        pass
+
+def _safe_cache_set(k, v, ttl=3600):
+    try:
+        cache.set(k, v, timeout=ttl)
+    except ConnectionInterrupted:
+        pass
+
+def _safe_cache_get(k, default=None):
+    try:
+        return cache.get(k, default)
+    except ConnectionInterrupted:
+        return default
+
+def _set_progress_stage(project: str, stage: str):
+    _safe_cache_set(f"progress:{project}", stage, ttl=60*60)
+
+@require_GET
+def progress(request):
+    project = request.GET.get("project") or ""
+    stage = _safe_cache_get(f"progress:{project}", "idle")
+    resp = JsonResponse({"stage": stage})
+    resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp["Pragma"] = "no-cache"
+    return resp
+
+
 # ---------------------------
 # Lazy loader for YOLO
 # ---------------------------
@@ -461,12 +494,3 @@ def make_imagej_roi_bytes(points):
         buf += (y - top).to_bytes(2, "big", signed=True)
 
     return bytes(buf)
-
-@require_GET
-def progress(request):
-    project = request.GET.get("project") or ""
-    stage = cache.get(f"progress:{project}", "idle")
-    resp = JsonResponse({"stage": stage})
-    resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    resp["Pragma"] = "no-cache"
-    return resp

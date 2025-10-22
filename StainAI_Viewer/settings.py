@@ -115,18 +115,32 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # ===== Cache (Redis) =====
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0"),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            # Azure Redis 通常要走 TLS；若你用的是 rediss:// 改這裡
-            "SSL": os.environ.get("REDIS_USE_SSL", "1") == "1",
-        },
-        "KEY_PREFIX": "stainai",
+REDIS_URL = os.environ.get("REDIS_URL")  # 例：rediss://:<password>@<host>:6380/0
+
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SSL": REDIS_URL.startswith("rediss://"),
+                "SOCKET_TIMEOUT": 3,
+                "SOCKET_CONNECT_TIMEOUT": 3,
+                "HEALTH_CHECK_INTERVAL": 30,
+            },
+            "KEY_PREFIX": "stainai",
+            "TIMEOUT": 60 * 60,
+        }
     }
-}
+else:
+    # 本機或未設 REDIS_URL：避免去連 127.0.0.1
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "stainai-local",
+        }
+    }
 
 
 
