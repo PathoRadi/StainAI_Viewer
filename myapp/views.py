@@ -95,20 +95,20 @@ def _to_media_url(abs_path: str) -> str:
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
 
-def _set_progress_stage(project: str, stage: str):
-    """
-    stage ∈ {'idle','gray','cut','yolo','done','error'}
-    """
-    cache.set(f"progress:{project}", stage, timeout=60*60)
+# def _set_progress_stage(project: str, stage: str):
+#     """
+#     stage ∈ {'idle','gray','cut','yolo','done','error'}
+#     """
+#     cache.set(f"progress:{project}", stage, timeout=60*60)
 
-@require_GET
-def progress(request):
-    """
-    Get current progress stage for a project.
-    """
-    project = request.GET.get("project") or ""
-    stage = cache.get(f"progress:{project}", "idle")
-    return JsonResponse({"stage": stage})
+# @require_GET
+# def progress(request):
+#     """
+#     Get current progress stage for a project.
+#     """
+#     project = request.GET.get("project") or ""
+#     stage = cache.get(f"progress:{project}", "idle")
+#     return JsonResponse({"stage": stage})
 
 # ---------------------------
 # Views
