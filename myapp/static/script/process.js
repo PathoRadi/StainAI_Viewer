@@ -221,7 +221,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     clearInterval(_progressTimer);
     _progressTimer = setInterval(() => {
-      fetch(`${PROGRESS_URL}?project=${encodeURIComponent(projectName)}`)
+      const bust = Date.now();
+      fetch(`${PROGRESS_URL}?project=${encodeURIComponent(projectName)}&t=${bust}`,
+        {cache: 'no-store'}
+      )
         .then(r => r.json())
         .then(({ stage }) => {
           gotoStage(stage);
@@ -232,11 +235,11 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         .catch(() => {});
     }, 350);
   }
+
   function stopStageWatcher() {
     clearInterval(_progressTimer);
     _progressTimer = null;
   }
-
 
   function showProgressOverlay() {
     document.getElementById('progress-overlay').classList.add('active');
