@@ -236,11 +236,6 @@ def detect_image(request):
     #     shutil.rmtree(p, ignore_errors=True)
     # logger.info("Temporary files cleaned up")
     # gc.collect()
-    # Clean up temp folders (ignore if not exist) ---
-    for folder in ('fm_images', 'patches'):
-        _fast_rmtree(os.path.join(project_dir, folder))
-    logger.info("Temporary files cleaned up")
-    gc.collect()
 
     
 
@@ -268,29 +263,6 @@ def _to_media_url(abs_path: str) -> str:
     """Convert absolute path to MEDIA URL usable by frontend."""
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
-
-# helper function: detect_image()
-def _fast_rmtree(path: str):
-    if not os.path.isdir(path):
-        return
-    # 平行 unlink 檔案；最後自底向上 rmdir（避免單執行緒大量 unlink 變慢）
-    for root, dirs, files in os.walk(path, topdown=False):
-        # 檔案用 thread pool 平行刪
-        with ThreadPoolExecutor(max_workers=max(4, (os.cpu_count() or 8))) as ex:
-            for fn in files:
-                ex.submit(lambda p: (os.unlink(p) if os.path.isfile(p) else None),
-                            os.path.join(root, fn))
-        # 子目錄逐一 rmdir
-        for d in dirs:
-            dp = os.path.join(root, d)
-            try:
-                os.rmdir(dp)
-            except Exception:
-                shutil.rmtree(dp, ignore_errors=True)
-    try:
-        os.rmdir(path)
-    except Exception:
-        shutil.rmtree(path, ignore_errors=True)
 
 
 
@@ -345,268 +317,99 @@ def delete_project(request):
 # ---------------------------
 # Functions to create Mmap(.tiff)
 # ---------------------------
-# def combine_to_tiff(
-#     img_paths, output_dir, *,
-#     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
-#     tile=(512, 512),
-#     compression='zstd',
-#     compression_level=10,      # zstd level (3~10)
-#     predictor=None,            # LZW/Deflate recommend 2 (horizontal)
-#     bigtiff=True,
-#     read_workers=None
-# ):
-#     """
-#     Combine multiple images into a multi-page TIFF.
-#     compat_mode=True  → strip + LZW + predictor=2 + avoid BigTIFF
-#     compat_mode=False → tile + zstd + BigTIFF (better performance)
-#     """
-#     os.makedirs(output_dir, exist_ok=True)
-#     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
-
-#     # 1) Concurrently read images (preserve input order)
-#     read_workers = read_workers or max(4, (os.cpu_count() or 8))
-#     pages = [None] * len(img_paths)
-#     with ThreadPoolExecutor(max_workers=read_workers) as ex:
-#         futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
-#         for fu in as_completed(futs):
-#             pages[futs[fu]] = fu.result()
-
-#     # 2) Override params for compatibility mode
-#     if compat_mode:
-#         tile = None
-#         compression = 'lzw'
-#         predictor = 2
-#         bigtiff = False
-
-#     # 3) If imagecodecs missing, zstd → LZW
-#     if compression == 'zstd':
-#         try:
-#             import imagecodecs  # noqa
-#         except Exception:
-#             compression = 'lzw'
-#             predictor = 2
-#             compression_level = None
-
-#     # 4) Force BigTIFF if >4GB
-#     est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
-#     need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
-
-#     # 5) Write multi-page TIFF
-#     comp_args = None
-#     if compression == 'zstd' and compression_level is not None:
-#         comp_args = dict(level=int(compression_level))
-
-#     with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
-#         for (arr, photometric) in pages:
-#             if arr is None:
-#                 continue
-#             kwargs = dict(
-#                 photometric=photometric,
-#                 compression=compression,
-#                 metadata=None
-#             )
-#             if comp_args:
-#                 kwargs['compressionargs'] = comp_args
-#             if compression in ('lzw', 'deflate') and predictor:
-#                 kwargs['predictor'] = int(predictor)
-#             if tile is not None:
-#                 kwargs['tile'] = tile
-#             tw.write(arr, **kwargs)
-
-#     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
-#     return out_path
-
-# # helper function
-# def _read_one(path):
-#     """
-#     Read an image using Pillow into a numpy array.
-#     Returns (ndarray, photometric)
-#     """
-#     with Image.open(path) as im:
-#         mode = im.mode
-#         if mode == 'L':
-#             arr = np.asarray(im)  # (H, W)
-#             return arr, 'minisblack'
-#         elif mode in ('RGB',):
-#             arr = np.asarray(im)  # (H, W, 3)
-#             return arr, 'rgb'
-#         elif mode in ('RGBA', 'LA', 'P'):
-#             im2 = im.convert('RGB')
-#             arr = np.asarray(im2)
-#             return arr, 'rgb'
-#         else:
-#             # Other modes convert to RGB
-#             im2 = im.convert('RGB')
-#             arr = np.asarray(im2)
-#             return arr, 'rgb'
 def combine_to_tiff(
     img_paths, output_dir, *,
     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
     tile=(512, 512),
     compression='zstd',
-    compression_level=10,
-    predictor=None,
+    compression_level=10,      # zstd level (3~10)
+    predictor=None,            # LZW/Deflate recommend 2 (horizontal)
     bigtiff=True,
-    read_workers=None,
-    max_buffer_pages=4
+    read_workers=None
 ):
     """
-    Combine multiple images into a multi-page TIFF, preserving input order.
-    - compat_mode=True → strip + LZW + predictor=2；仍維持「相容模式」行為
-    - 小圖/少頁（<=3）→ 走同步快路徑（更少 overhead）
-    - strip 模式時 rowsperstrip 設為整張高度（單 strip），極大幅減少 strip 切換
+    Combine multiple images into a multi-page TIFF.
+    compat_mode=True  → strip + LZW + predictor=2 + avoid BigTIFF
+    compat_mode=False → tile + zstd + BigTIFF (better performance)
     """
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
 
+    # 1) Concurrently read images (preserve input order)
     read_workers = read_workers or max(4, (os.cpu_count() or 8))
-    _compression = compression
-    _tile = tile
-    _predictor = predictor
-    _bigtiff = bigtiff
+    pages = [None] * len(img_paths)
+    with ThreadPoolExecutor(max_workers=read_workers) as ex:
+        futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
+        for fu in as_completed(futs):
+            pages[futs[fu]] = fu.result()
 
+    # 2) Override params for compatibility mode
     if compat_mode:
-        _tile = None
-        _compression = 'lzw'
-        _predictor = 2
-        _bigtiff = False
+        tile = None
+        compression = 'lzw'
+        predictor = 2
+        bigtiff = False
 
-    if _compression == 'zstd':
+    # 3) If imagecodecs missing, zstd → LZW
+    if compression == 'zstd':
         try:
-            import imagecodecs  # noqa: F401
+            import imagecodecs  # noqa
         except Exception:
-            _compression = 'lzw'
-            _predictor = 2
+            compression = 'lzw'
+            predictor = 2
             compression_level = None
 
+    # 4) Force BigTIFF if >4GB
+    est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
+    need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
+
+    # 5) Write multi-page TIFF
     comp_args = None
-    if _compression == 'zstd' and compression_level is not None:
+    if compression == 'zstd' and compression_level is not None:
         comp_args = dict(level=int(compression_level))
 
-    def _write_one(tw, arr, photometric):
-        kwargs = dict(photometric=photometric, compression=_compression, metadata=None)
-        if comp_args:
-            kwargs['compressionargs'] = comp_args
-        if _compression in ('lzw', 'deflate') and _predictor:
-            kwargs['predictor'] = int(_predictor)
-        if _tile is not None:
-            kwargs['tile'] = _tile
-        else:
-            # **關鍵：單 strip**（仍是 strip 模式，邏輯不變，但最省 CPU）
-            kwargs['rowsperstrip'] = arr.shape[0]
-        tw.write(arr, **kwargs)
+    with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
+        for (arr, photometric) in pages:
+            if arr is None:
+                continue
+            kwargs = dict(
+                photometric=photometric,
+                compression=compression,
+                metadata=None
+            )
+            if comp_args:
+                kwargs['compressionargs'] = comp_args
+            if compression in ('lzw', 'deflate') and predictor:
+                kwargs['predictor'] = int(predictor)
+            if tile is not None:
+                kwargs['tile'] = tile
+            tw.write(arr, **kwargs)
 
-    # --- Fast path：頁數很少（<=3）時，避免 thread/queue 開銷 ---
-    if len(img_paths) <= 3:
-        pages = []
-        est_total = 0
-        for p in img_paths:
-            arr, pm = _read_one(p)     # 下方有微調：保證 uint8 C-order
-            pages.append((arr, pm))
-            est_total += arr.nbytes
-
-        need_bigtiff = est_total > (4 * 1024**3 - 65536)
-        with TiffWriter(out_path, bigtiff=(_bigtiff or need_bigtiff)) as tw:
-            for arr, pm in pages:
-                _write_one(tw, arr, pm)
-
-        logger.info("[TIFF] saved (fast path) → %s (compat_mode=%s)", out_path, compat_mode)
-        return out_path
-
-    # --- 多頁情境：保留你的「並行讀 + 流式按序寫」 ---
-    from concurrent.futures import ThreadPoolExecutor, Future, as_completed
-    import queue, threading
-    read_q: "queue.Queue[tuple[int, tuple]]" = queue.Queue(maxsize=max_buffer_pages)
-    done_sentinel = object()
-
-    def reader():
-        with ThreadPoolExecutor(max_workers=read_workers) as ex:
-            futs: list[tuple[int, Future]] = []
-            for idx, p in enumerate(img_paths):
-                futs.append((idx, ex.submit(_read_one, p)))
-            for idx, fu in futs:
-                arr, photometric = fu.result()
-                read_q.put((idx, (arr, photometric)))
-        read_q.put((len(img_paths), done_sentinel))
-
-    t = threading.Thread(target=reader, daemon=True)
-    t.start()
-
-    force_bigtiff = _bigtiff
-    next_write = 0
-    buffer: dict[int, tuple] = {}
-    est_total = 0
-
-    with TiffWriter(out_path, bigtiff=force_bigtiff) as tw:
-        while True:
-            idx, payload = read_q.get()
-            if payload is done_sentinel:
-                while next_write in buffer:
-                    arr, pm = buffer.pop(next_write)
-                    est_total += arr.nbytes
-                    if (not force_bigtiff) and (est_total > (4 * 1024**3 - 65536)):
-                        tw._fh.close()
-                        with TiffWriter(out_path, bigtiff=True, append=True) as tw2:
-                            _write_one(tw2, arr, pm)
-                        tw = TiffWriter(out_path, bigtiff=True, append=True)
-                        force_bigtiff = True
-                    else:
-                        _write_one(tw, arr, pm)
-                    next_write += 1
-                break
-
-            arr, pm = payload
-            if idx == next_write:
-                est_total += arr.nbytes
-                if (not force_bigtiff) and (est_total > (4 * 1024**3 - 65536)):
-                    tw._fh.close()
-                    with TiffWriter(out_path, bigtiff=True, append=True) as tw2:
-                        _write_one(tw2, arr, pm)
-                    tw = TiffWriter(out_path, bigtiff=True, append=True)
-                    force_bigtiff = True
-                else:
-                    _write_one(tw, arr, pm)
-                next_write += 1
-                while next_write in buffer:
-                    arr2, pm2 = buffer.pop(next_write)
-                    est_total += arr2.nbytes
-                    if (not force_bigtiff) and (est_total > (4 * 1024**3 - 65536)):
-                        tw._fh.close()
-                        with TiffWriter(out_path, bigtiff=True, append=True) as tw2:
-                            _write_one(tw2, arr2, pm2)
-                        tw = TiffWriter(out_path, bigtiff=True, append=True)
-                        force_bigtiff = True
-                    else:
-                        _write_one(tw, arr2, pm2)
-                    next_write += 1
-            else:
-                buffer[idx] = (arr, pm)
-
-    logger.info("[TIFF] saved (stream) → %s (compat_mode=%s)", out_path, compat_mode)
+    logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
     return out_path
 
-
+# helper function
 def _read_one(path):
     """
     Read an image using Pillow into a numpy array.
     Returns (ndarray, photometric)
-    - 調整：確保 uint8 + C-order，避免 tifffile 內部再複製一次
     """
     with Image.open(path) as im:
         mode = im.mode
         if mode == 'L':
-            arr = np.asarray(im, dtype=np.uint8, order='C')
+            arr = np.asarray(im)  # (H, W)
             return arr, 'minisblack'
         elif mode in ('RGB',):
-            arr = np.asarray(im, dtype=np.uint8, order='C')
+            arr = np.asarray(im)  # (H, W, 3)
             return arr, 'rgb'
         elif mode in ('RGBA', 'LA', 'P'):
             im2 = im.convert('RGB')
-            arr = np.asarray(im2, dtype=np.uint8, order='C')
+            arr = np.asarray(im2)
             return arr, 'rgb'
         else:
+            # Other modes convert to RGB
             im2 = im.convert('RGB')
-            arr = np.asarray(im2, dtype=np.uint8, order='C')
+            arr = np.asarray(im2)
             return arr, 'rgb'
 
 
