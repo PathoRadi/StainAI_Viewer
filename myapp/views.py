@@ -278,123 +278,21 @@ def _to_media_url(abs_path: str) -> str:
 # ---------------------------
 # Reset
 # ---------------------------
-# @csrf_exempt
-# def reset_media(request):
-#     if request.method != 'POST':
-#         return HttpResponseNotAllowed(['POST'])
-#     root = settings.MEDIA_ROOT
-#     for child in os.listdir(root):
-#         path = os.path.join(root, child)
-#         try:
-#             if os.path.isdir(path):
-#                 shutil.rmtree(path, ignore_errors=True)
-#             else:
-#                 os.remove(path)
-#         except Exception:
-#             logger.warning("failed to remove %s", path, exc_info=True)
-#     return JsonResponse({'ok': True})
-
 @csrf_exempt
 def reset_media(request):
-    """
-    Reset media/projects/cache to initial state.
-
-    JSON body (optional):
-        {"scope": "all"}  # default
-        {"scope": "project", "project": "<name>"}
-
-    Also clears:
-      - common subfolders inside each project (annotated, patches, qmap, result, etc.)
-      - _progress.txt
-      - OS temp files that match a safe prefix
-      - Django cache (incl. Redis if configured)
-    """
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
-
-    try:
-        payload = json.loads(request.body or "{}")
-    except Exception:
-        payload = {}
-
-    scope = (payload.get("scope") or "all").lower()
-    project_name = payload.get("project")
-
     root = settings.MEDIA_ROOT
-    removed = []
-
-    def _rm_path(p):
-        if not os.path.exists(p):
-            return
+    for child in os.listdir(root):
+        path = os.path.join(root, child)
         try:
-            if os.path.isdir(p):
-                shutil.rmtree(p, ignore_errors=True)
-            else:
-                os.remove(p)
-            removed.append(p)
-        except Exception:
-            logger.warning("failed to remove %s", p, exc_info=True)
-
-    # helper: remove common subfolders inside a project
-    def _purge_project_dir(pdir):
-        subdirs = [
-            "original_mmap", "qmap", "result", "gray", "resized", "display",
-            "patches", "fm_images", "annotated"
-        ]
-        for sd in subdirs:
-            _rm_path(os.path.join(pdir, sd))
-        _rm_path(os.path.join(pdir, "_progress.txt"))
-
-        # project-level loose files (like thumbnails) – optional:
-        for fn in os.listdir(pdir):
-            fpath = os.path.join(pdir, fn)
-            if os.path.isfile(fpath) and not fn.lower().endswith((".tif", ".tiff", ".nii", ".zip", ".json", ".png", ".jpg", ".jpeg")):
-                _rm_path(fpath)
-
-    if scope == "project":
-        if not project_name:
-            return HttpResponseBadRequest("project required for scope=project")
-        pdir = os.path.join(root, project_name)
-        if os.path.isdir(pdir):
-            _purge_project_dir(pdir)
-            # 若要整個 project 都刪掉（包含 original），就打開下一行：
-            # _rm_path(pdir)
-        else:
-            return HttpResponseNotFound("project not found")
-    else:
-        # scope == "all": remove every child under MEDIA_ROOT
-        for child in os.listdir(root):
-            path = os.path.join(root, child)
-            # 如果你想保留某些白名單資料夾，可在這裡跳過
             if os.path.isdir(path):
-                _purge_project_dir(path)
-                # 同樣可選：連 project root 一起砍
-                _rm_path(path)
+                shutil.rmtree(path, ignore_errors=True)
             else:
-                _rm_path(path)
-
-    # 清 Django cache（含 Redis）
-    try:
-        from django.core.cache import cache
-        cache.clear()
-    except Exception:
-        logger.warning("cache.clear() failed", exc_info=True)
-
-    # 清 OS temp（只清「安全前綴」以免誤刪）
-    try:
-        import tempfile, re as _re
-        tmpdir = tempfile.gettempdir()
-        safe_prefix = ("tmp", "stainai", "stain_ai", "django")  # 依你專案調整
-        for fn in os.listdir(tmpdir):
-            if fn.lower().startswith(safe_prefix):
-                _rm_path(os.path.join(tmpdir, fn))
-    except Exception:
-        logger.warning("temp cleanup failed", exc_info=True)
-
-    gc.collect()
-    return JsonResponse({"ok": True, "scope": scope, "removed": removed})
-
-
+                os.remove(path)
+        except Exception:
+            logger.warning("failed to remove %s", path, exc_info=True)
+    return JsonResponse({'ok': True})
 
 
 

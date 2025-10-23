@@ -4,7 +4,6 @@ import re
 import torch
 import gc
 import numpy as np
-import nibabel as nib
 from PIL import Image, ImageDraw
 import logging
 from .bounding_box_filter import BoundingBoxFilter
@@ -74,7 +73,7 @@ class YOLOPipeline:
         json_path = os.path.join(self.result_dir, os.path.basename(self.large_img_path)[:-4] + ".json")        
         stack_path = os.path.join(self.qmap_dir, "qmap.tif")
 
-        self.qmap_sparse_stack_tiff(
+        self.qmap(
             input_image_path=self.large_img_path,
             json_file_path=json_path,
             output_tiff_path=stack_path,
@@ -508,7 +507,7 @@ class YOLOPipeline:
 
         return points, by_class
 
-    def qmap_sparse_stack_tiff(
+    def qmap(
         self,
         input_image_path: str,
         json_file_path: str,
@@ -698,6 +697,6 @@ class YOLOPipeline:
                 tw.write(mem, **kwargs)
                 del mem
 
-        self.log.info("[qmap_sparse_stack_tiff] saved → %s", output_tiff_path)
+        self.log.info("[qmap] saved → %s", output_tiff_path)
         self.log.info("Slice order = [original, R, H, B, A, RD, HR, MAS, FM]")
         return output_tiff_path
