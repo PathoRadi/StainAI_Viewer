@@ -77,10 +77,10 @@ class YOLOPipeline:
             input_image_path=self.large_img_path,
             json_file_path=json_path,
             output_tiff_path=stack_path,
-            tile=(512,512),
-            compression="lzw",
+            tile=None,
+            compression=None,
             compression_level=None,
-            predictor=2,
+            predictor=None,
             bigtiff=False,
             write_nan=True
         )
