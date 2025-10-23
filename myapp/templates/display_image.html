@@ -291,8 +291,52 @@
     const DELETE_PROJECT_URL = "{% url 'myapp:delete_project' %}";
     const DOWNLOAD_WITH_ROIS_URL = "{% url 'myapp:download_with_rois' %}";
     const PROGRESS_URL       = "{% url 'myapp:progress' %}";
-    window.addEventListener('beforeunload', () => {
-      navigator.sendBeacon("{% url 'myapp:reset_media' %}");
+    // window.addEventListener('beforeunload', () => {
+    //   navigator.sendBeacon("{% url 'myapp:reset_media' %}");
+    // });
+    const RESET_URL = "{% url 'myapp:reset_media' %}";
+    // 若只想清「當前專案」，可把 getCurrentProjectName() 實作成回傳專案名，然後改成 scope='project'
+    function getCurrentProjectName() {
+      // 例如：return window.currentProjectName || null;
+      return null;
+    }
+
+    function sendReset(scope = "all", project = null) {
+      const payload = project ? { scope, project } : { scope };
+      try {
+        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+        if (navigator.sendBeacon && navigator.sendBeacon(RESET_URL, blob)) {
+          return;
+        }
+      } catch (e) {
+        // 忽略，改用 keepalive fetch
+      }
+      try {
+        fetch(RESET_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true
+        });
+      } catch (e) {}
+    }
+
+    // pagehide：覆蓋重新整理、關分頁、BFCache（前進/返回快取）等情境
+    window.addEventListener("pagehide", function () {
+      // 若只清當前專案：sendReset("project", getCurrentProjectName());
+      sendReset("all", null);
+    });
+
+    // visibilitychange：有些瀏覽器會先進入 hidden，再觸發 pagehide
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        sendReset("all", null);
+      }
+    });
+
+    // beforeunload：最後備援（有時可能被瀏覽器節流或忽略）
+    window.addEventListener("beforeunload", function () {
+      sendReset("all", null);
     });
   </script>
   <script type="module" src="{% static 'script/script.js' %}"></script>

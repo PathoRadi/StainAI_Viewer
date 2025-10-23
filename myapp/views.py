@@ -9,10 +9,8 @@ import logging
 import gc
 import numpy as np
 import tifffile as tiff
-from typing import List, Optional, Sequence, Tuple, Literal, Union
-from tifffile import TiffWriter
+from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 from django.conf import settings
 from django.shortcuts import render
@@ -22,7 +20,6 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
-from django.core.cache import cache
 
 
 # Your method / pipeline
@@ -229,14 +226,13 @@ def detect_image(request):
     original_mmap_inputs = [orig_path]
     if os.path.exists(annotated_jpg):
         original_mmap_inputs.append(annotated_jpg)
-    # combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
     combine_rgb_tiff_from_paths(
         output_dir=original_mmap_dir,
         img_paths=original_mmap_inputs,
         filename="original_mmap.tif",
-        size_mode="pad",                  # 關鍵
+        size_mode="pad",                  
         pad_align="center",
-        pad_value=(255, 255, 255),  # 補白邊，想要黑邊就 (0,0,0)
+        pad_value=(255, 255, 255),
     )
 
     logger.info("Original_Mmap.tiff generation done")
@@ -282,21 +278,122 @@ def _to_media_url(abs_path: str) -> str:
 # ---------------------------
 # Reset
 # ---------------------------
+# @csrf_exempt
+# def reset_media(request):
+#     if request.method != 'POST':
+#         return HttpResponseNotAllowed(['POST'])
+#     root = settings.MEDIA_ROOT
+#     for child in os.listdir(root):
+#         path = os.path.join(root, child)
+#         try:
+#             if os.path.isdir(path):
+#                 shutil.rmtree(path, ignore_errors=True)
+#             else:
+#                 os.remove(path)
+#         except Exception:
+#             logger.warning("failed to remove %s", path, exc_info=True)
+#     return JsonResponse({'ok': True})
+
 @csrf_exempt
 def reset_media(request):
+    """
+    Reset media/projects/cache to initial state.
+
+    JSON body (optional):
+        {"scope": "all"}  # default
+        {"scope": "project", "project": "<name>"}
+
+    Also clears:
+      - common subfolders inside each project (annotated, patches, qmap, result, etc.)
+      - _progress.txt
+      - OS temp files that match a safe prefix
+      - Django cache (incl. Redis if configured)
+    """
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except Exception:
+        payload = {}
+
+    scope = (payload.get("scope") or "all").lower()
+    project_name = payload.get("project")
+
     root = settings.MEDIA_ROOT
-    for child in os.listdir(root):
-        path = os.path.join(root, child)
+    removed = []
+
+    def _rm_path(p):
+        if not os.path.exists(p):
+            return
         try:
-            if os.path.isdir(path):
-                shutil.rmtree(path, ignore_errors=True)
+            if os.path.isdir(p):
+                shutil.rmtree(p, ignore_errors=True)
             else:
-                os.remove(path)
+                os.remove(p)
+            removed.append(p)
         except Exception:
-            logger.warning("failed to remove %s", path, exc_info=True)
-    return JsonResponse({'ok': True})
+            logger.warning("failed to remove %s", p, exc_info=True)
+
+    # helper: remove common subfolders inside a project
+    def _purge_project_dir(pdir):
+        subdirs = [
+            "original_mmap", "qmap", "result", "gray", "resized", "display",
+            "patches", "fm_images", "annotated"
+        ]
+        for sd in subdirs:
+            _rm_path(os.path.join(pdir, sd))
+        _rm_path(os.path.join(pdir, "_progress.txt"))
+
+        # project-level loose files (like thumbnails) – optional:
+        for fn in os.listdir(pdir):
+            fpath = os.path.join(pdir, fn)
+            if os.path.isfile(fpath) and not fn.lower().endswith((".tif", ".tiff", ".nii", ".zip", ".json", ".png", ".jpg", ".jpeg")):
+                _rm_path(fpath)
+
+    if scope == "project":
+        if not project_name:
+            return HttpResponseBadRequest("project required for scope=project")
+        pdir = os.path.join(root, project_name)
+        if os.path.isdir(pdir):
+            _purge_project_dir(pdir)
+            # 若要整個 project 都刪掉（包含 original），就打開下一行：
+            # _rm_path(pdir)
+        else:
+            return HttpResponseNotFound("project not found")
+    else:
+        # scope == "all": remove every child under MEDIA_ROOT
+        for child in os.listdir(root):
+            path = os.path.join(root, child)
+            # 如果你想保留某些白名單資料夾，可在這裡跳過
+            if os.path.isdir(path):
+                _purge_project_dir(path)
+                # 同樣可選：連 project root 一起砍
+                _rm_path(path)
+            else:
+                _rm_path(path)
+
+    # 清 Django cache（含 Redis）
+    try:
+        from django.core.cache import cache
+        cache.clear()
+    except Exception:
+        logger.warning("cache.clear() failed", exc_info=True)
+
+    # 清 OS temp（只清「安全前綴」以免誤刪）
+    try:
+        import tempfile, re as _re
+        tmpdir = tempfile.gettempdir()
+        safe_prefix = ("tmp", "stainai", "stain_ai", "django")  # 依你專案調整
+        for fn in os.listdir(tmpdir):
+            if fn.lower().startswith(safe_prefix):
+                _rm_path(os.path.join(tmpdir, fn))
+    except Exception:
+        logger.warning("temp cleanup failed", exc_info=True)
+
+    gc.collect()
+    return JsonResponse({"ok": True, "scope": scope, "removed": removed})
+
 
 
 
@@ -325,80 +422,9 @@ def delete_project(request):
 
 
 
-# ---------------------------
+# ---------------------------------
 # Functions to create Mmap(.tiff)
-# ---------------------------
-# def combine_to_tiff(
-#     img_paths, output_dir, *,
-#     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
-#     tile=(512, 512),
-#     compression='zstd',
-#     compression_level=10,      # zstd level (3~10)
-#     predictor=None,            # LZW/Deflate recommend 2 (horizontal)
-#     bigtiff=True,
-#     read_workers=None
-# ):
-#     """
-#     Combine multiple images into a multi-page TIFF.
-#     compat_mode=True  → strip + LZW + predictor=2 + avoid BigTIFF
-#     compat_mode=False → tile + zstd + BigTIFF (better performance)
-#     """
-#     os.makedirs(output_dir, exist_ok=True)
-#     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
-
-#     # 1) Concurrently read images (preserve input order)
-#     read_workers = read_workers or max(4, (os.cpu_count() or 8))
-#     pages = [None] * len(img_paths)
-#     with ThreadPoolExecutor(max_workers=read_workers) as ex:
-#         futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
-#         for fu in as_completed(futs):
-#             pages[futs[fu]] = fu.result()
-
-#     # 2) Override params for compatibility mode
-#     if compat_mode:
-#         tile = None
-#         compression = 'lzw'
-#         predictor = 2
-#         bigtiff = False
-
-#     # 3) If imagecodecs missing, zstd → LZW
-#     if compression == 'zstd':
-#         try:
-#             import imagecodecs  # noqa
-#         except Exception:
-#             compression = 'lzw'
-#             predictor = 2
-#             compression_level = None
-
-#     # 4) Force BigTIFF if >4GB
-#     est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
-#     need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
-
-#     # 5) Write multi-page TIFF
-#     comp_args = None
-#     if compression == 'zstd' and compression_level is not None:
-#         comp_args = dict(level=int(compression_level))
-
-#     with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
-#         for (arr, photometric) in pages:
-#             if arr is None:
-#                 continue
-#             kwargs = dict(
-#                 photometric=photometric,
-#                 compression=compression,
-#                 metadata=None
-#             )
-#             if comp_args:
-#                 kwargs['compressionargs'] = comp_args
-#             if compression in ('lzw', 'deflate') and predictor:
-#                 kwargs['predictor'] = int(predictor)
-#             if tile is not None:
-#                 kwargs['tile'] = tile
-#             tw.write(arr, **kwargs)
-
-#     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
-#     return out_path
-
+# ---------------------------------
 SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
 PadAlign = Literal["topleft", "center"]
 RGBVal = Union[int, Tuple[int, int, int]]
@@ -511,31 +537,6 @@ def combine_rgb_tiff_from_paths(
             )
 
     return output_tiff_path
-
-# helper function
-def _read_one(path):
-    """
-    Read an image using Pillow into a numpy array.
-    Returns (ndarray, photometric)
-    """
-    with Image.open(path) as im:
-        mode = im.mode
-        if mode == 'L':
-            arr = np.asarray(im)  # (H, W)
-            return arr, 'minisblack'
-        elif mode in ('RGB',):
-            arr = np.asarray(im)  # (H, W, 3)
-            return arr, 'rgb'
-        elif mode in ('RGBA', 'LA', 'P'):
-            im2 = im.convert('RGB')
-            arr = np.asarray(im2)
-            return arr, 'rgb'
-        else:
-            # Other modes convert to RGB
-            im2 = im.convert('RGB')
-            arr = np.asarray(im2)
-            return arr, 'rgb'
-
 
 
 
