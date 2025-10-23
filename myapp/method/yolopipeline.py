@@ -514,10 +514,11 @@ class YOLOPipeline:
         output_tiff_path: str,
         *,
         tile=(512, 512),
-        compression: str = 'zstd',       # 若無 imagecodecs 會自動回退 LZW
-        compression_level: int = 10,     # zstd: 1~22，建議 5~10；LZW 無此參數
-        predictor: int | None = None,    # LZW/Deflate 可用 predictor=2
-        bigtiff: bool = True,            # 大圖建議 True
+        compression: str = 'deflate',       # 若無 imagecodecs 會自動回退 LZW
+        compression_level: int = 1,     # zstd: 1~22，建議 5~10；LZW 無此參數
+        predictor: 2,    # LZW/Deflate 可用 predictor=2
+        bigtiff: bool = False,            # 大圖建議 True
+        metadata={'ImageJ':True},
         write_nan: bool = True,          # 類別 & MAS/FM 背景一律 NaN
     ):
         """
@@ -577,7 +578,7 @@ class YOLOPipeline:
                 dtype=np.float32,
                 photometric='minisblack',
                 compression=compression,
-                metadata=None
+                metadata=metadata
             )
             if comp_args:
                 kwargs0['compressionargs'] = comp_args
@@ -608,7 +609,7 @@ class YOLOPipeline:
                         dtype=np.float32,
                         photometric='minisblack',
                         compression=compression,
-                        metadata=None
+                        metadata=metadata
                     )
                     if comp_args:
                         kwargs['compressionargs'] = comp_args
@@ -648,7 +649,7 @@ class YOLOPipeline:
                     dtype=np.float32,
                     photometric='minisblack',
                     compression=compression,
-                    metadata=None
+                    metadata=metadata
                 )
                 if comp_args:
                     kwargs['compressionargs'] = comp_args
@@ -686,7 +687,7 @@ class YOLOPipeline:
                     dtype=np.float32,
                     photometric='minisblack',
                     compression=compression,
-                    metadata=None
+                    metadata=metadata
                 )
                 if comp_args:
                     kwargs['compressionargs'] = comp_args
