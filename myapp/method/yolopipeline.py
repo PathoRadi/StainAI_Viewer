@@ -344,13 +344,11 @@ class YOLOPipeline:
 
         return detections
 
-    def annotate_large_image(self, bbox, labels, alpha=0.3, max_side=6000):
+    def annotate_large_image(self, bbox, labels, alpha=0.3):
         """
         For very large images: draw boxes on a downsampled image to avoid loading a huge RGBA overlay.
         Outputs <original_filename>_annotated_preview.jpg
         """
-        
-
         try:
             base_img = Image.open(self.large_img_path).convert("RGB")
         except Exception:
@@ -359,30 +357,17 @@ class YOLOPipeline:
 
         W, H = base_img.size
 
-        # Downsample image (longest side no more than max_side)
-        scale = 1.0
-        if max(W, H) > max_side:
-            if W >= H:
-                scale = max_side / float(W)
-                newW, newH = max_side, int(round(H * scale))
-            else:
-                scale = max_side / float(H)
-                newW, newH = int(round(W * scale)), max_side
-            base_img = base_img.resize((newW, newH), Image.LANCZOS)
-        else:
-            newW, newH = W, H
-
         # Convert to RGBA for drawing (only at downsampled size)
         base_img = base_img.convert("RGBA")
-        overlay  = Image.new("RGBA", (newW, newH), (0, 0, 0, 0))
+        overlay  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         draw     = ImageDraw.Draw(overlay)
         a255     = max(0, min(255, int(round(alpha * 255))))
 
         for box, lbl in zip(bbox, labels):
-            x1, y1, x2, y2 = [int(v * scale) for v in box]
+            x1, y1, x2, y2 = box
             # Boundary protection
-            x1 = max(0, min(x1, newW)); x2 = max(0, min(x2, newW))
-            y1 = max(0, min(y1, newH)); y2 = max(0, min(y2, newH))
+            x1 = max(0, min(x1, W)); x2 = max(0, min(x2, W))
+            y1 = max(0, min(y1, H)); y2 = max(0, min(y2, H))
             if x2 <= x1 or y2 <= y1:
                 continue
 

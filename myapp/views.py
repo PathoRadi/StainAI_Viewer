@@ -8,6 +8,8 @@ import tempfile
 import logging
 import gc
 import numpy as np
+import tifffile as tiff
+from typing import List, Optional, Sequence, Tuple, Literal, Union
 from tifffile import TiffWriter
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -227,7 +229,16 @@ def detect_image(request):
     original_mmap_inputs = [orig_path]
     if os.path.exists(annotated_jpg):
         original_mmap_inputs.append(annotated_jpg)
-    combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
+    # combine_to_tiff(original_mmap_inputs, original_mmap_dir, compat_mode=True)
+    combine_rgb_tiff_from_paths(
+        output_dir=original_mmap_dir,
+        img_paths=original_mmap_inputs,
+        filename="original_mmap.tif",
+        size_mode="pad",                  # 關鍵
+        pad_align="center",
+        pad_value=(255, 255, 255),  # 補白邊，想要黑邊就 (0,0,0)
+    )
+
     logger.info("Original_Mmap.tiff generation done")
 
     # Clean up temp folders (ignore if not exist) ---
@@ -317,76 +328,189 @@ def delete_project(request):
 # ---------------------------
 # Functions to create Mmap(.tiff)
 # ---------------------------
-def combine_to_tiff(
-    img_paths, output_dir, *,
-    compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
-    tile=(512, 512),
-    compression='zstd',
-    compression_level=10,      # zstd level (3~10)
-    predictor=None,            # LZW/Deflate recommend 2 (horizontal)
-    bigtiff=True,
-    read_workers=None
-):
+# def combine_to_tiff(
+#     img_paths, output_dir, *,
+#     compat_mode=False,         # True: Windows Photos compatible (strip + LZW)
+#     tile=(512, 512),
+#     compression='zstd',
+#     compression_level=10,      # zstd level (3~10)
+#     predictor=None,            # LZW/Deflate recommend 2 (horizontal)
+#     bigtiff=True,
+#     read_workers=None
+# ):
+#     """
+#     Combine multiple images into a multi-page TIFF.
+#     compat_mode=True  → strip + LZW + predictor=2 + avoid BigTIFF
+#     compat_mode=False → tile + zstd + BigTIFF (better performance)
+#     """
+#     os.makedirs(output_dir, exist_ok=True)
+#     out_path = os.path.join(output_dir, "Original_Mmap.tiff")
+
+#     # 1) Concurrently read images (preserve input order)
+#     read_workers = read_workers or max(4, (os.cpu_count() or 8))
+#     pages = [None] * len(img_paths)
+#     with ThreadPoolExecutor(max_workers=read_workers) as ex:
+#         futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
+#         for fu in as_completed(futs):
+#             pages[futs[fu]] = fu.result()
+
+#     # 2) Override params for compatibility mode
+#     if compat_mode:
+#         tile = None
+#         compression = 'lzw'
+#         predictor = 2
+#         bigtiff = False
+
+#     # 3) If imagecodecs missing, zstd → LZW
+#     if compression == 'zstd':
+#         try:
+#             import imagecodecs  # noqa
+#         except Exception:
+#             compression = 'lzw'
+#             predictor = 2
+#             compression_level = None
+
+#     # 4) Force BigTIFF if >4GB
+#     est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
+#     need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
+
+#     # 5) Write multi-page TIFF
+#     comp_args = None
+#     if compression == 'zstd' and compression_level is not None:
+#         comp_args = dict(level=int(compression_level))
+
+#     with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
+#         for (arr, photometric) in pages:
+#             if arr is None:
+#                 continue
+#             kwargs = dict(
+#                 photometric=photometric,
+#                 compression=compression,
+#                 metadata=None
+#             )
+#             if comp_args:
+#                 kwargs['compressionargs'] = comp_args
+#             if compression in ('lzw', 'deflate') and predictor:
+#                 kwargs['predictor'] = int(predictor)
+#             if tile is not None:
+#                 kwargs['tile'] = tile
+#             tw.write(arr, **kwargs)
+
+#     logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
+#     return out_path
+
+SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
+PadAlign = Literal["topleft", "center"]
+RGBVal = Union[int, Tuple[int, int, int]]
+
+def combine_rgb_tiff_from_paths(
+    output_dir: str,
+    img_paths: List[str],
+    *,
+    filename: str = "two_rgb_slices.tif",
+    dtype: np.dtype = np.uint8,             # ImageJ 最相容：8-bit RGB
+    # 尺寸處理
+    size_mode: SizeMode = "pad",            # "error" | "resize" | "pad" | "allow_mixed"
+    target_size: Optional[Tuple[int, int]] = None,  # (H, W)
+    pad_align: PadAlign = "center",
+    pad_value: RGBVal = (255, 255, 255),    # 補邊顏色（白）；要黑邊就 (0,0,0)
+) -> str:
     """
-    Combine multiple images into a multi-page TIFF.
-    compat_mode=True  → strip + LZW + predictor=2 + avoid BigTIFF
-    compat_mode=False → tile + zstd + BigTIFF (better performance)
+    將多張彩色圖疊成 RGB 多頁 TIFF（ImageJ 只會顯示 Z=頁數，沒有 C）。
+    - 一律轉為 RGB (H,W,3)
+    - 強制最相容寫檔：strip + LZW + predictor=2 + 無 metadata/description + 非 BigTIFF
+    - 預設對不同尺寸做「pad 到最大尺寸、置中」
     """
+    if not img_paths:
+        raise ValueError("img_paths 不能是空的")
+
+    output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
-    out_path = os.path.join(output_dir, "Original_Mmap.tiff")
+    output_tiff_path = os.path.join(output_dir, filename)
 
-    # 1) Concurrently read images (preserve input order)
-    read_workers = read_workers or max(4, (os.cpu_count() or 8))
-    pages = [None] * len(img_paths)
-    with ThreadPoolExecutor(max_workers=read_workers) as ex:
-        futs = {ex.submit(_read_one, p): i for i, p in enumerate(img_paths)}
-        for fu in as_completed(futs):
-            pages[futs[fu]] = fu.result()
+    # ---- 讀檔：一律轉成 RGB (H,W,3) ----
+    def _load_rgb(p: str) -> np.ndarray:
+        arr = np.asarray(Image.open(p).convert("RGB"))
+        if arr.dtype != dtype:
+            arr = arr.astype(dtype, copy=False)
+        if arr.ndim != 3 or arr.shape[-1] != 3:
+            raise RuntimeError(f"讀取後不是 RGB：{p} -> shape={arr.shape}")
+        return arr
 
-    # 2) Override params for compatibility mode
-    if compat_mode:
-        tile = None
-        compression = 'lzw'
-        predictor = 2
-        bigtiff = False
+    arrays = [_load_rgb(p) for p in img_paths]
+    dims = [(a.shape[0], a.shape[1]) for a in arrays]
+    H0, W0 = dims[0]
 
-    # 3) If imagecodecs missing, zstd → LZW
-    if compression == 'zstd':
-        try:
-            import imagecodecs  # noqa
-        except Exception:
-            compression = 'lzw'
-            predictor = 2
-            compression_level = None
+    # ---- 決定目標尺寸 ----
+    if size_mode == "resize":
+        tgtH, tgtW = target_size if target_size else (H0, W0)
+    elif size_mode == "pad":
+        if target_size:
+            tgtH, tgtW = target_size
+        else:
+            tgtH = max(h for h, w in dims)
+            tgtW = max(w for h, w in dims)
+    else:
+        tgtH, tgtW = H0, W0
 
-    # 4) Force BigTIFF if >4GB
-    est_bytes = sum(arr.nbytes for (arr, _) in pages if arr is not None)
-    need_bigtiff = est_bytes > (4 * 1024**3 - 65536)
+    # ---- pad 顏色正規化 ----
+    if isinstance(pad_value, tuple):
+        if len(pad_value) != 3:
+            raise ValueError("pad_value 必須是長度 3 的 (R,G,B) 或單一整數")
+        pv = tuple(int(x) for x in pad_value)
+    else:
+        pv = (int(pad_value),) * 3
 
-    # 5) Write multi-page TIFF
-    comp_args = None
-    if compression == 'zstd' and compression_level is not None:
-        comp_args = dict(level=int(compression_level))
+    # ---- 最相容寫檔參數（關鍵）----
+    # 使用 strip（不傳 tile）、LZW + predictor=2、關掉 metadata/description、非 BigTIFF
+    bigtiff = False
+    comp = "lzw"
+    predictor = 2
 
-    with TiffWriter(out_path, bigtiff=(bigtiff or need_bigtiff)) as tw:
-        for (arr, photometric) in pages:
-            if arr is None:
-                continue
-            kwargs = dict(
-                photometric=photometric,
-                compression=compression,
-                metadata=None
+    with tiff.TiffWriter(output_tiff_path, bigtiff=bigtiff) as tw:
+        for arr, (h, w), path in zip(arrays, dims, img_paths):
+            # 尺寸處理
+            if size_mode == "error":
+                if (h, w) != (H0, W0):
+                    raise ValueError(f"所有輸入影像尺寸必須一致。第一張={(H0, W0)}，但 {path}={(h, w)}")
+                out = arr
+            elif size_mode == "resize":
+                out = np.asarray(Image.fromarray(arr).resize((tgtW, tgtH), Image.BICUBIC)) \
+                      if (h, w) != (tgtH, tgtW) else arr
+            elif size_mode == "pad":
+                if (h, w) == (tgtH, tgtW):
+                    out = arr
+                else:
+                    canvas = np.empty((tgtH, tgtW, 3), dtype=dtype)
+                    canvas[...] = pv
+                    if pad_align == "center":
+                        top  = (tgtH - h) // 2
+                        left = (tgtW - w) // 2
+                    else:
+                        top = 0; left = 0
+                    canvas[top:top+h, left:left+w, :] = arr
+                    out = canvas
+            elif size_mode == "allow_mixed":
+                out = arr
+            else:
+                raise ValueError(f"未知 size_mode: {size_mode}")
+
+            # 保險一次 dtype
+            if out.dtype != dtype:
+                out = out.astype(dtype, copy=False)
+
+            # 關鍵 kwargs：不帶 axes、不帶 samples_per_pixel 註記、不寫任何 ImageJ metadata
+            tw.write(
+                out,
+                photometric="rgb",
+                planarconfig="contig",
+                compression=comp,        # LZW
+                predictor=predictor,     # 2
+                metadata=None,           # 不寫 metadata
+                description="",          # 不寫 ImageDescription（避免 "ImageJ="）
             )
-            if comp_args:
-                kwargs['compressionargs'] = comp_args
-            if compression in ('lzw', 'deflate') and predictor:
-                kwargs['predictor'] = int(predictor)
-            if tile is not None:
-                kwargs['tile'] = tile
-            tw.write(arr, **kwargs)
 
-    logger.info("[TIFF] saved → %s (compat_mode=%s)", out_path, compat_mode)
-    return out_path
+    return output_tiff_path
 
 # helper function
 def _read_one(path):
