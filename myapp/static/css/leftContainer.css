@@ -210,7 +210,7 @@
     bottom: 24px;
     width: 500px;
     max-width: 40vw;
-    height: 350px;
+    height: 620px;
     max-height: 40vw;
     background: rgba(0,0,0,0.55);
     backdrop-filter: blur(6px);
@@ -224,18 +224,18 @@
     color: #000;
 }
 #demo-preview-card .demo-title {
-    width: 415.5px;
+    width: 420px;
     font-size: 20px;
-    margin: 20px 10.25px 20px 42.25px;
+    margin: 20px 0px 20px 48px;
     text-align: center;
 
 }
 #demo-preview-card #demo-preview-img {
     display: block;
-    width: 415.5px;
-    height: 242.8px;
+    width: 362px;
+    height: 528px;
     background: #111;
-    margin: 0 42.25px 12px 42.25px; 
+    margin: 0 62px 12px 77px; 
     border-radius: 8px;
     cursor: grabbing;
 }
