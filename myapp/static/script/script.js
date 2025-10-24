@@ -487,11 +487,81 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       alert('Failed to load demo image.');
     }
   });
+  // $demoImg.attr('draggable', true).on('dragstart', (e) => {
+  //   const dt = e.originalEvent.dataTransfer;
+  //   // 投遞一個自訂型別，讓 drop 區能判斷來源
+  //   dt.setData('text/x-stain-demo', '1');
+  // });
   $demoImg.attr('draggable', true).on('dragstart', (e) => {
     const dt = e.originalEvent.dataTransfer;
-    // 投遞一個自訂型別，讓 drop 區能判斷來源
+
+    // 自訂型別：舊邏輯，仍保留
     dt.setData('text/x-stain-demo', '1');
+    dt.setData('application/x-stain-demo', '1');   // 再加一個常見自訂前綴
+
+    // 標準型別：Firefox/其他瀏覽器的相容保險
+    const demoUrl = "{% static 'demo/demo.jpg' %}";
+    dt.setData('text/plain', demoUrl);             // 很多瀏覽器會要求至少有這個
+    dt.setData('text/uri-list', demoUrl);          // 拖超連結/圖片常見格式
+
+    // 明確宣告效果（對 FF & 跨平台 UI 更友善）
+    dt.effectAllowed = 'copy';
   });
+
+  const $dropZone = $('#drop-zone');
+
+  $dropZone.on('dragover', (e) => {
+    e.preventDefault();                   // ★ Firefox 必須
+    e.originalEvent.dataTransfer.dropEffect = 'copy';
+  });
+
+  $dropZone.on('drop', async (e) => {
+    e.preventDefault();
+
+    const dt = e.originalEvent.dataTransfer;
+    const types = Array.from(dt.types || []);
+
+    // 1) 偵測我們的自訂旗標或標準型別
+    const isDemo =
+      types.includes('text/x-stain-demo') ||
+      types.includes('application/x-stain-demo') ||
+      types.includes('text/uri-list') ||
+      types.includes('text/plain');
+
+    if (isDemo) {
+      // 2) 取得 URL（text/uri-list > text/plain）
+      let url = dt.getData('text/uri-list') || dt.getData('text/plain');
+      if (!url) {                         // 萬一拿不到，用我們已知的固定路徑
+        url = "{% static 'demo/demo.jpg' %}";
+      }
+
+      try {
+        const resp = await fetch(url, { credentials: 'same-origin' });
+        const blob = await resp.blob();
+        const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+
+        // 3) 走與「點擊 demo」相同上傳流程
+        if (typeof window.__uploadFileViaDropZone === 'function') {
+          window.isDemoUpload = true;
+          window.__uploadFileViaDropZone(file);
+        }
+      } catch (err) {
+        console.error('Fetch demo on drop failed:', err);
+        alert('Failed to load demo image.');
+      }
+      return;
+    }
+
+    // 4) 不是 demo：拖一般本機檔案的原流程
+    if (dt.files && dt.files.length) {
+      const file = dt.files[0];
+      if (typeof window.__uploadFileViaDropZone === 'function') {
+        window.isDemoUpload = false;
+        window.__uploadFileViaDropZone(file);
+      }
+    }
+  });
+
 
 
   // ReadMe Page (PDF version: overlay uses iframe to display, Pop-out opens PDF directly)
