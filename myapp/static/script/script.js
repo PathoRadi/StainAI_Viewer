@@ -396,13 +396,13 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
       let ms = document.getElementById('main-scale');
       if (!ms) {
-        // 動態建立縮放包裹，並把 main-container 的現有子節點整包移進來
+        // Dynamically create a scaling wrapper and move main-container's existing child nodes into it
         ms = document.createElement('div');
         ms.id = 'main-scale';
         ms.style.transformOrigin = 'top left';
         ms.style.width = DESIGN_W + 'px';
 
-        // 把原本 main-container 裡的東西搬到 #main-scale
+        // Move the original main-container children into #main-scale
         const frag = document.createDocumentFragment();
         while (mc.firstChild) frag.appendChild(mc.firstChild);
         ms.appendChild(frag);
@@ -415,23 +415,21 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       const ms = ensureMainScale();
       if (!ms) return;
 
-      // 可用寬度 = 視窗寬 - 左欄寬；不足就等比縮小，不會放大超過 1
+      // Available width = window width - left sidebar width; scale down proportionally if insufficient, do not scale above 1
       const availableW = window.innerWidth  - SIDEBAR_W;
-      const availableH = window.innerHeight;          // 視窗可用高
+      const availableH = window.innerHeight;          // Available window height
       const scale = Math.min(1, availableW / DESIGN_W, availableH / DESIGN_H);
 
       ms.style.transform = `scale(${scale})`;
 
-      // 讓父層的實際高度與縮放後一致，避免底部大片空白或被裁切
+      // Make the parent's actual height match the scaled size to avoid large blank space at the bottom or clipping
       ms.style.marginBottom = (DESIGN_H * (scale - 1)) + 'px';
     }
 
-    // 初始化與監聽
+    // initial and bind events
     applyScale();
     window.addEventListener('resize', applyScale);
     window.addEventListener('orientationchange', applyScale);
-
-
 
     // Initialize screenshot functionality
     [0,1,2,3].forEach(i => {
@@ -439,46 +437,50 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         `#take-screenshot-btn${i}`,
         `#screenshot-menu-btn${i}`,
         `#screenshot-dropdown${i}`,
-        i === 0 ? 'displayedImage-wrapper' : `barChart${i}` // ← If your chart container id is different, change here
+        i === 0 ? 'displayedImage-wrapper' : `barChart${i}` // If your chart container id is different, change here
       );
     });
 
   });
 
-  // === Try Demo Image Button & Logic ===
+
+
+
+  // =========================================
+  // ===== Try Demo Image Button & Logic =====
+  // =========================================
   const $drop = $('#drop-zone');
   const $main = $('.main-container');
   const $card = $('#demo-preview-card');
   const $demoImg = $('#demo-preview-img');
+  const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
 
-  // 1) 左側 Try 按鈕：回到首頁 + 顯示 demo 小框
+  // 1) "Try" button: return to home view + show demo preview card
   $('#try-btn').on('click', () => {
-    // 回首頁視圖
+    // switch to home view
     $main.prop('hidden', true);
     $drop.show();
 
-    // 顯示 demo 預覽卡
+    // show demo preview card
     $card.removeAttr('hidden');
 
-    // 確保 Start Detection 初始狀態（避免殘留 disable）
+    // ensure Start Detection initial state
     $('#start-detect-btn').prop('disabled', true);
     $('#preview-container').hide();
   });
 
-  // 2) 關閉 demo 小框（可選）
+  // 2) Close demo card
   $('#demo-close').on('click', () => {
     $card.attr('hidden', true);
   });
 
-  // 3) 點擊預覽圖：抓取 static/demo/demo.jpg → 轉 File → 借用既有上傳流程
+  // 3) Click preview image
   $demoImg.on('click', async () => {
     try {
-      const resp = await fetch("{% static 'demo/demo.jpg' %}");
+      const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
       const blob = await resp.blob();
       const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-
       if (typeof window.__uploadFileViaDropZone === 'function') {
-        // 這會啟動原本的 handleFileUpload：顯示 preview、啟用 Start Detection
         window.isDemoUpload = true;
         window.__uploadFileViaDropZone(file);
       }
@@ -487,41 +489,36 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       alert('Failed to load demo image.');
     }
   });
-  // $demoImg.attr('draggable', true).on('dragstart', (e) => {
-  //   const dt = e.originalEvent.dataTransfer;
-  //   // 投遞一個自訂型別，讓 drop 區能判斷來源
-  //   dt.setData('text/x-stain-demo', '1');
-  // });
+  // 4) Drag-and-Drop demo image
   $demoImg.attr('draggable', true).on('dragstart', (e) => {
     const dt = e.originalEvent.dataTransfer;
-
-    // 自訂型別：舊邏輯，仍保留
+    // custom types: Chrome, Edge need these for allowing drop
     dt.setData('text/x-stain-demo', '1');
-    dt.setData('application/x-stain-demo', '1');   // 再加一個常見自訂前綴
-
-    // 標準型別：Firefox/其他瀏覽器的相容保險
-    const demoUrl = "{% static 'demo/demo.jpg' %}";
-    dt.setData('text/plain', demoUrl);             // 很多瀏覽器會要求至少有這個
-    dt.setData('text/uri-list', demoUrl);          // 拖超連結/圖片常見格式
-
-    // 明確宣告效果（對 FF & 跨平台 UI 更友善）
+    dt.setData('application/x-stain-demo', '1');
+    // standard types: Firefox needs these for allowing drop
+    dt.setData('text/plain', DEMO_URL);
+    dt.setData('text/uri-list', DEMO_URL);
     dt.effectAllowed = 'copy';
   });
 
   const $dropZone = $('#drop-zone');
 
-  $dropZone.on('dragover', (e) => {
-    e.preventDefault();                   // ★ Firefox 必須
+  // Drag-and-Drop handler
+  $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
+
+  // Highlight drop zone on drag enter/over
+  $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
+    e.preventDefault();
     e.originalEvent.dataTransfer.dropEffect = 'copy';
   });
 
-  $dropZone.on('drop', async (e) => {
+  // Handle drop event
+  $dropZone.on('drop.demoDnD', async (e) => {
     e.preventDefault();
 
     const dt = e.originalEvent.dataTransfer;
     const types = Array.from(dt.types || []);
 
-    // 1) 偵測我們的自訂旗標或標準型別
     const isDemo =
       types.includes('text/x-stain-demo') ||
       types.includes('application/x-stain-demo') ||
@@ -529,21 +526,15 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       types.includes('text/plain');
 
     if (isDemo) {
-      // 2) 取得 URL（text/uri-list > text/plain）
-      let url = dt.getData('text/uri-list') || dt.getData('text/plain');
-      if (!url) {                         // 萬一拿不到，用我們已知的固定路徑
-        url = "{% static 'demo/demo.jpg' %}";
-      }
-
+      let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
       try {
         const resp = await fetch(url, { credentials: 'same-origin' });
         const blob = await resp.blob();
         const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-        // 3) 走與「點擊 demo」相同上傳流程
         if (typeof window.__uploadFileViaDropZone === 'function') {
           window.isDemoUpload = true;
-          window.__uploadFileViaDropZone(file);
+          window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
         }
       } catch (err) {
         console.error('Fetch demo on drop failed:', err);
@@ -552,19 +543,19 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       return;
     }
 
-    // 4) 不是 demo：拖一般本機檔案的原流程
-    if (dt.files && dt.files.length) {
-      const file = dt.files[0];
-      if (typeof window.__uploadFileViaDropZone === 'function') {
-        window.isDemoUpload = false;
-        window.__uploadFileViaDropZone(file);
-      }
+    // Non-demo: use original local file drop flow
+    if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
+      window.isDemoUpload = false;
+      window.__uploadFileViaDropZone(dt.files[0]);
     }
   });
 
 
 
-  // ReadMe Page (PDF version: overlay uses iframe to display, Pop-out opens PDF directly)
+
+  // ==================
+  // ===== ReadMe =====
+  // ==================
   document.addEventListener('DOMContentLoaded', () => {
     const readmeBtn     = document.querySelector('.readme-btn');
     const readmePage    = document.getElementById('readme-page');   // overlay
@@ -622,7 +613,11 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   });
 
 
-  // === Color Picker with click-shield (prevent drawing on background) ===
+
+
+  // =========================
+  // ===== Color Picker  =====
+  // =========================
   (function setupColorPickerShield(){
     const $cp      = $('#color-picker');                 // <input type="color" ...>
     const $wrapper = $('.color-picker-wrapper');         // Outer wrapper (includes icon/label)

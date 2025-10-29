@@ -269,7 +269,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     const img = new Image();
 
     img.onload = function() {
-      if (img.width > 10000 || img.height > 10000) {
+      if (img.width > 30000 || img.height > 30000) {
         alert("⚠️ Image to Large (width and height are over 10000 pixel)\nPlease upload smaller image and try again.");
         // disable Start Detection button
         document.getElementById('start-detect-btn').disabled = true;
@@ -339,6 +339,11 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         const reuseBbox = item.boxes.slice();
         drawBbox(reuseBbox);
 
+        showAllBoxes();
+        $('#checkbox_All').prop('checked', true);
+        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+          .prop('checked', true);
+
         const wrappers = document.getElementById('barChart-wrappers');
         wrappers.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
 
@@ -391,8 +396,23 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       hideProgressOverlay();
       showMain();
 
+      // clearBoxes();
+      // drawBbox(window.bboxData);
       clearBoxes();
-      drawBbox(window.bboxData);
+
+      window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
+      window.viewer.addOnceHandler('open', () => {
+        const vp = window.viewer.viewport;
+        vp.fitBounds(vp.getHomeBounds(), true);
+        window.zoomFloor = vp.getHomeZoom();
+
+        drawBbox(window.bboxData);
+
+        showAllBoxes();
+        $('#checkbox_All').prop('checked', true);
+        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+          .prop('checked', true);
+      });
 
       const wrappers = document.getElementById('barChart-wrappers');
       
@@ -427,13 +447,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         const c2 = addBarChart('barChart-wrappers1');
         window.chartRefs.push(c2);
       }
-
-      window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
-      window.viewer.addOnceHandler('open', () => {
-         const vp = window.viewer.viewport;
-         vp.fitBounds(vp.getHomeBounds(), true); 
-         window.zoomFloor = vp.getHomeZoom();    
-      });
 
       historyStack.push({
         dir:        projectDir,

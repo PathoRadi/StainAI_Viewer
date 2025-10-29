@@ -86,7 +86,8 @@
     <div id="demo-preview-card" hidden>
       <button id="demo-close" aria-label="Close">✕</button>
       <div class="demo-title">Try Dragging & Dropping the Demo Image </div>
-      <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" alt="demo preview">
+      <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" 
+      data-demo-url="{% static 'demo/demo.jpg' %}" alt="demo preview">
     </div>
 
     <!-- ─── Preview + Start Button (hidden until upload) ─── -->

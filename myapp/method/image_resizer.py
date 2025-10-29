@@ -2,7 +2,7 @@ import os
 from PIL import Image
 
 class ImageResizer:
-    def __init__(self, image_path, output_dir):
+    def __init__(self, image_path, output_dir, resize_factor=0.5):
         """
         Initialize the ImageResizer with the path to the image and output directory.
         Arg:
@@ -11,6 +11,8 @@ class ImageResizer:
         """
         self.image_path = image_path
         self.output_dir = output_dir
+        self.resize_factor = resize_factor
+
 
     def resize(self):
         """
@@ -23,7 +25,7 @@ class ImageResizer:
         # Load (PIL) and compute new size
         with Image.open(self.image_path) as im:
             orig_w, orig_h = im.size
-            new_w, new_h = orig_w // 2, orig_h // 2
+            new_w, new_h = int(orig_w * self.resize_factor) , int(orig_h * self.resize_factor)
 
             # Choose a good resample filter
             # LANCZOS is high quality; BILINEAR is faster (both are fine)

@@ -127,13 +127,6 @@ def upload_image(request):
         print(f"Image successfully uploaded: {img.name}")
         print(f"Uploaded image saved to {original_path}")
 
-        # 2) Resize if needed
-        w, h = _image_size_wh(original_path)                                        # get image size (w, h)
-        if h > 20000 or w > 20000:
-            resized_path = ImageResizer(original_path, project_dir).resize()        # resize if any side >20000
-
-            print(f"Image resized to half and saved to: {resized_path}")
-            return JsonResponse({'image_url': _to_media_url(resized_path)})         # return resized image URL
         return JsonResponse({'image_url': _to_media_url(original_path)})            # return original image URL
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)                    # return error if not POST or no file
@@ -175,15 +168,10 @@ def detect_image(request):
     ow, oh = _image_size_wh(orig_path)  # w, h
 
     # --- Prepare display image (use resized if exists, else original) ---
-    display_dir = os.path.join(project_dir, 'display')
-    os.makedirs(display_dir, exist_ok=True)
-
-    resized_dir = os.path.join(project_dir, 'resized')
-    if os.path.isdir(resized_dir) and os.listdir(resized_dir):
-        src = os.path.join(resized_dir, os.listdir(resized_dir)[0])
+    if oh > 20000 or ow > 20000:
+        disp_path = ImageResizer(orig_path, project_dir).resize()        # resize if any side >20000
     else:
-        src = orig_path
-    shutil.copy(src, display_dir)
+        disp_path = orig_path
 
     # --- 1) Convert to grayscale (PIL version) ---
     _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
@@ -215,8 +203,6 @@ def detect_image(request):
     # --- 4) Processing Result ---
     _set_progress_stage(project_name, 'proc')                 # Enter 4) proc stage
     # Get display image size and URL ---
-    disp_name = os.listdir(display_dir)[0]
-    disp_path = os.path.join(display_dir, disp_name)
     dw, dh = _image_size_wh(disp_path)   # w, h
 
     # Generate Original_Mmap.tiff
@@ -243,8 +229,6 @@ def detect_image(request):
     #     shutil.rmtree(p, ignore_errors=True)
     # logger.info("Temporary files cleaned up")
     # gc.collect()
-
-    
 
     # --- 5) Finished ---
     _set_progress_stage(project_name, 'done')               # Enter 5) done stage
@@ -323,6 +307,118 @@ def delete_project(request):
 # ---------------------------------
 # Functions to create Mmap(.tiff)
 # ---------------------------------
+# SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
+# PadAlign = Literal["topleft", "center"]
+# RGBVal = Union[int, Tuple[int, int, int]]
+
+# def combine_rgb_tiff_from_paths(
+#     output_dir: str,
+#     img_paths: List[str],
+#     *,
+#     filename: str = "two_rgb_slices.tif",
+#     dtype: np.dtype = np.uint8,             # ImageJ 最相容：8-bit RGB
+#     # 尺寸處理
+#     size_mode: SizeMode = "pad",            # "error" | "resize" | "pad" | "allow_mixed"
+#     target_size: Optional[Tuple[int, int]] = None,  # (H, W)
+#     pad_align: PadAlign = "center",
+#     pad_value: RGBVal = (255, 255, 255),    # 補邊顏色（白）；要黑邊就 (0,0,0)
+# ) -> str:
+#     """
+#     將多張彩色圖疊成 RGB 多頁 TIFF（ImageJ 只會顯示 Z=頁數，沒有 C）。
+#     - 一律轉為 RGB (H,W,3)
+#     - 強制最相容寫檔：strip + LZW + predictor=2 + 無 metadata/description + 非 BigTIFF
+#     - 預設對不同尺寸做「pad 到最大尺寸、置中」
+#     """
+#     if not img_paths:
+#         raise ValueError("img_paths 不能是空的")
+
+#     output_dir = os.path.abspath(output_dir)
+#     os.makedirs(output_dir, exist_ok=True)
+#     output_tiff_path = os.path.join(output_dir, filename)
+
+#     # ---- 讀檔：一律轉成 RGB (H,W,3) ----
+#     def _load_rgb(p: str) -> np.ndarray:
+#         arr = np.asarray(Image.open(p).convert("RGB"))
+#         if arr.dtype != dtype:
+#             arr = arr.astype(dtype, copy=False)
+#         if arr.ndim != 3 or arr.shape[-1] != 3:
+#             raise RuntimeError(f"讀取後不是 RGB：{p} -> shape={arr.shape}")
+#         return arr
+
+#     arrays = [_load_rgb(p) for p in img_paths]
+#     dims = [(a.shape[0], a.shape[1]) for a in arrays]
+#     H0, W0 = dims[0]
+
+#     # ---- 決定目標尺寸 ----
+#     if size_mode == "resize":
+#         tgtH, tgtW = target_size if target_size else (H0, W0)
+#     elif size_mode == "pad":
+#         if target_size:
+#             tgtH, tgtW = target_size
+#         else:
+#             tgtH = max(h for h, w in dims)
+#             tgtW = max(w for h, w in dims)
+#     else:
+#         tgtH, tgtW = H0, W0
+
+#     # ---- pad 顏色正規化 ----
+#     if isinstance(pad_value, tuple):
+#         if len(pad_value) != 3:
+#             raise ValueError("pad_value 必須是長度 3 的 (R,G,B) 或單一整數")
+#         pv = tuple(int(x) for x in pad_value)
+#     else:
+#         pv = (int(pad_value),) * 3
+
+#     # ---- 最相容寫檔參數（關鍵）----
+#     # 使用 strip（不傳 tile）、LZW + predictor=2、關掉 metadata/description、非 BigTIFF
+#     bigtiff = False
+#     comp = "lzw"
+#     predictor = 2
+
+#     with tiff.TiffWriter(output_tiff_path, bigtiff=bigtiff) as tw:
+#         for arr, (h, w), path in zip(arrays, dims, img_paths):
+#             # 尺寸處理
+#             if size_mode == "error":
+#                 if (h, w) != (H0, W0):
+#                     raise ValueError(f"所有輸入影像尺寸必須一致。第一張={(H0, W0)}，但 {path}={(h, w)}")
+#                 out = arr
+#             elif size_mode == "resize":
+#                 out = np.asarray(Image.fromarray(arr).resize((tgtW, tgtH), Image.BICUBIC)) \
+#                       if (h, w) != (tgtH, tgtW) else arr
+#             elif size_mode == "pad":
+#                 if (h, w) == (tgtH, tgtW):
+#                     out = arr
+#                 else:
+#                     canvas = np.empty((tgtH, tgtW, 3), dtype=dtype)
+#                     canvas[...] = pv
+#                     if pad_align == "center":
+#                         top  = (tgtH - h) // 2
+#                         left = (tgtW - w) // 2
+#                     else:
+#                         top = 0; left = 0
+#                     canvas[top:top+h, left:left+w, :] = arr
+#                     out = canvas
+#             elif size_mode == "allow_mixed":
+#                 out = arr
+#             else:
+#                 raise ValueError(f"未知 size_mode: {size_mode}")
+
+#             # 保險一次 dtype
+#             if out.dtype != dtype:
+#                 out = out.astype(dtype, copy=False)
+
+#             # 關鍵 kwargs：不帶 axes、不帶 samples_per_pixel 註記、不寫任何 ImageJ metadata
+#             tw.write(
+#                 out,
+#                 photometric="rgb",
+#                 planarconfig="contig",
+#                 compression=comp,        # LZW
+#                 predictor=predictor,     # 2
+#                 metadata=None,           # 不寫 metadata
+#                 description="",          # 不寫 ImageDescription（避免 "ImageJ="）
+#             )
+
+#     return output_tiff_path
 SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
 PadAlign = Literal["topleft", "center"]
 RGBVal = Union[int, Tuple[int, int, int]]
@@ -338,12 +434,16 @@ def combine_rgb_tiff_from_paths(
     target_size: Optional[Tuple[int, int]] = None,  # (H, W)
     pad_align: PadAlign = "center",
     pad_value: RGBVal = (255, 255, 255),    # 補邊顏色（白）；要黑邊就 (0,0,0)
+    # 自動大圖優化
+    auto_tile_threshold: int = 10_000,      # 任一邊 ≥ 10k → tiled BigTIFF + 無壓縮
+    auto_tile_size: Tuple[int, int] = (1024, 1024),
 ) -> str:
     """
-    將多張彩色圖疊成 RGB 多頁 TIFF（ImageJ 只會顯示 Z=頁數，沒有 C）。
-    - 一律轉為 RGB (H,W,3)
-    - 強制最相容寫檔：strip + LZW + predictor=2 + 無 metadata/description + 非 BigTIFF
-    - 預設對不同尺寸做「pad 到最大尺寸、置中」
+    將多張彩色圖疊成 RGB 多頁 TIFF（ImageJ 顯示為 Z=頁數，不會拆成三色）。
+    - 一律轉為 RGB (H,W,3) with planarconfig='contig'
+    - 小圖預設：strip + LZW + predictor=2、無 metadata/description
+    - 大圖（任一邊 ≥ auto_tile_threshold 或估算逼近 4GiB）：
+        → 自動切換 tiled BigTIFF + 無壓縮（開啟更快、局部載入），仍為 RGB 單頁
     """
     if not img_paths:
         raise ValueError("img_paths 不能是空的")
@@ -354,7 +454,8 @@ def combine_rgb_tiff_from_paths(
 
     # ---- 讀檔：一律轉成 RGB (H,W,3) ----
     def _load_rgb(p: str) -> np.ndarray:
-        arr = np.asarray(Image.open(p).convert("RGB"))
+        with Image.open(p) as im:
+            arr = np.asarray(im.convert("RGB"))
         if arr.dtype != dtype:
             arr = arr.astype(dtype, copy=False)
         if arr.ndim != 3 or arr.shape[-1] != 3:
@@ -362,7 +463,7 @@ def combine_rgb_tiff_from_paths(
         return arr
 
     arrays = [_load_rgb(p) for p in img_paths]
-    dims = [(a.shape[0], a.shape[1]) for a in arrays]
+    dims = [(a.shape[0], a.shape[1]) for a in arrays]  # (H, W)
     H0, W0 = dims[0]
 
     # ---- 決定目標尺寸 ----
@@ -385,11 +486,31 @@ def combine_rgb_tiff_from_paths(
     else:
         pv = (int(pad_value),) * 3
 
-    # ---- 最相容寫檔參數（關鍵）----
-    # 使用 strip（不傳 tile）、LZW + predictor=2、關掉 metadata/description、非 BigTIFF
-    bigtiff = False
-    comp = "lzw"
+    # ---- 計算估算大小（決定是否 BigTIFF）----
+    # RGB 每頁未壓縮大小：約 tgtH * tgtW * 3 bytes
+    est_bytes_per_page = int(tgtH) * int(tgtW) * 3
+    num_pages = len(arrays)
+    approx_uncompressed = est_bytes_per_page * num_pages
+    four_gib_safety = (1 << 32) - (1 << 25)  # ~4GiB - 32MiB，留些頭部/IFD 餘量
+
+    # 大圖判斷（尺寸 or 逼近 4GiB）
+    is_large = (tgtH >= auto_tile_threshold) or (tgtW >= auto_tile_threshold) or (approx_uncompressed > four_gib_safety)
+
+    # ---- 小圖預設參數：strip + LZW + predictor=2 ----
+    compression = "lzw"
     predictor = 2
+    rowsperstrip = 256
+    use_tiles = False
+    tile_size = None
+    bigtiff = bool(is_large)  # 大圖直接 BigTIFF；小圖可保持 False
+
+    # ---- 大圖自動切換：tiled BigTIFF + 無壓縮（開啟更快）----
+    if is_large:
+        compression = 'deflate'      # 無壓縮 → 開檔更快
+        predictor = 2 if compression in ('lzw','deflate') else None        # 無壓縮就不需要 predictor
+        use_tiles = True
+        tile_size = auto_tile_size
+        bigtiff = True
 
     with tiff.TiffWriter(output_tiff_path, bigtiff=bigtiff) as tw:
         for arr, (h, w), path in zip(arrays, dims, img_paths):
@@ -399,8 +520,10 @@ def combine_rgb_tiff_from_paths(
                     raise ValueError(f"所有輸入影像尺寸必須一致。第一張={(H0, W0)}，但 {path}={(h, w)}")
                 out = arr
             elif size_mode == "resize":
-                out = np.asarray(Image.fromarray(arr).resize((tgtW, tgtH), Image.BICUBIC)) \
-                      if (h, w) != (tgtH, tgtW) else arr
+                if (h, w) != (tgtH, tgtW):
+                    out = np.asarray(Image.fromarray(arr).resize((tgtW, tgtH), Image.BICUBIC))
+                else:
+                    out = arr
             elif size_mode == "pad":
                 if (h, w) == (tgtH, tgtW):
                     out = arr
@@ -419,20 +542,25 @@ def combine_rgb_tiff_from_paths(
             else:
                 raise ValueError(f"未知 size_mode: {size_mode}")
 
-            # 保險一次 dtype
             if out.dtype != dtype:
                 out = out.astype(dtype, copy=False)
 
-            # 關鍵 kwargs：不帶 axes、不帶 samples_per_pixel 註記、不寫任何 ImageJ metadata
-            tw.write(
-                out,
+            # 寫檔參數（確保是一頁 RGB，不拆色版）
+            write_kwargs = dict(
                 photometric="rgb",
-                planarconfig="contig",
-                compression=comp,        # LZW
-                predictor=predictor,     # 2
-                metadata=None,           # 不寫 metadata
-                description="",          # 不寫 ImageDescription（避免 "ImageJ="）
+                planarconfig="contig",   # ✅ 單頁 RGB（不拆成三頁）
+                compression=compression, # None 或 'lzw'
+                metadata=None,
+                description="",          # 不寫 ImageDescription（避免 ImageJ hyperstack 誤判）
             )
+            if predictor is not None and compression in ("lzw", "deflate"):
+                write_kwargs["predictor"] = predictor
+            if use_tiles:
+                write_kwargs["tile"] = tile_size
+            else:
+                write_kwargs["rowsperstrip"] = rowsperstrip
+
+            tw.write(out, **write_kwargs)
 
     return output_tiff_path
 
