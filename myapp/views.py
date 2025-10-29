@@ -496,7 +496,7 @@ def combine_rgb_tiff_from_paths(
     # 大圖判斷（尺寸 or 逼近 4GiB）
     is_large = (tgtH >= auto_tile_threshold) or (tgtW >= auto_tile_threshold) or (approx_uncompressed > four_gib_safety)
 
-    # ---- 小圖預設參數：strip + LZW + predictor=2 ----
+    # ---- 小圖預設參數：strip + LZW + predictor=2 -------
     compression = "lzw"
     predictor = 2
     rowsperstrip = 256
