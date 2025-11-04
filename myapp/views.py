@@ -21,7 +21,6 @@ from django.http import (
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 
-
 # Your method / pipeline
 from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayScaleImage
@@ -34,7 +33,11 @@ logger = logging.getLogger(__name__)
 # Progress tracking
 # ---------------------------
 try:
-    from django_redis.exceptions import ConnectionInterrupted
+    # importlib avoids static import resolution errors in editors/linters
+    import importlib
+    _mod = importlib.import_module("django_redis.exceptions")
+    # if the attribute is missing this will raise and fall back to the except block
+    ConnectionInterrupted = getattr(_mod, "ConnectionInterrupted")
 except Exception:
     class ConnectionInterrupted(Exception):
         pass

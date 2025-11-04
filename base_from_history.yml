@@ -1,0 +1,31 @@
+name: base
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - _anaconda_depends
+  - python=3.12
+  - setuptools
+  - pip
+  - wheel
+  - anaconda-anon-usage
+  - anaconda-catalogs
+  - anaconda-client
+  - anaconda-project
+  - anaconda-navigator==2.6.0[build=*_0]
+  - conda[version='>=23.7']
+  - conda-build
+  - conda-content-trust
+  - conda-libmamba-solver
+  - conda-pack
+  - conda-package-handling
+  - conda-package-streaming
+  - conda-token
+  - console_shortcut
+  - powershell_shortcut
+  - anaconda-toolbox
+  - pytorch
+  - pytorch-cuda=11.8
+  - torchaudio
+  - torchvision
+prefix: C:\Users\Darren\anaconda3
