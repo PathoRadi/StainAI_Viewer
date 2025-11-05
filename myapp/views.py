@@ -172,13 +172,13 @@ def detect_image(request):
     ow, oh = _image_size_wh(orig_path)  # w, h
 
     # --- Prepare display image (use resized if exists, else original) ---
+    _set_progress_stage(project_name, 'gray')                            # Enter 1) gray stage
     if oh > 20000 or ow > 20000:
         disp_path = ImageResizer(orig_path, project_dir).resize()        # resize if any side >20000
     else:
         disp_path = orig_path
 
     # --- 1) Convert to grayscale (PIL version) ---
-    _set_progress_stage(project_name, 'gray')                 # Enter 1) gray stage
     GrayScaleImage(orig_path, project_dir).rgb_to_gray()
     logger.info("Grayscale conversion done")
     gc.collect()
@@ -218,13 +218,13 @@ def detect_image(request):
     combine_rgb_tiff_from_paths(
         output_dir=original_mmap_dir,
         img_paths=original_mmap_inputs,
-        filename="original_mmap.tif",
+        filename=f"{project_name}_mmap.tif",
         size_mode="pad",                  
         pad_align="center",
         pad_value=(255, 255, 255),
     )
 
-    logger.info("Original_Mmap.tiff generation done")
+    logger.info("Mmap.tiff generation done")
 
     # --- 5) Finished ---
     _set_progress_stage(project_name, 'done')               # Enter 5) done stage
@@ -305,7 +305,7 @@ def combine_rgb_tiff_from_paths(
     output_dir: str,
     img_paths: List[str],
     *,
-    filename: str = "two_rgb_slices.tif",
+    filename: str,
     dtype: np.dtype = np.uint8,             # ImageJ 最相容：8-bit RGB
     # 尺寸處理
     size_mode: SizeMode = "pad",            # "error" | "resize" | "pad" | "allow_mixed"
@@ -324,7 +324,7 @@ def combine_rgb_tiff_from_paths(
         → 自動切換 tiled BigTIFF + 無壓縮（開啟更快、局部載入），仍為 RGB 單頁
     """
     if not img_paths:
-        raise ValueError("img_paths 不能是空的")
+        raise ValueError("img_paths cannot be empty")
 
     output_dir = os.path.abspath(output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -337,7 +337,7 @@ def combine_rgb_tiff_from_paths(
         if arr.dtype != dtype:
             arr = arr.astype(dtype, copy=False)
         if arr.ndim != 3 or arr.shape[-1] != 3:
-            raise RuntimeError(f"讀取後不是 RGB：{p} -> shape={arr.shape}")
+            raise RuntimeError(f"If not RGB：{p} -> shape={arr.shape}")
         return arr
 
     arrays = [_load_rgb(p) for p in img_paths]
@@ -502,7 +502,7 @@ def download_project_with_rois(request):
                     name = safe_filename(r.get("name"))
                     pts  = r.get("points") or []
                     rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
-            main_zip.writestr(os.path.join(project_name, "rois.zip"), roi_buf.getvalue())
+            main_zip.writestr(os.path.join(project_name, f"{project_name}_rois.zip"), roi_buf.getvalue())
 
     tmpf.seek(0)
     filename = f"{project_name}.zip"
