@@ -441,92 +441,95 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       );
     });
 
-  });
 
+    // =========================================
+    // ===== Try Demo Image Button & Logic =====
+    // =========================================
+    const $demoImg = $('#demo-preview-img');
+    const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
 
-
-
-  // =========================================
-  // ===== Try Demo Image Button & Logic =====
-  // =========================================
-  const $demoImg = $('#demo-preview-img');
-  const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
-
-  // 3) Click preview image
-  $demoImg.on('click', async () => {
-    try {
-      const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
-      const blob = await resp.blob();
-      const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-      if (typeof window.__uploadFileViaDropZone === 'function') {
-        window.isDemoUpload = true;
-        window.__uploadFileViaDropZone(file);
-      }
-    } catch (e) {
-      console.error('Demo image load failed:', e);
-      alert('Failed to load demo image.');
-    }
-  });
-  // 4) Drag-and-Drop demo image
-  $demoImg.attr('draggable', true).on('dragstart', (e) => {
-    const dt = e.originalEvent.dataTransfer;
-    // custom types: Chrome, Edge need these for allowing drop
-    dt.setData('text/x-stain-demo', '1');
-    dt.setData('application/x-stain-demo', '1');
-    // standard types: Firefox needs these for allowing drop
-    dt.setData('text/plain', DEMO_URL);
-    dt.setData('text/uri-list', DEMO_URL);
-    dt.effectAllowed = 'copy';
-  });
-
-  const $dropZone = $('#drop-zone');
-
-  // Drag-and-Drop handler
-  $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
-
-  // Highlight drop zone on drag enter/over
-  $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
-    e.preventDefault();
-    e.originalEvent.dataTransfer.dropEffect = 'copy';
-  });
-
-  // Handle drop event
-  $dropZone.on('drop.demoDnD', async (e) => {
-    e.preventDefault();
-
-    const dt = e.originalEvent.dataTransfer;
-    const types = Array.from(dt.types || []);
-
-    const isDemo =
-      types.includes('text/x-stain-demo') ||
-      types.includes('application/x-stain-demo') ||
-      types.includes('text/uri-list') ||
-      types.includes('text/plain');
-
-    if (isDemo) {
-      let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
+    // 3) Click preview image
+    $demoImg.on('click', async () => {
       try {
-        const resp = await fetch(url, { credentials: 'same-origin' });
+        const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
         const blob = await resp.blob();
         const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-
         if (typeof window.__uploadFileViaDropZone === 'function') {
           window.isDemoUpload = true;
-          window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
+          window.__uploadFileViaDropZone(file);
         }
-      } catch (err) {
-        console.error('Fetch demo on drop failed:', err);
+      } catch (e) {
+        console.error('Demo image load failed:', e);
         alert('Failed to load demo image.');
       }
-      return;
-    }
+    });
+    // 4) Drag-and-Drop demo image
+    $demoImg.attr('draggable', true).on('dragstart', (e) => {
+      const dt = e.originalEvent.dataTransfer;
+      // custom types: Chrome, Edge need these for allowing drop
+      dt.setData('text/x-stain-demo', '1');
+      dt.setData('application/x-stain-demo', '1');
+      // standard types: Firefox needs these for allowing drop
+      dt.setData('text/plain', DEMO_URL);
+      dt.setData('text/uri-list', DEMO_URL);
+      dt.effectAllowed = 'copy';
+    });
 
-    // Non-demo: use original local file drop flow
-    if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
-      window.isDemoUpload = false;
-      window.__uploadFileViaDropZone(dt.files[0]);
-    }
+    const $dropZone = $('#drop-zone');
+
+    // Drag-and-Drop handler
+    $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
+
+    // Highlight drop zone on drag enter/over
+    $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
+      e.preventDefault();
+      e.originalEvent.dataTransfer.dropEffect = 'copy';
+    });
+
+    // Handle drop event
+    $dropZone.on('drop.demoDnD', async (e) => {
+      e.preventDefault();
+
+      const dt = e.originalEvent.dataTransfer;
+      const types = Array.from(dt.types || []);
+
+      const isDemo =
+        types.includes('text/x-stain-demo') ||
+        types.includes('application/x-stain-demo') ||
+        types.includes('text/uri-list') ||
+        types.includes('text/plain');
+
+      if (isDemo) {
+        let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
+        try {
+          const resp = await fetch(url, { credentials: 'same-origin' });
+          const blob = await resp.blob();
+          const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+
+          if (typeof window.__uploadFileViaDropZone === 'function') {
+            window.isDemoUpload = true;
+            window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
+          }
+        } catch (err) {
+          console.error('Fetch demo on drop failed:', err);
+          alert('Failed to load demo image.');
+        }
+        return;
+      }
+
+      // Non-demo: use original local file drop flow
+      if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
+        window.isDemoUpload = false;
+        window.__uploadFileViaDropZone(dt.files[0]);
+      }
+    });
+
   });
+
+
+
+
+  
 
 
 
