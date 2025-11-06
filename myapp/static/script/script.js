@@ -449,30 +449,8 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   // =========================================
   // ===== Try Demo Image Button & Logic =====
   // =========================================
-  const $drop = $('#drop-zone');
-  const $main = $('.main-container');
-  const $card = $('#demo-preview-card');
   const $demoImg = $('#demo-preview-img');
   const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
-
-  // 1) "Try" button: return to home view + show demo preview card
-  $('#try-btn').on('click', () => {
-    // switch to home view
-    $main.prop('hidden', true);
-    $drop.show();
-
-    // show demo preview card
-    $card.removeAttr('hidden');
-
-    // ensure Start Detection initial state
-    $('#start-detect-btn').prop('disabled', true);
-    $('#preview-container').hide();
-  });
-
-  // 2) Close demo card
-  $('#demo-close').on('click', () => {
-    $card.attr('hidden', true);
-  });
 
   // 3) Click preview image
   $demoImg.on('click', async () => {
