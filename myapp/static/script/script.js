@@ -554,7 +554,27 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       });
     }
 
+    function showPreviewFromBlob(blob) {
+      const img = document.getElementById('preview-img');
+      const box = document.getElementById('preview-container');
+      if (!img || !box) return;
 
+      img.hidden = true;          // 先關掉，避免看到破圖
+      box.style.display = 'block';
+
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        img.hidden = false;
+        // 確保完整顯示
+        img.style.width = '50%';
+        img.style.height = 'auto';
+        img.style.objectFit = 'contain';
+        img.style.maxHeight = 'none';
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => { img.hidden = true; };
+      img.src = url;
+    }
 
     // ===== Try Demo Image (MOVED INTO DOM READY) =====
     (async function setupDemoDnD() {
@@ -594,6 +614,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
           const blob = await resp.blob();
           const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+          showPreviewFromBlob(file);  //show in preview area
           window.isDemoUpload = true;
           uploadFn(file);
         } catch (e) {
@@ -636,6 +657,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             const resp = await fetch(url, { credentials: 'same-origin' });
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+            showPreviewFromBlob(file);      // show in preview area
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (err) {
@@ -646,11 +668,15 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         }
         // 非 Demo：走原本本機檔案流程
         if (dt.files && dt.files.length) {
+          showPreviewFromBlob(file);      // show in preview area
           window.isDemoUpload = false;
           uploadFn(dt.files[0]);
         }
       });
     })();
+
+
+
   });
 
 
