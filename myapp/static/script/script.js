@@ -524,7 +524,38 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     //   }
     // });
 
-    
+
+
+    // === Preview image safe init (avoid broken icon on first load) ===
+    const $previewImg = $('#preview-img');
+    const $previewBox = $('#preview-container');
+
+    if ($previewImg.length) {
+      // 1) 初始：如果沒有 src，就先隱藏
+      const initSrc = $previewImg.attr('src');
+      if (!initSrc) $previewImg.prop('hidden', true);
+      if ($previewBox.length) $previewBox.hide(); // 容器也先關
+
+      // 2) 載入成功才顯示（並打開容器）
+      $previewImg.off('load.preview').on('load.preview', function () {
+        $(this).prop('hidden', false);
+        if ($previewBox.length) $previewBox.show();
+        // 建議：確保等比完整顯示
+        this.style.width = '50%';
+        this.style.height = 'auto';
+        this.style.objectFit = 'contain';
+        this.style.maxHeight = 'none';
+      });
+
+      // 3) 載入失敗就繼續隱藏，避免看到破圖
+      $previewImg.off('error.preview').on('error.preview', function () {
+        $(this).prop('hidden', true);
+        if ($previewBox.length) $previewBox.hide();
+      });
+    }
+
+
+
     // ===== Try Demo Image (MOVED INTO DOM READY) =====
     (async function setupDemoDnD() {
       // 等待 __uploadFileViaDropZone 就緒（initProcess 內會設定）
@@ -620,8 +651,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         }
       });
     })();
-
-
   });
 
 
