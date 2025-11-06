@@ -442,87 +442,185 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
 
-    // =========================================
-    // ===== Try Demo Image Button & Logic =====
-    // =========================================
-    const $demoImg = $('#demo-preview-img');
-    const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
+    // // =========================================
+    // // ===== Try Demo Image Button & Logic =====
+    // // =========================================
+    // const $demoImg = $('#demo-preview-img');
+    // const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
 
-    // 3) Click preview image
-    $demoImg.on('click', async () => {
-      try {
-        const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
-        const blob = await resp.blob();
-        const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-        if (typeof window.__uploadFileViaDropZone === 'function') {
-          window.isDemoUpload = true;
-          window.__uploadFileViaDropZone(file);
-        }
-      } catch (e) {
-        console.error('Demo image load failed:', e);
-        alert('Failed to load demo image.');
+    // // 3) Click preview image
+    // $demoImg.on('click', async () => {
+    //   try {
+    //     const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
+    //     const blob = await resp.blob();
+    //     const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+    //     if (typeof window.__uploadFileViaDropZone === 'function') {
+    //       window.isDemoUpload = true;
+    //       window.__uploadFileViaDropZone(file);
+    //     }
+    //   } catch (e) {
+    //     console.error('Demo image load failed:', e);
+    //     alert('Failed to load demo image.');
+    //   }
+    // });
+    // // 4) Drag-and-Drop demo image
+    // $demoImg.attr('draggable', true).on('dragstart', (e) => {
+    //   const dt = e.originalEvent.dataTransfer;
+    //   // custom types: Chrome, Edge need these for allowing drop
+    //   dt.setData('text/x-stain-demo', '1');
+    //   dt.setData('application/x-stain-demo', '1');
+    //   // standard types: Firefox needs these for allowing drop
+    //   dt.setData('text/plain', DEMO_URL);
+    //   dt.setData('text/uri-list', DEMO_URL);
+    //   dt.effectAllowed = 'copy';
+    // });
+
+    // const $dropZone = $('#drop-zone');
+
+    // // Drag-and-Drop handler
+    // $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
+
+    // // Highlight drop zone on drag enter/over
+    // $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
+    //   e.preventDefault();
+    //   e.originalEvent.dataTransfer.dropEffect = 'copy';
+    // });
+
+    // // Handle drop event
+    // $dropZone.on('drop.demoDnD', async (e) => {
+    //   e.preventDefault();
+
+    //   const dt = e.originalEvent.dataTransfer;
+    //   const types = Array.from(dt.types || []);
+
+    //   const isDemo =
+    //     types.includes('text/x-stain-demo') ||
+    //     types.includes('application/x-stain-demo') ||
+    //     types.includes('text/uri-list') ||
+    //     types.includes('text/plain');
+
+    //   if (isDemo) {
+    //     let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
+    //     try {
+    //       const resp = await fetch(url, { credentials: 'same-origin' });
+    //       const blob = await resp.blob();
+    //       const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+
+    //       if (typeof window.__uploadFileViaDropZone === 'function') {
+    //         window.isDemoUpload = true;
+    //         window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
+    //       }
+    //     } catch (err) {
+    //       console.error('Fetch demo on drop failed:', err);
+    //       alert('Failed to load demo image.');
+    //     }
+    //     return;
+    //   }
+
+    //   // Non-demo: use original local file drop flow
+    //   if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
+    //     window.isDemoUpload = false;
+    //     window.__uploadFileViaDropZone(dt.files[0]);
+    //   }
+    // });
+
+    
+    // ===== Try Demo Image (MOVED INTO DOM READY) =====
+    (async function setupDemoDnD() {
+      // 等待 __uploadFileViaDropZone 就緒（initProcess 內會設定）
+      function waitForUploadFn(timeoutMs = 5000) {
+        return new Promise((resolve, reject) => {
+          const t0 = Date.now();
+          const timer = setInterval(() => {
+            if (typeof window.__uploadFileViaDropZone === 'function') {
+              clearInterval(timer);
+              resolve(window.__uploadFileViaDropZone);
+            } else if (Date.now() - t0 > timeoutMs) {
+              clearInterval(timer);
+              reject(new Error('__uploadFileViaDropZone not ready'));
+            }
+          }, 50);
+        });
       }
-    });
-    // 4) Drag-and-Drop demo image
-    $demoImg.attr('draggable', true).on('dragstart', (e) => {
-      const dt = e.originalEvent.dataTransfer;
-      // custom types: Chrome, Edge need these for allowing drop
-      dt.setData('text/x-stain-demo', '1');
-      dt.setData('application/x-stain-demo', '1');
-      // standard types: Firefox needs these for allowing drop
-      dt.setData('text/plain', DEMO_URL);
-      dt.setData('text/uri-list', DEMO_URL);
-      dt.effectAllowed = 'copy';
-    });
 
-    const $dropZone = $('#drop-zone');
+      const $demoImg = $('#demo-preview-img');
+      const $dropZone = $('#drop-zone');
+      if (!$demoImg.length || !$dropZone.length) return;
 
-    // Drag-and-Drop handler
-    $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
-
-    // Highlight drop zone on drag enter/over
-    $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
-      e.preventDefault();
-      e.originalEvent.dataTransfer.dropEffect = 'copy';
-    });
-
-    // Handle drop event
-    $dropZone.on('drop.demoDnD', async (e) => {
-      e.preventDefault();
-
-      const dt = e.originalEvent.dataTransfer;
-      const types = Array.from(dt.types || []);
-
-      const isDemo =
-        types.includes('text/x-stain-demo') ||
-        types.includes('application/x-stain-demo') ||
-        types.includes('text/uri-list') ||
-        types.includes('text/plain');
-
-      if (isDemo) {
-        let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
-        try {
-          const resp = await fetch(url, { credentials: 'same-origin' });
-          const blob = await resp.blob();
-          const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-
-          if (typeof window.__uploadFileViaDropZone === 'function') {
-            window.isDemoUpload = true;
-            window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
-          }
-        } catch (err) {
-          console.error('Fetch demo on drop failed:', err);
-          alert('Failed to load demo image.');
-        }
+      const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
+      let uploadFn = null;
+      try {
+        uploadFn = await waitForUploadFn();
+      } catch (e) {
+        console.warn(e);
+        // 沒就緒就先退出，避免報錯
         return;
       }
 
-      // Non-demo: use original local file drop flow
-      if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
-        window.isDemoUpload = false;
-        window.__uploadFileViaDropZone(dt.files[0]);
-      }
-    });
+      // 點擊 Demo 縮圖 → 走同一套上傳流程
+      $demoImg.off('click.demo').on('click.demo', async () => {
+        try {
+          const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
+          const blob = await resp.blob();
+          const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+          window.isDemoUpload = true;
+          uploadFn(file);
+        } catch (e) {
+          console.error('Demo image load failed:', e);
+          alert('Failed to load demo image.');
+        }
+      });
+
+      // 讓 Demo 縮圖可拖拉
+      $demoImg.attr('draggable', true).off('dragstart.demo').on('dragstart.demo', (e) => {
+        const dt = e.originalEvent.dataTransfer;
+        dt.setData('text/x-stain-demo', '1');
+        dt.setData('application/x-stain-demo', '1');
+        dt.setData('text/plain', DEMO_URL);     // Firefox
+        dt.setData('text/uri-list', DEMO_URL);  // Firefox
+        dt.effectAllowed = 'copy';
+      });
+
+      // DropZone 高亮 & Drop 處理
+      $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
+
+      $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
+        e.preventDefault();
+        e.originalEvent.dataTransfer.dropEffect = 'copy';
+      });
+
+      $dropZone.on('drop.demoDnD', async (e) => {
+        e.preventDefault();
+        const dt = e.originalEvent.dataTransfer;
+        const types = Array.from(dt.types || []);
+        const isDemo =
+          types.includes('text/x-stain-demo') ||
+          types.includes('application/x-stain-demo') ||
+          types.includes('text/uri-list') ||
+          types.includes('text/plain');
+
+        if (isDemo) {
+          const url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
+          try {
+            const resp = await fetch(url, { credentials: 'same-origin' });
+            const blob = await resp.blob();
+            const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+            window.isDemoUpload = true;
+            uploadFn(file);
+          } catch (err) {
+            console.error('Fetch demo on drop failed:', err);
+            alert('Failed to load demo image.');
+          }
+          return;
+        }
+        // 非 Demo：走原本本機檔案流程
+        if (dt.files && dt.files.length) {
+          window.isDemoUpload = false;
+          uploadFn(dt.files[0]);
+        }
+      });
+    })();
+
 
   });
 
