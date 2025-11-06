@@ -556,25 +556,25 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
     function showPreviewFromBlob(blob) {
       const img = document.getElementById('preview-img');
-      const box = document.getElementById('preview-container');
-      if (!img || !box) return;
+      const $box = $('#preview-container');
+      if (!img || !$box.length || !(blob instanceof Blob)) return;
 
-      img.hidden = true;          // 先關掉，避免看到破圖
-      box.style.display = 'block';
+      img.hidden = true;
+      $box.show(); // ← 取代 box.style.display = 'block'
 
       const url = URL.createObjectURL(blob);
       img.onload = () => {
         img.hidden = false;
-        // 確保完整顯示
         img.style.width = '50%';
         img.style.height = 'auto';
         img.style.objectFit = 'contain';
         img.style.maxHeight = 'none';
         URL.revokeObjectURL(url);
       };
-      img.onerror = () => { img.hidden = true; };
+      img.onerror = () => { img.hidden = true; $box.hide(); };
       img.src = url;
     }
+
 
     // ===== Try Demo Image (MOVED INTO DOM READY) =====
     (async function setupDemoDnD() {
@@ -668,9 +668,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         }
         // 非 Demo：走原本本機檔案流程
         if (dt.files && dt.files.length) {
-          showPreviewFromBlob(file);      // show in preview area
+          const file = dt.files[0];       // Get the file first
+          showPreviewFromBlob(file);      // show blob in preview area
           window.isDemoUpload = false;
-          uploadFn(dt.files[0]);
+          uploadFn(file);                 // upload
         }
       });
     })();
