@@ -268,7 +268,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           left: left + 'px',
           top:  top  + 'px',
           display: 'block',
-          zIndex: 3000                // ⬅️ Must be higher than shield
+          zIndex: 3000                // Must be higher than shield
         });
 
         // 3) Add transparent shield to block background clicks
@@ -442,125 +442,64 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
 
-    // // =========================================
-    // // ===== Try Demo Image Button & Logic =====
-    // // =========================================
-    // const $demoImg = $('#demo-preview-img');
-    // const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
-
-    // // 3) Click preview image
-    // $demoImg.on('click', async () => {
-    //   try {
-    //     const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
-    //     const blob = await resp.blob();
-    //     const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-    //     if (typeof window.__uploadFileViaDropZone === 'function') {
-    //       window.isDemoUpload = true;
-    //       window.__uploadFileViaDropZone(file);
-    //     }
-    //   } catch (e) {
-    //     console.error('Demo image load failed:', e);
-    //     alert('Failed to load demo image.');
-    //   }
-    // });
-    // // 4) Drag-and-Drop demo image
-    // $demoImg.attr('draggable', true).on('dragstart', (e) => {
-    //   const dt = e.originalEvent.dataTransfer;
-    //   // custom types: Chrome, Edge need these for allowing drop
-    //   dt.setData('text/x-stain-demo', '1');
-    //   dt.setData('application/x-stain-demo', '1');
-    //   // standard types: Firefox needs these for allowing drop
-    //   dt.setData('text/plain', DEMO_URL);
-    //   dt.setData('text/uri-list', DEMO_URL);
-    //   dt.effectAllowed = 'copy';
-    // });
-
-    // const $dropZone = $('#drop-zone');
-
-    // // Drag-and-Drop handler
-    // $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
-
-    // // Highlight drop zone on drag enter/over
-    // $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
-    //   e.preventDefault();
-    //   e.originalEvent.dataTransfer.dropEffect = 'copy';
-    // });
-
-    // // Handle drop event
-    // $dropZone.on('drop.demoDnD', async (e) => {
-    //   e.preventDefault();
-
-    //   const dt = e.originalEvent.dataTransfer;
-    //   const types = Array.from(dt.types || []);
-
-    //   const isDemo =
-    //     types.includes('text/x-stain-demo') ||
-    //     types.includes('application/x-stain-demo') ||
-    //     types.includes('text/uri-list') ||
-    //     types.includes('text/plain');
-
-    //   if (isDemo) {
-    //     let url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
-    //     try {
-    //       const resp = await fetch(url, { credentials: 'same-origin' });
-    //       const blob = await resp.blob();
-    //       const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-
-    //       if (typeof window.__uploadFileViaDropZone === 'function') {
-    //         window.isDemoUpload = true;
-    //         window.__uploadFileViaDropZone(file);   // this will call backend upload_image()
-    //       }
-    //     } catch (err) {
-    //       console.error('Fetch demo on drop failed:', err);
-    //       alert('Failed to load demo image.');
-    //     }
-    //     return;
-    //   }
-
-    //   // Non-demo: use original local file drop flow
-    //   if (dt.files && dt.files.length && typeof window.__uploadFileViaDropZone === 'function') {
-    //     window.isDemoUpload = false;
-    //     window.__uploadFileViaDropZone(dt.files[0]);
-    //   }
-    // });
-
-
-
-    // === Preview image safe init (avoid broken icon on first load) ===
+    // =========================================
+    // ===== Try Demo Image Button & Logic =====
+    // =========================================
     const $previewImg = $('#preview-img');
     const $previewBox = $('#preview-container');
 
     if ($previewImg.length) {
-      // 1) 初始：如果沒有 src，就先隱藏
+      // Helper: consistently apply preview styles (50% width, keep aspect ratio)
+      const applyPreviewStyles = (el) => {
+        el.style.width     = '50%';
+        el.style.height    = 'auto';
+        el.style.objectFit = 'contain';
+        el.style.maxHeight = 'none';
+      };
+
+      // CASE 0 — Initial state:
+      // If there is no initial src attribute, hide the image element
+      // and also collapse the preview container to avoid showing a broken layout.
       const initSrc = $previewImg.attr('src');
       if (!initSrc) $previewImg.prop('hidden', true);
-      if ($previewBox.length) $previewBox.hide(); // 容器也先關
+      if ($previewBox.length) $previewBox.hide();
 
-      // 2) 載入成功才顯示（並打開容器）
-      $previewImg.off('load.preview').on('load.preview', function () {
-        $(this).prop('hidden', false);
-        if ($previewBox.length) $previewBox.show();
-        // 建議：確保等比完整顯示
-        this.style.width = '50%';
-        this.style.height = 'auto';
-        this.style.objectFit = 'contain';
-        this.style.maxHeight = 'none';
-      });
+      // CASE 1 — Image successfully loaded:
+      // When the real <img> load event fires, we reveal the image,
+      // expand the container, and ensure aspect ratio is preserved.
+      $previewImg
+        .off('load.preview')
+        .on('load.preview', function () {
+          $(this).prop('hidden', false);
+          if ($previewBox.length) $previewBox.show();
+          applyPreviewStyles(this);
+        });
 
-      // 3) 載入失敗就繼續隱藏，避免看到破圖
-      $previewImg.off('error.preview').on('error.preview', function () {
-        $(this).prop('hidden', true);
-        if ($previewBox.length) $previewBox.hide();
-      });
+      // CASE 2 — Image load error:
+      // If an error occurs (bad URL / CORS / network), we keep the preview hidden
+      // and collapse the container so the UI does not show a broken image.
+      $previewImg
+        .off('error.preview')
+        .on('error.preview', function () {
+          $(this).prop('hidden', true);
+          if ($previewBox.length) $previewBox.hide();
+        });
     }
 
     function showPreviewFromBlob(blob) {
+      // Safety checks: ensure DOM targets exist and input is a Blob/File.
       const img = document.getElementById('preview-img');
       const $box = $('#preview-container');
       if (!img || !$box.length || !(blob instanceof Blob)) return;
 
+      // CASE 3 — Show a Blob/File (demo or local) in preview:
+      // 1) Temporarily hide the <img> (to avoid flicker),
+      // 2) Make container visible,
+      // 3) Create an object URL, assign it to <img>.src,
+      // 4) On load → reveal and style; On error → hide and collapse again,
+      // 5) Revoke the object URL to free memory.
       img.hidden = true;
-      $box.show(); // ← 取代 box.style.display = 'block'
+      $box.show();
 
       const url = URL.createObjectURL(blob);
       img.onload = () => {
@@ -571,14 +510,17 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         img.style.maxHeight = 'none';
         URL.revokeObjectURL(url);
       };
-      img.onerror = () => { img.hidden = true; $box.hide(); };
+      img.onerror = () => {
+        img.hidden = true;
+        $box.hide();
+      };
       img.src = url;
     }
 
-
     // ===== Try Demo Image (MOVED INTO DOM READY) =====
     (async function setupDemoDnD() {
-      // 等待 __uploadFileViaDropZone 就緒（initProcess 內會設定）
+      // Utility — wait until the upload function is ready:
+      // __uploadFileViaDropZone is provided by your init sequence elsewhere.
       function waitForUploadFn(timeoutMs = 5000) {
         return new Promise((resolve, reject) => {
           const t0 = Date.now();
@@ -599,65 +541,95 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       if (!$demoImg.length || !$dropZone.length) return;
 
       const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
+
+      // CASE 4 — Ensure upload pipeline is initialized before binding UI:
+      // If not ready, exit quietly to avoid binding broken handlers.
       let uploadFn = null;
       try {
         uploadFn = await waitForUploadFn();
       } catch (e) {
         console.warn(e);
-        // 沒就緒就先退出，避免報錯
         return;
       }
 
-      // 點擊 Demo 縮圖 → 走同一套上傳流程
-      $demoImg.off('click.demo').on('click.demo', async () => {
-        try {
-          const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
-          const blob = await resp.blob();
-          const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-          showPreviewFromBlob(file);  //show in preview area
-          window.isDemoUpload = true;
-          uploadFn(file);
-        } catch (e) {
-          console.error('Demo image load failed:', e);
-          alert('Failed to load demo image.');
-        }
-      });
+      // CASE 5 — Click on demo thumbnail:
+      // Fetch the demo file (same-origin for cookies),
+      // 1) Convert to Blob → File,
+      // 2) Preview immediately,
+      // 3) Upload via the same pipeline (flag: is demo).
+      $demoImg
+        .off('click.demo')
+        .on('click.demo', async () => {
+          try {
+            const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
+            const blob = await resp.blob();
+            const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-      // 讓 Demo 縮圖可拖拉
-      $demoImg.attr('draggable', true).off('dragstart.demo').on('dragstart.demo', (e) => {
-        const dt = e.originalEvent.dataTransfer;
-        dt.setData('text/x-stain-demo', '1');
-        dt.setData('application/x-stain-demo', '1');
-        dt.setData('text/plain', DEMO_URL);     // Firefox
-        dt.setData('text/uri-list', DEMO_URL);  // Firefox
-        dt.effectAllowed = 'copy';
-      });
+            showPreviewFromBlob(file);
+            window.isDemoUpload = true;
+            uploadFn(file);
+          } catch (e) {
+            console.error('Demo image load failed:', e);
+            alert('Failed to load demo image.');
+          }
+        });
 
-      // DropZone 高亮 & Drop 處理
+      // CASE 6 — Start dragging the demo thumbnail:
+      // Add custom MIME markers so the drop handler can distinguish demo drags
+      // from regular local file drags (helps Firefox and cross-browser behavior).
+      $demoImg
+        .attr('draggable', true)
+        .off('dragstart.demo')
+        .on('dragstart.demo', (e) => {
+          const dt = e.originalEvent.dataTransfer;
+          dt.setData('text/x-stain-demo', '1');      // Custom MIME - mark as demo
+          dt.setData('application/x-stain-demo', '1');
+          dt.setData('text/plain', DEMO_URL);        // Firefox hint
+          dt.setData('text/uri-list', DEMO_URL);     // Firefox hint
+          dt.effectAllowed = 'copy';
+        });
+
+      // Unbind any previous handlers before binding new ones (defensive)
       $dropZone.off('dragenter.demoDnD dragover.demoDnD drop.demoDnD');
 
+      // CASE 7 — Drag enters or hovers over the drop zone:
+      // Prevent default browser behavior (like opening the file),
+      // and indicate that a copy operation is allowed.
       $dropZone.on('dragenter.demoDnD dragover.demoDnD', (e) => {
         e.preventDefault();
         e.originalEvent.dataTransfer.dropEffect = 'copy';
       });
 
+      // CASE 8 — Drop on the drop zone:
+      // Two paths:
+      //   8A) Demo-drag (identified by our custom MIME / URI-lists):
+      //       - Fetch via URL → Blob → File → preview → upload (flag: is demo).
+      //   8B) Local file drop:
+      //       - Use the first File → preview → upload (flag: not demo).
       $dropZone.on('drop.demoDnD', async (e) => {
         e.preventDefault();
         const dt = e.originalEvent.dataTransfer;
         const types = Array.from(dt.types || []);
+
         const isDemo =
           types.includes('text/x-stain-demo') ||
           types.includes('application/x-stain-demo') ||
           types.includes('text/uri-list') ||
           types.includes('text/plain');
 
+        // 8A — Demo drag path
         if (isDemo) {
-          const url = dt.getData('text/uri-list') || dt.getData('text/plain') || DEMO_URL;
+          const url =
+            dt.getData('text/uri-list') ||
+            dt.getData('text/plain') ||
+            DEMO_URL;
+
           try {
             const resp = await fetch(url, { credentials: 'same-origin' });
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
-            showPreviewFromBlob(file);      // show in preview area
+
+            showPreviewFromBlob(file);
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (err) {
@@ -666,27 +638,21 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           }
           return;
         }
-        // 非 Demo：走原本本機檔案流程
+
+        // 8B — Local file path
         if (dt.files && dt.files.length) {
-          const file = dt.files[0];       // Get the file first
-          showPreviewFromBlob(file);      // show blob in preview area
+          const file = dt.files[0];
+          showPreviewFromBlob(file);
           window.isDemoUpload = false;
-          uploadFn(file);                 // upload
+          uploadFn(file);
         }
       });
     })();
-
-
-
   });
 
 
 
-
   
-
-
-
 
   // ==================
   // ===== ReadMe =====
