@@ -53,14 +53,14 @@ class YOLOPipeline:
         """
 
         # 1. Process patches to get bounding boxes and labels
-        bbox, labels = self.process_patches()
+        detections, bbox, labels = self.process_patches()
         self.log.info(f"Detected {len(bbox)} objects from {self.large_img_path}")
         gc.collect()
 
         # 2. Save results to JSON
-        detections = self.save_results(bbox, labels)
-        self.log.info(f"Results saved to {self.result_dir}")
-        gc.collect()
+        # detections = self.save_results(bbox, labels)
+        # self.log.info(f"Results saved to {self.result_dir}")
+        # gc.collect()
 
         # 3. Generate annotated image
         self.annotate_large_image(bbox, labels)
@@ -78,111 +78,126 @@ class YOLOPipeline:
     ####################################
     def process_patches(
         self,
-        max_batch: int = 8,      # Default starting batch size; will auto-limit on CPU and shrink on OOM
-        min_batch: int = 1,      # Minimum batch size fallback when memory is tight
-        workers: int = 4,        # CPU threads for post-processing (bbox merging/rules)
+        max_batch: int = 8,
+        min_batch: int = 1,
+        workers: int = 4,
         device=None,
-        half: bool = True,       # Half precision on GPU to save memory/bandwidth
+        half: bool = True,
     ):
         """
-        Process actual patch files on disk, run YOLO inference in batches, and
-        aggregate detections back to full-image coordinates with your 4 tile rules.
-
         Returns:
-            (all_boxes: np.ndarray[M, 4], all_labels: np.ndarray[M])
-            - all_boxes in XYXY (x1,y1,x2,y2) in FULL-IMAGE coordinate space
-            - all_labels as int16 class indices
+        detections: [{"coords":[x1,y1,x2,y2], "type": cls}, ...]
+        bbox:       np.ndarray[M,4]  (xyxy, float32, full-image coords)
+        labels:     np.ndarray[M]    (int16)
+        write self.result_dir/<stem>_results.json at the same time:
+        {
+            "bbox":   "[x y w h]",
+            "center": "[cx cy]",
+            "class":  "R|H|B|A|RD|HR",
+            "FM":     <float>,
+            "MAS":    <float>
+        }
         """
-        # ---------- Device / precision strategy ----------
+        # ---------- device ----------
         dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
         use_half = bool(half and (dev != 'cpu'))
         if dev == 'cpu':
-            # Constrain CPU batch size to avoid RAM spikes / thread thrashing
             max_batch = min(max_batch, 2)
-        # Allow cuDNN to pick fastest algorithms when input size is stable (e.g., 640)
         try:
             torch.backends.cudnn.benchmark = True
         except Exception:
             pass
 
-        # ---------- List and validate patch files ----------
+        # ---------- list patches ----------
         files = self._list_patch_files()
         if not files:
-            return np.zeros((0, 4), np.float32), np.zeros((0,), np.int16)
+            self._save_results([], np.zeros((0,4), np.float32), np.zeros((0,), np.int16))
+            return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
 
-        # Parse (off_y, off_x) from filenames; keep only valid ones
         valid, offsets = [], []
         for fp in files:
             fn = os.path.basename(fp)
             try:
-                oy, ox = self._parse_offset_from_name(fn)   # "patch_{y}_{x}.png" → (y, x)
-                valid.append(fp)
-                offsets.append((oy, ox))
+                oy, ox = self._parse_offset_from_name(fn)  # "patch_{y}_{x}.png"
+                valid.append(fp); offsets.append((oy, ox))
             except Exception:
-                # Skip files that do not match naming convention
                 continue
-        files   = valid
+        files = valid
         offsets = np.asarray(offsets, dtype=np.int32)
         N = len(files)
         if N == 0:
-            return np.zeros((0, 4), np.float32), np.zeros((0,), np.int16)
+            self._save_results([], np.zeros((0,4), np.float32), np.zeros((0,), np.int16))
+            return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
 
-        # ---------- Thread pools (I/O + post-processing) ----------
+        # ---------- thread pools ----------
         cpu_cnt      = max(1, os.cpu_count() or 1)
-        io_workers   = min(12, cpu_cnt)       # Reading/decoding: beyond ~8 rarely helps
+        io_workers   = min(12, cpu_cnt)
         post_workers = min(max(1, workers), 4)
         io_pool      = ThreadPoolExecutor(max_workers=io_workers)
         post_pool    = ThreadPoolExecutor(max_workers=post_workers)
 
-        # ---------- Helpers ----------
+        # ---------- helpers ----------
         def _load_one(args):
-            """Load one patch into HxWx3 uint8 RGB ndarray; return (arr, off_y, off_x) or None on failure."""
             fp, oy, ox = args
             try:
-                if not os.path.exists(fp):
-                    return None
-                arr = self._load_np(fp)  # pyvips fast-path -> PIL fallback
+                if not os.path.exists(fp): return None
+                arr = self._load_np(fp)
                 return (arr, int(oy), int(ox))
             except Exception:
                 return None
 
         def _post_one(res, oy, ox):
             """
-            Convert per-patch results to full-image coords and apply your 4 grid rules:
-            - delete_edge   for det=[0,0]
-            - keep_cline    for det=[0,1]
-            - keep_rline    for det=[1,0]
-            - keep_center   for det=[1,1]
+            Return:
+            det_list: [{"coords":[x1,y1,x2,y2], "type":cls}, ...]
+            boxes:    np.ndarray[K,4] xyxy (float32)
+            labels:   np.ndarray[K]   (int16)
             """
-            # Extract boxes/classes (safe for empty)
+            # yolo -> xywh / cls
             if res.boxes.xywh.numel():
                 xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
             else:
                 xywh = np.zeros((0, 4), np.float32)
             if res.boxes.cls.numel():
-                cls = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
+                cls_idx = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
             else:
-                cls = np.zeros((0,), np.int16)
+                cls_idx = np.zeros((0,), np.int16)
 
-            # Map XYWH (patch space) → XYXY (full-image space)
+            # to full-image xyxy
             xyxy_full = self._xywh_to_xyxy_full(xywh, oy, ox)
 
-            # Patch bounds in full-image coords (fixed 640 step)
+            # filter boxes according to patch position
             pl, pt = ox, oy
             pr, pb = pl + 640, pt + 640
-
-            # Decide which filter to apply (based on 320-stride parity)
             det = [(oy // 320) % 2, (ox // 320) % 2]
             if det == [0, 0]:
-                return BoundingBoxFilter.delete_edge(xyxy_full, cls, pl, pt, pr, pb)
+                bb, lb = BoundingBoxFilter.delete_edge(xyxy_full, cls_idx, pl, pt, pr, pb)
             elif det == [0, 1]:
-                return BoundingBoxFilter.keep_cline(xyxy_full, cls, pl, pt, pr, pb)
+                bb, lb = BoundingBoxFilter.keep_cline(xyxy_full, cls_idx, pl, pt, pr, pb)
             elif det == [1, 0]:
-                return BoundingBoxFilter.keep_rline(xyxy_full, cls, pl, pt, pr, pb)
+                bb, lb = BoundingBoxFilter.keep_rline(xyxy_full, cls_idx, pl, pt, pr, pb)
             else:
-                return BoundingBoxFilter.keep_center(xyxy_full, cls, pl, pt, pr, pb)
+                bb, lb = BoundingBoxFilter.keep_center(xyxy_full, cls_idx, pl, pt, pr, pb)
 
-        # Prefetch next batch while current batch is being inferred
+            if len(bb) == 0:
+                return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
+
+            # class name
+            if hasattr(self, "class_mapping"):
+                classes = [self.class_mapping[int(i)][0] for i in lb]
+            else:
+                classes = [str(int(i)) for i in lb]
+
+            bb_i = bb.astype(np.int32, copy=False)
+            x1, y1, x2, y2 = bb_i.T
+
+            det_list = [{
+                "coords": [int(a), int(b), int(c), int(d)],
+                "type": cls
+            } for a, b, c, d, cls in zip(x1, y1, x2, y2, classes)]
+
+            return det_list, bb.astype(np.float32, copy=False), lb.astype(np.int16, copy=False)
+
         def _load_batch(i, bs):
             batch = list(zip(files[i:i+bs], offsets[i:i+bs, 0], offsets[i:i+bs, 1]))
             loaded = list(io_pool.map(_load_one, batch))
@@ -193,40 +208,34 @@ class YOLOPipeline:
             offs = [(oy, ox) for (_, oy, ox) in loaded]
             return arrs, offs
 
-        # ---------- Main loop with double-buffered prefetch and OOM backoff ----------
-        all_boxes, all_labels = [], []
+        # ---------- main loop with OOM backoff ----------
+        detections_all = []
+        boxes_all, labels_all = [], []
+
         i = 0
         next_arrs, next_offs = [], []
-        tried_oom_global = False
 
         try:
             while i < N:
                 bs = min(max_batch, N - i)
-
-                # Start with prefetched batch if available; otherwise load fresh
                 if not next_arrs:
                     next_arrs, next_offs = _load_batch(i, bs)
-
-                # If nothing loaded (e.g., all files failed), skip ahead
                 if not next_arrs:
                     i += bs
                     continue
 
                 arrs, offs = next_arrs, next_offs
-
-                # Kick off prefetch for the *next* batch
                 next_i  = i + bs
                 next_bs = min(max_batch, N - next_i)
                 prefetch_fut = None
                 if next_i < N and next_bs > 0:
                     prefetch_fut = io_pool.submit(_load_batch, next_i, next_bs)
 
-                # Inference + post-processing with OOM-aware backoff
                 tried_oom = False
                 while True:
                     try:
                         preds = self.model.predict(
-                            source=arrs,      # list[np.ndarray(H,W,3), uint8]
+                            source=arrs,
                             imgsz=640,
                             device=dev,
                             half=use_half,
@@ -236,48 +245,42 @@ class YOLOPipeline:
                             verbose=False,
                         )
 
-                        # CPU-only post processing in parallel threads
                         futs = [post_pool.submit(_post_one, res, oy, ox)
                                 for res, (oy, ox) in zip(preds, offs)]
                         for fut in as_completed(futs):
-                            bb, lb = fut.result()
-                            if len(bb):
-                                all_boxes.append(bb)
-                                all_labels.append(lb)
+                            det_list, bb, lb = fut.result()
+                            if det_list:
+                                detections_all.extend(det_list)
+                            if bb.size:
+                                boxes_all.append(bb)
+                            if lb.size:
+                                labels_all.append(lb)
 
-                        # Successfully processed current batch
                         i += bs
                         gc.collect()
                         break
 
                     except RuntimeError as e:
                         msg = str(e).lower()
-                        # Shrink batch on CUDA OOM/BLAS OOM, clear cache, retry
                         if ('out of memory' in msg or 'cuda oom' in msg or 'cublas' in msg) and bs > min_batch:
                             bs = max(min_batch, bs // 2)
                             if torch.cuda.is_available() and dev != 'cpu':
                                 torch.cuda.empty_cache()
                             gc.collect()
-                            tried_oom = True
-                            tried_oom_global = True
-                            # Reload a smaller batch at the same index
                             arrs, offs = _load_batch(i, bs)
                             if not arrs:
-                                # If even smaller batch failed to load, skip ahead
                                 i += bs
                                 break
+                            tried_oom = True
                             continue
-                        # Not a memory error → re-raise
                         raise
 
-                # Collect the prefetched result for the next iteration
                 if prefetch_fut is not None:
                     try:
                         next_arrs, next_offs = prefetch_fut.result()
                     except Exception:
                         next_arrs, next_offs = [], []
 
-                # If we had to shrink once, keep using the smaller size
                 if tried_oom:
                     max_batch = bs
 
@@ -285,15 +288,91 @@ class YOLOPipeline:
             io_pool.shutdown(wait=True)
             post_pool.shutdown(wait=True)
 
-        # ---------- Concatenate or return empty arrays ----------
-        if len(all_boxes):
-            all_boxes  = np.concatenate(all_boxes, axis=0)
-            all_labels = np.concatenate(all_labels, axis=0)
+        # ---------- concat ----------
+        if boxes_all:
+            all_boxes  = np.concatenate(boxes_all, axis=0).astype(np.float32, copy=False)
         else:
-            all_boxes  = np.zeros((0, 4), np.float32)
-            all_labels = np.zeros((0,),  np.int16)
+            all_boxes  = np.zeros((0,4), np.float32)
+        if labels_all:
+            all_labels = np.concatenate(labels_all, axis=0).astype(np.int16, copy=False)
+        else:
+            all_labels = np.zeros((0,), np.int16)
 
-        return all_boxes, all_labels
+        # ---------- write JSON (like original save_results) ----------
+        self._save_results(detections_all, all_boxes, all_labels)
+
+        return detections_all, all_boxes, all_labels
+
+
+    def _save_results(self, detections_xyxy_type, all_boxes, all_labels):
+        """
+        Output JSON in the same format as the old save_results():
+        bbox   -> "[x y w h]"
+        center -> "[cx cy]"
+        class  -> name
+        FM     -> self._brenner_np(the grayscale large image patch for the box)
+        MAS    -> mapped from class name
+        Filename: self.result_dir/<stem>_results.json
+        """
+        os.makedirs(self.result_dir, exist_ok=True)
+        stem = "results"
+        try:
+            base_img = getattr(self, "large_img_path", None) or getattr(self, "image_path", None)
+            if base_img:
+                stem = os.path.splitext(os.path.basename(base_img))[0]
+        except Exception:
+            pass
+        out_path = os.path.join(self.result_dir, f"{stem}_results.json")
+
+        if all_boxes.size == 0 or all_labels.size == 0:
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump([], f, ensure_ascii=False, indent=2)
+            return
+
+        # FM (Brenner) for each bbox
+        def _fm_one(x1, y1, x2, y2):
+            x1 = max(0, int(x1)); y1 = max(0, int(y1))
+            x2 = min(int(x2), self.gray_np.shape[1]); y2 = min(int(y2), self.gray_np.shape[0])
+            if x2 <= x1 or y2 <= y1:
+                return 0.0
+            patch = self.gray_np[y1:y2, x1:x2]
+            return float(self._brenner_np(patch))
+
+        boxes_i = all_boxes.astype(np.int32, copy=False)
+        x1, y1, x2, y2 = boxes_i.T
+        w  = (x2 - x1).astype(np.int32)
+        h  = (y2 - y1).astype(np.int32)
+        cx = x1 + (w // 2)
+        cy = y1 + (h // 2)
+
+        # class name and MAS
+        mas_weight = {'R': 0.0, 'H': 0.33, 'B': 0.66, 'A': 1.0, 'RD': 0.0, 'HR': 0.66}
+        labels_int = [int(l.item()) if hasattr(l, "item") else int(l) for l in all_labels]
+        classes    = [self.class_mapping[i][0] for i in labels_int]
+        mas_vals   = [float(mas_weight.get(c, 0.0)) for c in classes]
+
+        # FM calculation (parallel)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=os.cpu_count() or 8) as ex:
+            fm_vals = list(ex.map(_fm_one, x1, y1, x2, y2))
+
+        # Assemble using the same schema as save_results()
+        results_json = [
+            {
+                "bbox":   f"[{xi} {yi} {wi} {hi}]",
+                "center": f"[{cxi} {cyi}]",
+                "class":  cls,
+                "FM":     float(fm),
+                "MAS":    mv,
+            }
+            for xi, yi, wi, hi, cxi, cyi, cls, fm, mv
+            in zip(x1, y1, w, h, cx, cy, classes, fm_vals, mas_vals)
+        ]
+
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(results_json, f, ensure_ascii=False, indent=2)
+
+
 
 
     # --- helper function: process_pathes() ---
