@@ -540,6 +540,14 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       const $dropZone = $('#drop-zone');
       if (!$demoImg.length || !$dropZone.length) return;
 
+      // Disable default dragging of the demo image itself to avoid browser glitches.
+      $demoImg.attr('draggable', false)
+      .off('dragstart.blockDemo')
+      .on('dragstart.blockDemo', (e) => {
+        e.preventDefault();
+        return false;
+      });
+
       const DEMO_URL = $demoImg.data('demo-url') || '/static/demo/demo.jpg';
 
       // CASE 4 — Ensure upload pipeline is initialized before binding UI:

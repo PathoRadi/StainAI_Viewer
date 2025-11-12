@@ -3,8 +3,11 @@ import json
 import re
 import torch
 import gc
+import glob
 import numpy as np
+from natsort import natsorted
 from PIL import Image, ImageDraw
+from torchvision.ops import nms
 import logging
 from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -83,26 +86,25 @@ class YOLOPipeline:
         workers: int = 4,
         device=None,
         half: bool = True,
+        iou_nms: float = 0.5,
+        conf_thres: float = 0.25,
     ):
         """
+        Use NMS to merge patch-level detections into full-image detections instead of simple box union.
         Returns:
-        detections: [{"coords":[x1,y1,x2,y2], "type": cls}, ...]
-        bbox:       np.ndarray[M,4]  (xyxy, float32, full-image coords)
-        labels:     np.ndarray[M]    (int16)
-        write self.result_dir/<stem>_results.json at the same time:
-        {
-            "bbox":   "[x y w h]",
-            "center": "[cx cy]",
-            "class":  "R|H|B|A|RD|HR",
-            "FM":     <float>,
-            "MAS":    <float>
-        }
+            detections: [{"coords":[x1,y1,x2,y2], "type": cls}, ...]
+            all_boxes:  np.ndarray[M,4]  (xyxy, float32, full-image coords, after NMS)
+            all_labels: np.ndarray[M]    (int16, after NMS)
         """
         # ---------- device ----------
+        # whether use cpu or gpu
         dev = (0 if torch.cuda.is_available() else 'cpu') if device is None else device
+        # whether use half precision
         use_half = bool(half and (dev != 'cpu'))
+        # adjust max_batch for cpu
         if dev == 'cpu':
             max_batch = min(max_batch, 2)
+        # enable cudnn benchmark: enable this can speed up on GPU for fixed-size inputs
         try:
             torch.backends.cudnn.benchmark = True
         except Exception:
@@ -110,50 +112,69 @@ class YOLOPipeline:
 
         # ---------- list patches ----------
         files = self._list_patch_files()
+        # check if no patches found
+        # if no patches, save empty results and return
         if not files:
             self._save_results([], np.zeros((0,4), np.float32), np.zeros((0,), np.int16))
             return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
 
+        # --------- parse offsets ----------
+        # valid: path to valid patch images
+        # offsets: (oy, ox) offsets for each valid patch
         valid, offsets = [], []
-        for fp in files:
-            fn = os.path.basename(fp)
+        for filepath in files:
+            fn = os.path.basename(filepath)
             try:
-                oy, ox = self._parse_offset_from_name(fn)  # "patch_{y}_{x}.png"
-                valid.append(fp); offsets.append((oy, ox))
+                oy, ox = self._parse_offset_from_name(fn)  # "patch_{oy}_{ox}.png"
+                valid.append(filepath); offsets.append((oy, ox))
             except Exception:
                 continue
+        # update files to only valid patches
         files = valid
         offsets = np.asarray(offsets, dtype=np.int32)
+        # check if no valid patches
         N = len(files)
         if N == 0:
             self._save_results([], np.zeros((0,4), np.float32), np.zeros((0,), np.int16))
             return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
 
         # ---------- thread pools ----------
-        cpu_cnt      = max(1, os.cpu_count() or 1)
-        io_workers   = min(12, cpu_cnt)
-        post_workers = min(max(1, workers), 4)
-        io_pool      = ThreadPoolExecutor(max_workers=io_workers)
-        post_pool    = ThreadPoolExecutor(max_workers=post_workers)
+        cpu_cnt      = max(1, os.cpu_count() or 1)                      # at least 1
+        io_workers   = min(12, cpu_cnt)                                 # I/O bound; more threads
+        post_workers = min(max(1, workers), 4)                          # CPU bound; limited threads
+        io_pool      = ThreadPoolExecutor(max_workers=io_workers)       # I/O threads
+        post_pool    = ThreadPoolExecutor(max_workers=post_workers)     # post-process threads
 
         # ---------- helpers ----------
         def _load_one(args):
+            # Unpack tuple: file path and patch offsets (top-left y, x) in the full image
             fp, oy, ox = args
             try:
-                if not os.path.exists(fp): return None
-                arr = self._load_np(fp)
-                return (arr, int(oy), int(ox))
+                # If the image file doesn't exist, signal a skip for this item
+                if not os.path.exists(fp): 
+                    return None
+                
+                # Load image as an H×W×3 uint8 RGB ndarray (fast path uses pyvips, fallback to PIL)
+                arr = self._load_np(fp)        # H×W×3 uint8
+                h, w = int(arr.shape[0]), int(arr.shape[1])
+
+                # Return everything the downstream code needs:
+                # - the image array
+                # - its top-left offsets in the full image (oy, ox)
+                # - the actual patch height and width
+                return (arr, oy, ox, h, w)
             except Exception:
+                # Any read/decoding error → skip this patch gracefully
                 return None
 
-        def _post_one(res, oy, ox):
+        def _post_one(res, oy, ox, h, w):
             """
-            Return:
-            det_list: [{"coords":[x1,y1,x2,y2], "type":cls}, ...]
-            boxes:    np.ndarray[K,4] xyxy (float32)
-            labels:   np.ndarray[K]   (int16)
+            return :
+            boxes_xyxy_full: np.ndarray[K,4] (float32 xyxy, full-image coords)
+            labels:          np.ndarray[K]   (int16)
+            confs:           np.ndarray[K]   (float32)
             """
-            # yolo -> xywh / cls
+            # get xywh / cls / conf
             if res.boxes.xywh.numel():
                 xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
             else:
@@ -162,41 +183,38 @@ class YOLOPipeline:
                 cls_idx = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
             else:
                 cls_idx = np.zeros((0,), np.int16)
+            if res.boxes.conf.numel():
+                confs = res.boxes.conf.detach().cpu().numpy().astype(np.float32)
+            else:
+                confs = np.zeros((0,), np.float32)
 
-            # to full-image xyxy
+            # confidence threshold (apply a very loose filtering first)
+            if conf_thres is not None and xywh.shape[0]:
+                m = confs >= float(conf_thres)
+                xywh = xywh[m]; cls_idx = cls_idx[m]; confs = confs[m]
+
+            # xywh -> full-image xyxy
             xyxy_full = self._xywh_to_xyxy_full(xywh, oy, ox)
 
-            # filter boxes according to patch position
-            pl, pt = ox, oy
-            pr, pb = pl + 640, pt + 640
-            det = [(oy // 320) % 2, (ox // 320) % 2]
-            if det == [0, 0]:
-                bb, lb = BoundingBoxFilter.delete_edge(xyxy_full, cls_idx, pl, pt, pr, pb)
-            elif det == [0, 1]:
-                bb, lb = BoundingBoxFilter.keep_cline(xyxy_full, cls_idx, pl, pt, pr, pb)
-            elif det == [1, 0]:
-                bb, lb = BoundingBoxFilter.keep_rline(xyxy_full, cls_idx, pl, pt, pr, pb)
-            else:
-                bb, lb = BoundingBoxFilter.keep_center(xyxy_full, cls_idx, pl, pt, pr, pb)
+            # Clip to the actual patch window [pl,pt,pr,pb] using the patch size
+            pl, pt = float(ox), float(oy)
+            pr, pb = pl + float(w), pt + float(h)   # ← not fixed +640!
+            if xyxy_full.size:
+                xyxy_full[:, 0] = np.clip(xyxy_full[:, 0], pl, pr)
+                xyxy_full[:, 1] = np.clip(xyxy_full[:, 1], pt, pb)
+                xyxy_full[:, 2] = np.clip(xyxy_full[:, 2], pl, pr)
+                xyxy_full[:, 3] = np.clip(xyxy_full[:, 3], pt, pb)
+                # remove boxes that were clipped to empty
+                valid_w = (xyxy_full[:, 2] - xyxy_full[:, 0]) > 1
+                valid_h = (xyxy_full[:, 3] - xyxy_full[:, 1]) > 1
+                keep    = valid_w & valid_h
+                xyxy_full = xyxy_full[keep]
+                cls_idx   = cls_idx[keep]
+                confs     = confs[keep]
 
-            if len(bb) == 0:
-                return [], np.zeros((0,4), np.float32), np.zeros((0,), np.int16)
-
-            # class name
-            if hasattr(self, "class_mapping"):
-                classes = [self.class_mapping[int(i)][0] for i in lb]
-            else:
-                classes = [str(int(i)) for i in lb]
-
-            bb_i = bb.astype(np.int32, copy=False)
-            x1, y1, x2, y2 = bb_i.T
-
-            det_list = [{
-                "coords": [int(a), int(b), int(c), int(d)],
-                "type": cls
-            } for a, b, c, d, cls in zip(x1, y1, x2, y2, classes)]
-
-            return det_list, bb.astype(np.float32, copy=False), lb.astype(np.int16, copy=False)
+            return (xyxy_full.astype(np.float32, copy=False),
+                    cls_idx.astype(np.int16,  copy=False),
+                    confs.astype(np.float32,  copy=False))
 
         def _load_batch(i, bs):
             batch = list(zip(files[i:i+bs], offsets[i:i+bs, 0], offsets[i:i+bs, 1]))
@@ -204,29 +222,30 @@ class YOLOPipeline:
             loaded = [x for x in loaded if x is not None]
             if not loaded:
                 return [], []
-            arrs = [a for (a, _, _) in loaded]
-            offs = [(oy, ox) for (_, oy, ox) in loaded]
-            return arrs, offs
+            arrs   = [a for (a, _, _, _, _) in loaded]
+            extras = [(oy, ox, h, w) for (_, oy, ox, h, w) in loaded]
+            return arrs, extras
 
         # ---------- main loop with OOM backoff ----------
-        detections_all = []
-        boxes_all, labels_all = [], []
+        all_boxes_list   = []
+        all_labels_list  = []
+        all_confs_list   = []
 
         i = 0
-        next_arrs, next_offs = [], []
+        next_arrs, next_extras = [], []
 
         try:
             while i < N:
                 bs = min(max_batch, N - i)
                 if not next_arrs:
-                    next_arrs, next_offs = _load_batch(i, bs)
+                    next_arrs, next_extras = _load_batch(i, bs)
                 if not next_arrs:
                     i += bs
                     continue
 
-                arrs, offs = next_arrs, next_offs
+                arrs, extras = next_arrs, next_extras
                 next_i  = i + bs
-                next_bs = min(max_batch, N - next_i)
+                next_bs = min(max_batch, next_i and (N - next_i))
                 prefetch_fut = None
                 if next_i < N and next_bs > 0:
                     prefetch_fut = io_pool.submit(_load_batch, next_i, next_bs)
@@ -239,22 +258,20 @@ class YOLOPipeline:
                             imgsz=640,
                             device=dev,
                             half=use_half,
-                            conf=0.25,
-                            iou=0.45,
+                            conf=conf_thres if conf_thres is not None else 0.001,
+                            iou=0.45,           # per-patch NMS inside model; we'll do full-image NMS afterwards
                             stream=False,
                             verbose=False,
                         )
 
-                        futs = [post_pool.submit(_post_one, res, oy, ox)
-                                for res, (oy, ox) in zip(preds, offs)]
+                        futs = [post_pool.submit(_post_one, res, oy, ox, h, w)
+                                for res, (oy, ox, h, w) in zip(preds, extras)]
                         for fut in as_completed(futs):
-                            det_list, bb, lb = fut.result()
-                            if det_list:
-                                detections_all.extend(det_list)
+                            bb, lb, cf = fut.result()
                             if bb.size:
-                                boxes_all.append(bb)
-                            if lb.size:
-                                labels_all.append(lb)
+                                all_boxes_list.append(bb)
+                                all_labels_list.append(lb)
+                                all_confs_list.append(cf)
 
                         i += bs
                         gc.collect()
@@ -267,7 +284,8 @@ class YOLOPipeline:
                             if torch.cuda.is_available() and dev != 'cpu':
                                 torch.cuda.empty_cache()
                             gc.collect()
-                            arrs, offs = _load_batch(i, bs)
+                            # reload a smaller batch
+                            arrs, extras = _load_batch(i, bs)
                             if not arrs:
                                 i += bs
                                 break
@@ -277,9 +295,9 @@ class YOLOPipeline:
 
                 if prefetch_fut is not None:
                     try:
-                        next_arrs, next_offs = prefetch_fut.result()
+                        next_arrs, next_extras = prefetch_fut.result()
                     except Exception:
-                        next_arrs, next_offs = [], []
+                        next_arrs, next_extras = [], []
 
                 if tried_oom:
                     max_batch = bs
@@ -288,22 +306,314 @@ class YOLOPipeline:
             io_pool.shutdown(wait=True)
             post_pool.shutdown(wait=True)
 
-        # ---------- concat ----------
-        if boxes_all:
-            all_boxes  = np.concatenate(boxes_all, axis=0).astype(np.float32, copy=False)
+        # ---------- concat (pre-NMS) ----------
+        if all_boxes_list:
+            boxes  = np.concatenate(all_boxes_list,  axis=0).astype(np.float32, copy=False)
+            labels = np.concatenate(all_labels_list, axis=0).astype(np.int16,   copy=False)
+            confs  = np.concatenate(all_confs_list,  axis=0).astype(np.float32, copy=False)
         else:
-            all_boxes  = np.zeros((0,4), np.float32)
-        if labels_all:
-            all_labels = np.concatenate(labels_all, axis=0).astype(np.int16, copy=False)
-        else:
-            all_labels = np.zeros((0,), np.int16)
+            boxes  = np.zeros((0,4), np.float32)
+            labels = np.zeros((0,),  np.int16)
+            confs  = np.zeros((0,),  np.float32)
 
-        # ---------- write JSON (like original save_results) ----------
-        self._save_results(detections_all, all_boxes, all_labels)
+        # ---------- full-image NMS (per-class) ----------
+        if boxes.size == 0:
+            self._save_results([], boxes, labels)
+            return [], boxes, labels
 
-        return detections_all, all_boxes, all_labels
+        keep_idx = []
+        try:
+            # prefer torchvision.ops.nms if available
+            for cls in np.unique(labels):
+                m = (labels == cls)
+                if not np.any(m):
+                    continue
+                b = torch.from_numpy(boxes[m])
+                s = torch.from_numpy(confs[m])
+                keep = nms(b, s, iou_nms).numpy()
+                idx_global = np.where(m)[0][keep]
+                keep_idx.append(idx_global)
+            keep_idx = np.concatenate(keep_idx, axis=0)
+        except Exception:
+            # numpy fallback NMS
+            def _nms_numpy(bxs, scs, thr):
+                idx = scs.argsort()[::-1]
+                keep = []
+                while idx.size > 0:
+                    i = idx[0]
+                    keep.append(i)
+                    if idx.size == 1:
+                        break
+                    iou = _iou_numpy(bxs[i], bxs[idx[1:]])
+                    idx = idx[1:][iou < thr]
+                return np.array(keep, dtype=np.int64)
+
+            def _iou_numpy(box, boxes_arr):
+                x1 = np.maximum(box[0], boxes_arr[:,0])
+                y1 = np.maximum(box[1], boxes_arr[:,1])
+                x2 = np.minimum(box[2], boxes_arr[:,2])
+                y2 = np.minimum(box[3], boxes_arr[:,3])
+                inter = np.maximum(0.0, x2 - x1) * np.maximum(0.0, y2 - y1)
+                area1 = (box[2] - box[0]) * (box[3] - box[1])
+                area2 = (boxes_arr[:,2] - boxes_arr[:,0]) * (boxes_arr[:,3] - boxes_arr[:,1])
+                union = np.maximum(area1 + area2 - inter, 1e-6)
+                return inter / union
+
+            keep_idx = []
+            for cls in np.unique(labels):
+                m = (labels == cls)
+                if not np.any(m):
+                    continue
+                b = boxes[m]; s = confs[m]
+                keep_local = _nms_numpy(b, s, iou_nms)
+                idx_global = np.where(m)[0][keep_local]
+                keep_idx.append(idx_global)
+            keep_idx = np.concatenate(keep_idx, axis=0)
+
+        boxes_nms  = boxes[keep_idx]
+        labels_nms = labels[keep_idx]
+        confs_nms  = confs[keep_idx]
+
+        boxes_fused, labels_fused, confs_fused = self._cross_class_fusion(
+            boxes_nms, labels_nms, confs_nms,
+            iou_thr=0.6,           # 0.55~0.65 common; higher is stricter
+            class_decision="sum",  # "sum" is most stable; can also use "max" / "vote"
+            fuse="wbf"             # "wbf" is robust; can also use "avg" / "max"
+        )
+
+        boxes_out, labels_out, confs_out = boxes_fused, labels_fused, confs_fused
 
 
+        # ---------- output detections (reuse your original format/color codes) ----------
+        det_list = []
+        if boxes_out.size:
+            boxes_i = boxes_out.astype(np.int32, copy=False)
+            x1, y1, x2, y2 = boxes_i.T
+            if hasattr(self, "class_mapping"):
+                classes = [self.class_mapping[int(i)][0] for i in labels_out]
+            else:
+                classes = [str(int(i)) for i in labels_out]
+            det_list = [
+                {"coords": [int(a), int(b), int(c), int(d)], "type": cls}
+                for a, b, c, d, cls in zip(x1, y1, x2, y2, classes)
+            ]
+
+        # write JSON (reuse existing _save_results -> also computes FM/MAS)
+        self._save_results(det_list, boxes_out, labels_out)
+
+        return det_list, boxes_out.astype(np.float32, copy=False), labels_out .astype(np.int16, copy=False)
+
+    # helper function: process_patches()
+    def _iou_numpy_single(self, box, boxes_arr):
+        x1 = np.maximum(box[0], boxes_arr[:,0])
+        y1 = np.maximum(box[1], boxes_arr[:,1])
+        x2 = np.minimum(box[2], boxes_arr[:,2])
+        y2 = np.minimum(box[3], boxes_arr[:,3])
+        inter = np.maximum(0.0, x2 - x1) * np.maximum(0.0, y2 - y1)
+        area1 = (box[2]-box[0]) * (box[3]-box[1])
+        area2 = (boxes_arr[:,2]-boxes_arr[:,0]) * (boxes_arr[:,3]-boxes_arr[:,1])
+        union = np.maximum(area1 + area2 - inter, 1e-6)
+        return inter / union
+
+    # --- helper function: process_patches() ---
+    def _fuse_cluster(self, boxes, labels, confs, class_decision="sum", fuse="wbf"):
+        """
+        boxes: (K,4) boxes in the same cluster
+        labels: (K,)
+        confs: (K,)
+
+        class_decision: "sum" | "max" | "vote"
+        - sum: choose the class with the highest sum of confidences (most robust)
+        - max: choose the class of the box with the highest confidence
+        - vote: majority vote; break ties by summed confidence
+
+        fuse: "wbf" | "avg" | "max"
+        - wbf: weighted box fusion using confidence as weights
+        - avg: simple average of coordinates
+        - max: take coordinates of the highest-confidence box
+        """
+        if boxes.shape[0] == 1:
+            return boxes[0], labels[0], confs[0]
+
+        # ---- decide class ----
+        uniq = np.unique(labels)
+        if class_decision == "sum":
+            best_cls = max(uniq, key=lambda c: float(confs[labels == c].sum()))
+        elif class_decision == "vote":
+            # majority vote; break ties by summed confidence
+            counts = {int(c): int((labels == c).sum()) for c in uniq}
+            maxn = max(counts.values())
+            cands = [c for c,n in counts.items() if n == maxn]
+            if len(cands) == 1:
+                best_cls = cands[0]
+            else:
+                best_cls = max(cands, key=lambda c: float(confs[labels == c].sum()))
+        else:  # "max"
+            best_idx = confs.argmax()
+            best_cls = int(labels[best_idx])
+
+        # ---- fuse coordinates ----
+        if fuse == "max":
+            j = confs.argmax()
+            fused = boxes[j].astype(np.float32, copy=False)
+            fused_conf = float(confs[j])
+        elif fuse == "avg":
+            fused = boxes.mean(axis=0).astype(np.float32, copy=False)
+            fused_conf = float(confs.mean())
+        else:  # "wbf"
+            w = confs.astype(np.float32, copy=False)
+            wsum = np.maximum(w.sum(), 1e-6)
+            fused = (boxes * w[:, None]).sum(axis=0) / wsum
+            fused_conf = float(w.max())  # could also use wsum/len or mean depending on preference
+
+        return fused.astype(np.float32, copy=False), int(best_cls), float(fused_conf)
+
+    # --- helper function: process_patches() ---
+    def _cross_class_fusion(self, boxes, labels, confs, iou_thr=0.6,
+                            class_decision="sum", fuse="wbf"):
+        """
+        Cluster by IoU (ignore class), output one box + one class per cluster.
+        """
+        if boxes.size == 0:
+            return boxes, labels, confs
+
+        boxes  = boxes.astype(np.float32, copy=False)
+        labels = labels.astype(np.int16,  copy=False)
+        confs  = confs.astype(np.float32, copy=False)
+
+        # sort by confidence descending so high-score boxes become cluster seeds
+        order = np.argsort(-confs)
+        boxes, labels, confs = boxes[order], labels[order], confs[order]
+
+        picked_boxes  = []
+        picked_labels = []
+        picked_confs  = []
+
+        used = np.zeros(len(boxes), dtype=bool)
+        for i in range(len(boxes)):
+            if used[i]:
+                continue
+            # create a new cluster: include boxes with IoU >= thr with box i
+            iou = self._iou_numpy_single(boxes[i], boxes[~used])
+            cand_idx_local = np.where(iou >= iou_thr)[0]
+            # cand_idx_local are indices relative to ~used; convert back to global indices
+            cand_idx_global = np.where(~used)[0][cand_idx_local]
+
+            # ensure i itself is in the cluster (if not already)
+            if i not in cand_idx_global:
+                cand_idx_global = np.concatenate([np.array([i], dtype=int), cand_idx_global], axis=0)
+
+            cluster_boxes  = boxes[cand_idx_global]
+            cluster_labels = labels[cand_idx_global]
+            cluster_confs  = confs[cand_idx_global]
+
+            fused_box, fused_label, fused_conf = self._fuse_cluster(
+                cluster_boxes, cluster_labels, cluster_confs,
+                class_decision=class_decision, fuse=fuse
+            )
+
+            picked_boxes.append(fused_box)
+            picked_labels.append(fused_label)
+            picked_confs.append(fused_conf)
+            used[cand_idx_global] = True
+
+        return (np.vstack(picked_boxes).astype(np.float32, copy=False),
+                np.asarray(picked_labels, dtype=np.int16),
+                np.asarray(picked_confs,  dtype=np.float32))
+
+    # --- helper function: process_patches() ---
+    @staticmethod
+    def _parse_offset_from_name(name: str):
+        # "patch_{y}_{x}.png" → (y, x)
+        m = re.search(r'patch_(\d+)_(\d+)\.png$', name)
+        if not m: 
+            raise ValueError(f'Bad patch name: {name}')
+        return int(m.group(1)), int(m.group(2))
+
+    # --- helper function: process_patches() ---
+    @staticmethod
+    def _xywh_to_xyxy_full(xywh_np, off_y, off_x):
+        # xywh_np: (N,4) [x,y,w,h], convert to full-image coords [x1,y1,x2,y2]
+        x, y, w, h = xywh_np.T
+        x1 = (x - w * 0.5) + off_x
+        y1 = (y - h * 0.5) + off_y
+        x2 = (x + w * 0.5) + off_x
+        y2 = (y + h * 0.5) + off_y
+        return np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
+    
+    # --- helper function: process_patches() ---
+    def _list_patch_files(self):
+        """Return actual image files present in patches_dir (sorted by filename)"""
+        exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff')
+        files = []
+        for e in exts:
+            files.extend(glob.glob(os.path.join(self.patches_dir, e)))
+        # Sort filenames naturally (prevents patch_100_0 appearing before patch_2_0)
+        try:
+            files = natsorted(files)
+        except Exception:
+            files.sort()
+        return files
+
+    # --- helper function: process_patches() ---
+    def _load_np(self, fp: str):
+        """
+        Return an HxWx3 uint8 RGB ndarray.
+        Prefer pyvips for speed, fall back to PIL for robustness.
+        """
+        try:
+            import pyvips
+            im = pyvips.Image.new_from_file(fp, access="sequential")
+
+            # Flatten alpha to white background if present (YOLO uses RGB)
+            if im.hasalpha():
+                im = im.flatten(background=[255, 255, 255])
+
+            # Convert grayscale or non-sRGB to sRGB
+            if im.interpretation == pyvips.Interpretation.B_W:
+                im = im.colourspace(pyvips.Interpretation.srgb)
+            elif im.interpretation != pyvips.Interpretation.srgb:
+                try:
+                    im = im.colourspace(pyvips.Interpretation.srgb)
+                except Exception:
+                    pass
+
+            # Cast to 8-bit
+            if im.format != "uchar":
+                im = im.cast("uchar")
+
+            # Ensure 3 channels
+            if im.bands == 1:
+                im = im.bandjoin([im, im])  # 1->2
+                im = im.bandjoin([im, im.extract_band(0)])  # 2->3
+            elif im.bands > 3:
+                im = im.extract_band(0, n=3)
+
+            # Extract bytes -> ndarray
+            mem = im.write_to_memory()               # bytes
+            H, W, C = im.height, im.width, im.bands
+            arr = np.frombuffer(mem, dtype=np.uint8)
+            arr = arr.reshape(H, W, C)               # HWC uint8
+            return arr
+        except Exception:
+            # Fallback: PIL
+            from PIL import Image
+            with Image.open(fp) as pil:
+                if pil.mode in ("RGBA", "LA"):
+                    bg = Image.new("RGB", pil.size, (255, 255, 255))
+                    bg.paste(pil, mask=pil.split()[-1])
+                    pil = bg
+                elif pil.mode != "RGB":
+                    pil = pil.convert("RGB")
+                return np.asarray(pil, dtype=np.uint8)
+
+
+    
+
+
+    #########################################
+    # ------ 1) Save Result as .json ------ #
+    #########################################
     def _save_results(self, detections_xyxy_type, all_boxes, all_labels):
         """
         Output JSON in the same format as the old save_results():
@@ -371,162 +681,6 @@ class YOLOPipeline:
 
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(results_json, f, ensure_ascii=False, indent=2)
-
-
-
-
-    # --- helper function: process_pathes() ---
-    @staticmethod
-    def _parse_offset_from_name(name: str):
-        # "patch_{y}_{x}.png" → (y, x)
-        m = re.search(r'patch_(\d+)_(\d+)\.png$', name)
-        if not m: 
-            raise ValueError(f'Bad patch name: {name}')
-        return int(m.group(1)), int(m.group(2))
-
-    # --- helper function: process_pathes() ---
-    @staticmethod
-    def _xywh_to_xyxy_full(xywh_np, off_y, off_x):
-        # xywh_np: (N,4) [x,y,w,h], convert to full-image coords [x1,y1,x2,y2]
-        x, y, w, h = xywh_np.T
-        x1 = (x - w * 0.5) + off_x
-        y1 = (y - h * 0.5) + off_y
-        x2 = (x + w * 0.5) + off_x
-        y2 = (y + h * 0.5) + off_y
-        return np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
-    
-    # --- helper function: process_pathes() ---
-    def _list_patch_files(self):
-        """Return actual image files present in patches_dir (sorted by filename)"""
-        import glob
-        exts = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif', '*.tiff')
-        files = []
-        for e in exts:
-            files.extend(glob.glob(os.path.join(self.patches_dir, e)))
-        # Sort filenames naturally (prevents patch_100_0 appearing before patch_2_0)
-        try:
-            from natsort import natsorted
-            files = natsorted(files)
-        except Exception:
-            files.sort()
-        return files
-
-    # --- helper function: process_pathes() ---
-    def _load_np(self, fp: str):
-        """
-        回傳 HxWx3 uint8 的 RGB ndarray。
-        優先用 pyvips 讀（快），失敗再用 PIL（穩）。
-        """
-        try:
-            import pyvips  # 你已安裝
-            im = pyvips.Image.new_from_file(fp, access="sequential")
-
-            # 轉成 8-bit sRGB，保證 3 通道（與你原本邏輯等價）
-            if im.hasalpha():
-                # YOLO 用 RGB，不要透明；白底合成（行為等價）
-                im = im.flatten(background=[255, 255, 255])
-
-            # 灰階 → sRGB；其他色域 → sRGB
-            if im.interpretation == pyvips.Interpretation.B_W:
-                im = im.colourspace(pyvips.Interpretation.srgb)
-            elif im.interpretation != pyvips.Interpretation.srgb:
-                try:
-                    im = im.colourspace(pyvips.Interpretation.srgb)
-                except Exception:
-                    pass
-
-            # 轉 8-bit
-            if im.format != "uchar":
-                im = im.cast("uchar")
-
-            # 如果不是3通道，湊成3通道（很少見，但保險）
-            if im.bands == 1:
-                im = im.bandjoin([im, im])  # 1->2
-                im = im.bandjoin([im, im.extract_band(0)])  # 2->3
-            elif im.bands > 3:
-                im = im.extract_band(0, n=3)
-
-            # 取出 bytes → 轉 ndarray（零拷貝視情況）
-            mem = im.write_to_memory()               # bytes
-            H, W, C = im.height, im.width, im.bands
-            arr = np.frombuffer(mem, dtype=np.uint8)
-            arr = arr.reshape(H, W, C)               # HWC uint8
-            return arr
-        except Exception:
-            # 後援：PIL
-            from PIL import Image
-            with Image.open(fp) as pil:
-                if pil.mode in ("RGBA", "LA"):
-                    bg = Image.new("RGB", pil.size, (255, 255, 255))
-                    bg.paste(pil, mask=pil.split()[-1])
-                    pil = bg
-                elif pil.mode != "RGB":
-                    pil = pil.convert("RGB")
-                return np.asarray(pil, dtype=np.uint8)
-
-
-    
-
-
-    #########################################
-    # ------ 1) Save Result as .json ------ #
-    #########################################
-    def save_results(self, bbox, labels):
-        """
-        Save detection results to a JSON file in the result directory.
-        Each detection includes bounding box, center coordinates, class label, and focus measure.
-        """
-        # 1) Focus Measure calculation (Brenner)
-        def _fm_one(box):
-            x1,y1,x2,y2 = map(int, box)
-            x1=max(0,x1); y1=max(0,y1); x2=min(self.gray_np.shape[1],x2); y2=min(self.gray_np.shape[0],y2)
-            if x2<=x1 or y2<=y1: 
-                return 0.0
-            return self._brenner_np(self.gray_np[y1:y2, x1:x2])
-        
-        with ThreadPoolExecutor(max_workers=os.cpu_count() or 8) as ex:
-            fm_list = list(ex.map(_fm_one, bbox))
-
-
-        # 2) Prepare data to store(bbox, center, class, FM, MAS)
-        boxes = np.asarray(bbox, dtype=np.int32)
-        if boxes.size == 0:
-            fm_list = []
-            x1 = y1 = x2 = y2 = np.array([], dtype=np.int32)
-        else:
-            x1, y1, x2, y2 = boxes.T
-            w = x2 - x1
-            h = y2 - y1
-            cx = x1 + w // 2
-            cy = y1 + h // 2
-        
-        mas_weight = {'R': 0.0, 'H': 0.33, 'B': 0.66, 'A': 1.0, 'RD': 0.0, 'HR': 0.66}
-        labels_int = [int(l.item()) if hasattr(l, "item") else int(l) for l in labels]
-        classes    = [self.class_mapping[i][0] for i in labels_int]
-        mas_vals   = [float(mas_weight[c]) for c in classes]
-        detections = [{
-            "coords":   [int(xi1), int(yi1), int(xi2), int(yi2)],
-            "type": cls,
-        } for xi1, yi1, xi2, yi2, cls in zip(x1, y1, x2, y2, classes)]
-        detections_json = [
-            {
-                "bbox":   f"[{xi} {yi} {wi} {hi}]",
-                "center": f"[{cxi} {cyi}]",
-                "class":  cls,
-                "FM":     float(fm),
-                "MAS":    mv,
-            }
-            for xi, yi, wi, hi, cxi, cyi, cls, fm, mv
-            in zip(x1, y1, w, h, cx, cy, classes, fm_list, mas_vals)
-        ]
-
-
-        # 3) Save to JSON
-        base = os.path.splitext(os.path.basename(self.large_img_path))[0] + "_results.json"
-        with open(os.path.join(self.result_dir, base), "w", encoding="utf-8") as f:
-            json.dump(detections_json, f, ensure_ascii=False, indent=2)
-
-        return detections
     
     # --- helper function: save_results() ---
     @staticmethod
