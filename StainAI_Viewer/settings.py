@@ -150,3 +150,40 @@ DEFAULT_MEDIA_ROOT = "/home/site/wwwroot/media"
 MEDIA_ROOT = str(Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT)))
 
 os.makedirs(MEDIA_ROOT, exist_ok=True)
+
+
+# ===== Logging =====
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+
+    "loggers": {
+        # your app logs: views.py => logger = logging.getLogger(__name__)
+        # __name__ = myapp.views → parent logger = "myapp"
+        "myapp": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+
+        # YOLOPipeline internal logs: logger = logging.getLogger(f"stainai.pipeline.{self.project}")
+        "stainai.pipeline": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+
+        # Django runserver logs
+        "django.server": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

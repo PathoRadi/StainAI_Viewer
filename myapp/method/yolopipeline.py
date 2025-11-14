@@ -9,7 +9,6 @@ from natsort import natsorted
 from PIL import Image, ImageDraw
 from torchvision.ops import nms
 import logging
-from .bounding_box_filter import BoundingBoxFilter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 class YOLOPipeline:
@@ -57,17 +56,12 @@ class YOLOPipeline:
 
         # 1. Process patches to get bounding boxes and labels
         detections, bbox, labels = self.process_patches()
-        self.log.info(f"Detected {len(bbox)} objects from {self.large_img_path}")
+        self.log.info(f"{len(bbox)} objects detected")
         gc.collect()
 
-        # 2. Save results to JSON
-        # detections = self.save_results(bbox, labels)
-        # self.log.info(f"Results saved to {self.result_dir}")
-        # gc.collect()
-
-        # 3. Generate annotated image
+        # 2. Generate annotated image
         self.annotate_large_image(bbox, labels)
-        self.log.info(f"Annotated image saved to {self.annotated_dir}")
+        self.log.info(f"Generating annotated image done")
         gc.collect()
 
         return detections
@@ -132,7 +126,7 @@ class YOLOPipeline:
         # update files to only valid patches
         files = valid
         offsets = np.asarray(offsets, dtype=np.int32)
-        # check if no valid patches
+        # check if no valid patches. if so, save empty results and return
         N = len(files)
         if N == 0:
             self._save_results([], np.zeros((0,4), np.float32), np.zeros((0,), np.int16))
@@ -147,10 +141,18 @@ class YOLOPipeline:
 
         # ---------- helpers ----------
         def _load_one(args):
-            # Unpack tuple: file path and patch offsets (top-left y, x) in the full image
+            """
+            Load one patch image as ndarray.
+            args: (file_path, oy, ox)
+            Returns:
+                (arr, oy, ox, h, w) or None if failed
+            """
+
+            # fp: file path
+            # oy, ox: offsets
             fp, oy, ox = args
             try:
-                # If the image file doesn't exist, signal a skip for this item
+                # If the image file doesn't exist, skip for this item
                 if not os.path.exists(fp): 
                     return None
                 
@@ -166,39 +168,77 @@ class YOLOPipeline:
             except Exception:
                 # Any read/decoding error → skip this patch gracefully
                 return None
+            
+        def _load_batch(i, bs):
+            """
+            Load a batch of patch images as ndarrays.
+            args:
+                i: start index
+                bs: batch size
+            Returns:
+                arrs: List[np.ndarray HxWx3 uint8]
+                extras: List[(oy, ox, h, w)]
+            """
+
+            # list of (file_path, oy, ox)
+            batch = list(zip(files[i:i+bs], offsets[i:i+bs, 0], offsets[i:i+bs, 1]))
+            # list of (arr, oy, ox, h, w) or None
+            loaded = list(io_pool.map(_load_one, batch))
+            loaded = [x for x in loaded if x is not None]        # filter out failed loads
+            # if no images loaded, return empty lists
+            if not loaded:
+                return [], []
+            # [arr1, arr2, ...]
+            arrs   = [a for (a, _, _, _, _) in loaded]
+            # [(oy1, ox1, h1, w1), (oy2, ox2, h2, w2), ...]
+            extras = [(oy, ox, h, w) for (_, oy, ox, h, w) in loaded]
+            return arrs, extras
 
         def _post_one(res, oy, ox, h, w):
             """
-            return :
-            boxes_xyxy_full: np.ndarray[K,4] (float32 xyxy, full-image coords)
-            labels:          np.ndarray[K]   (int16)
-            confs:           np.ndarray[K]   (float32)
+            Post-process one patch result:
+            args:
+                res: output for one patch
+                oy, ox: top-left offsets of the patch in full image
+                h, w: actual patch height and width
+            Returns:
+                (xyxy_full, cls_idx, confs)
+                xyxy_full: full-image coords [x1,y1,x2,y2]
+                cls_idx: class index
+                confs: confidence
             """
-            # get xywh / cls / conf
+            # extract boxes. if no boxes, return empty arrays
             if res.boxes.xywh.numel():
+                # detach(): detach from computation graph
+                # cpu(): move to CPU
+                # numpy(): convert to numpy array
+                # astype(): convert data type
                 xywh = res.boxes.xywh.detach().cpu().numpy().astype(np.float32)
             else:
                 xywh = np.zeros((0, 4), np.float32)
+            # extract class index. if no boxes, return empty array
             if res.boxes.cls.numel():
                 cls_idx = res.boxes.cls.detach().cpu().numpy().astype(np.int16)
             else:
                 cls_idx = np.zeros((0,), np.int16)
+            # extract confidence. if no boxes, return empty array
             if res.boxes.conf.numel():
                 confs = res.boxes.conf.detach().cpu().numpy().astype(np.float32)
             else:
                 confs = np.zeros((0,), np.float32)
 
-            # confidence threshold (apply a very loose filtering first)
+            # confidence threshold: if exists and there are boxes, filter out low-conf boxes
             if conf_thres is not None and xywh.shape[0]:
                 m = confs >= float(conf_thres)
                 xywh = xywh[m]; cls_idx = cls_idx[m]; confs = confs[m]
 
-            # xywh -> full-image xyxy
+            # convert patch coords [x,y,w,h] to full-image coords [x1,y1,x2,y2]
             xyxy_full = self._xywh_to_xyxy_full(xywh, oy, ox)
 
             # Clip to the actual patch window [pl,pt,pr,pb] using the patch size
-            pl, pt = float(ox), float(oy)
-            pr, pb = pl + float(w), pt + float(h)   # ← not fixed +640!
+            pl, pt = float(ox), float(oy)           # left, top coords of corresponding patch in full-image
+            pr, pb = pl + float(w), pt + float(h)   # right, bottom coords of corresponding patch in full-image
+            # if there are boxes, clip them
             if xyxy_full.size:
                 xyxy_full[:, 0] = np.clip(xyxy_full[:, 0], pl, pr)
                 xyxy_full[:, 1] = np.clip(xyxy_full[:, 1], pt, pb)
@@ -216,17 +256,9 @@ class YOLOPipeline:
                     cls_idx.astype(np.int16,  copy=False),
                     confs.astype(np.float32,  copy=False))
 
-        def _load_batch(i, bs):
-            batch = list(zip(files[i:i+bs], offsets[i:i+bs, 0], offsets[i:i+bs, 1]))
-            loaded = list(io_pool.map(_load_one, batch))
-            loaded = [x for x in loaded if x is not None]
-            if not loaded:
-                return [], []
-            arrs   = [a for (a, _, _, _, _) in loaded]
-            extras = [(oy, ox, h, w) for (_, oy, ox, h, w) in loaded]
-            return arrs, extras
+        
 
-        # ---------- main loop with OOM backoff ----------
+        # ---------- Main Part of YOLO Inference ----------
         all_boxes_list   = []
         all_labels_list  = []
         all_confs_list   = []
@@ -376,7 +408,7 @@ class YOLOPipeline:
 
         boxes_fused, labels_fused, confs_fused = self._cross_class_fusion(
             boxes_nms, labels_nms, confs_nms,
-            iou_thr=0.6,           # 0.55~0.65 common; higher is stricter
+            iou_thr=0.9,           # 0.55~0.65 common; higher is stricter
             class_decision="sum",  # "sum" is most stable; can also use "max" / "vote"
             fuse="wbf"             # "wbf" is robust; can also use "avg" / "max"
         )
@@ -401,7 +433,7 @@ class YOLOPipeline:
         # write JSON (reuse existing _save_results -> also computes FM/MAS)
         self._save_results(det_list, boxes_out, labels_out)
 
-        return det_list, boxes_out.astype(np.float32, copy=False), labels_out .astype(np.int16, copy=False)
+        return det_list, boxes_out.astype(np.float32, copy=False), labels_out.astype(np.int16, copy=False)
 
     # helper function: process_patches()
     def _iou_numpy_single(self, box, boxes_arr):

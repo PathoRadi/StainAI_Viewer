@@ -9,6 +9,7 @@ import logging
 import gc
 import numpy as np
 import tifffile as tiff
+import time
 from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
 from PIL import Image
@@ -154,67 +155,100 @@ def detect_image(request):
       5) Generate Original_Mmap.tiff (compatible mode)
       6) Clean up temp files
     """
+
+
+    """
+    0) Initialization
+    """
+    start = time.perf_counter()
+    # check request method is POST
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid detect'}, status=400)
 
-    body = json.loads(request.body or "{}")
-    image_url = body.get('image_path')  # e.g. /media/<project>/...
+    # Get project_name from request body
+    body = json.loads(request.body or "{}")                           # body = {'image_path': 'media/<project>/original/xxx.png'}
+    image_url = body.get('image_path')                                # image_url = 'media/<project>/original/xxx.png'
     if not image_url:
         return HttpResponseBadRequest("image_path required")
+    project_name = image_url.strip('/').split('/')[1]                 # project_name = <project>
+    project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)    # project_dir = home/site/wwwroot/media/<project>
 
-    project_name = image_url.strip('/').split('/')[1]  # /media/<project>/...
-    project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)
+    # Get original image path, width and height
+    orig_dir  = os.path.join(project_dir, 'original')                 # orig_dir = home/site/wwwroot/media/<project>/original
+    orig_name = os.listdir(orig_dir)[0]                               # orig_name = xxx.png
+    orig_path = os.path.join(orig_dir, orig_name)                     # orig_path = home/site/wwwroot/media/<project>/original/xxx.png
+    ow, oh = _image_size_wh(orig_path)                                # ow, oh = original image width, height
 
-    # --- Get original image file ---
-    orig_dir  = os.path.join(project_dir, 'original')
-    orig_name = os.listdir(orig_dir)[0]
-    orig_path = os.path.join(orig_dir, orig_name)
-    ow, oh = _image_size_wh(orig_path)  # w, h
-
-    # --- Prepare display image (use resized if exists, else original) ---
-    _set_progress_stage(project_name, 'gray')                            # Enter 1) gray stage
+    # Prepare display image (resized if too large, else keep using original)
+    _set_progress_stage(project_name, 'gray')                         # Enter 1) gray stage
     if oh > 20000 or ow > 20000:
-        disp_path = ImageResizer(orig_path, project_dir).resize()        # resize if any side >20000
+        disp_path = ImageResizer(orig_path, project_dir).resize()     # resize if any side >20000
+        logger.info("Resized display image created")
     else:
         disp_path = orig_path
+    init_stage_end = time.perf_counter()
+    logger.info("Initialization done")
 
-    # --- 1) Convert to grayscale (PIL version) ---
+
+
+
+    """
+    1) Convert to grayscale
+    """
+    gray_stage_start = time.perf_counter()
     GrayScaleImage(orig_path, project_dir).rgb_to_gray()
-    logger.info("Grayscale conversion done")
     gc.collect()
+    gray_stage_end = time.perf_counter()
+    logger.info("Grayscale conversion done")
     
 
-    # --- 2) Cut patch (PIL version) ---
-    _set_progress_stage(project_name, 'cut')                  # Enter 2) cut stage
+
+
+    """
+    2) Cut patches
+    """
+    cut_stage_start = time.perf_counter()
+    _set_progress_stage(project_name, 'cut')                          # Enter 2) cut stage
     gray_dir = os.path.join(project_dir, 'gray')
     gray_name = os.listdir(gray_dir)[0]
     gray_path = os.path.join(gray_dir, gray_name)
     CutImage(gray_path, project_dir).cut()
-    logger.info("Image cutting done")
     gc.collect()
+    cut_stage_end = time.perf_counter()
+    logger.info("Image cutting done")
     
 
-    # --- 3) YOLO pipeline ---
-    _set_progress_stage(project_name, 'yolo')                 # Enter 3) yolo stage
+
+
+    """
+    3) YOLO Inference
+    """
+    yolo_stage_start = time.perf_counter()
+    _set_progress_stage(project_name, 'yolo')                         # Enter 3) yolo stage
     model = get_yolo_model()
     patches_dir = os.path.join(project_dir, 'patches')
     pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
     detections = pipeline.run()
-    logger.info("YOLO inference done")
     gc.collect()
+    yolo_stage_end = time.perf_counter()
+    logger.info("YOLO inference done")
 
-    # --- 4) Processing Result ---
-    _set_progress_stage(project_name, 'proc')                 # Enter 4) proc stage
-    # Get display image size and URL ---
-    dw, dh = _image_size_wh(disp_path)   # w, h
+
+
+
+    """
+    4) Processing Result
+    """
+    proc_stage_start = time.perf_counter()
+    _set_progress_stage(project_name, 'proc')                         # Enter 4) proc stage
+    dw, dh = _image_size_wh(disp_path)                                # dw, dh = display image width, height
 
     # Generate Original_Mmap.tiff
     original_mmap_dir = os.path.join(project_dir, 'original_mmap')
     os.makedirs(original_mmap_dir, exist_ok=True)
+
     annotated_jpg = os.path.join(project_dir, 'annotated', project_name + '_annotated.jpg')
-    original_mmap_inputs = [orig_path]
-    if os.path.exists(annotated_jpg):
-        original_mmap_inputs.append(annotated_jpg)
+    original_mmap_inputs = [orig_path, annotated_jpg]
     combine_rgb_tiff_from_paths(
         output_dir=original_mmap_dir,
         img_paths=original_mmap_inputs,
@@ -223,13 +257,30 @@ def detect_image(request):
         pad_align="center",
         pad_value=(255, 255, 255),
     )
-
+    gc.collect()
+    proc_stage_end = time.perf_counter()
     logger.info("Mmap.tiff generation done")
 
+
+    
+
     # --- 5) Finished ---
-    _set_progress_stage(project_name, 'done')               # Enter 5) done stage
-    logger.info("Detection process completed")
+    done_stage_start = time.perf_counter()
+    _set_progress_stage(project_name, 'done')                         # Enter 5) done stage
     gc.collect()
+    end = time.perf_counter()
+    logger.info("Detection process completed")
+
+
+    
+
+    logger.info(f"0) Initialization: {format_hms(init_stage_end - start)}")
+    logger.info(f"1) Grayscale: {format_hms(gray_stage_end - gray_stage_start)}")
+    logger.info(f"2) Cut patches: {format_hms(cut_stage_end - cut_stage_start)}")
+    logger.info(f"3) YOLO pipeline: {format_hms(yolo_stage_end - yolo_stage_start)}")
+    logger.info(f"4) Processing Result: {format_hms(proc_stage_end - proc_stage_start)}")
+    logger.info(f"5) Done stage: {format_hms(end - done_stage_start)}")
+    logger.info(f"Total detection time: {format_hms(end - start)}")
     
 
     return JsonResponse({
@@ -238,6 +289,13 @@ def detect_image(request):
         'display_size': [dh, dw],
         'display_url': _to_media_url(disp_path),
     })
+
+def format_hms(elapsed: float) -> str:
+    """Format elapsed seconds to HH:MM:SS."""
+    total_seconds = int(round(elapsed))
+    h, rem = divmod(total_seconds, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
 # helper funtion: upload_image(), detect_image()
 def _image_size_wh(path: str):
