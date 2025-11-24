@@ -287,7 +287,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       .then(r => r.json())
       .then(d => {
         window.imgPath = d.image_url;
-        previewImg.src = window.imgPath;
+        // previewImg.src = window.imgPath;
         previewContainer.style.display = 'block';
         document.getElementById('start-detect-btn').disabled = false;
       })
