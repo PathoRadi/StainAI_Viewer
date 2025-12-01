@@ -407,8 +407,29 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     window.chartRefs.push(c2);
 
     // Add to history
+    const parts = (window.imgPath || d.display_url || '').split('/');
+    // Use the filename as the display name and remove trailing '_resized'
+    const fileName = parts.length ? parts[parts.length - 1] : projectDir;
+
+    historyStack.push({
+      dir:        projectDir,                    // used later for reusing detection
+      name:       fileName.replace('_resized',''),
+      displayUrl: d.display_url,
+      boxes:      window.bboxData.slice(),       // store a snapshot of bbox
+      origSize:   d.orig_size,
+      dispSize:   d.display_size,
+      demo:       !!window.isDemoUpload
+    });
+    window.isDemoUpload = false;
+
     import('./history.js').then(mod => {
       mod.updateHistoryUI(historyStack);
+
+      // small delay to wait for DOM to render, then mark the latest item as selected
+      setTimeout(() => {
+        $('.history-item').removeClass('selected');
+        $(`.history-item[data-idx="${historyStack.length - 1}"]`).addClass('selected');
+      }, 0);
     });
   }
 
