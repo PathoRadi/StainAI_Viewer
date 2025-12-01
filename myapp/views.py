@@ -11,6 +11,7 @@ import numpy as np
 import tifffile as tiff
 import time
 import threading
+from json import JSONDecodeError
 from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
 from PIL import Image
@@ -281,7 +282,6 @@ def _run_detection_job(project_name: str, image_url: str):
         # 5) Done stage + save result
         # ---------------------------
         done_stage_start = time.perf_counter()
-        _set_progress_stage(project_name, "done")  # enter stage 5) done
 
         # Write result JSON for frontend /detect_result to read
         result = {
@@ -293,6 +293,8 @@ def _run_detection_job(project_name: str, image_url: str):
         result_path = os.path.join(project_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
             json.dump(result, f)
+
+        _set_progress_stage(project_name, "done")  # enter stage 5) done
 
         end = time.perf_counter()
         logger.info("Detection job finished: result saved to %s", result_path)
@@ -372,7 +374,24 @@ def detect_result(request):
 
     with open(result_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return JsonResponse(data)
+
+    for _ in range(3):   # Try up to three times
+        try:
+            with open(result_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            if not content.strip():
+                # Content is empty; wait a bit and retry
+                time.sleep(0.2)
+                continue
+
+            data = json.loads(content)
+            return JsonResponse(data)
+        except JSONDecodeError:
+            # File may be being written; wait a bit and retry
+            time.sleep(0.2)
+
+    logger.error("detect_result: JSON not ready or invalid for project=%s", project_name)
+    return HttpResponseServerError("result not ready; please retry")
 
 
 def format_hms(elapsed: float) -> str:
