@@ -228,8 +228,31 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         .then(r => r.json())
         .then(({ stage }) => {
           gotoStage(stage);
-          if (stage === 'done' || stage === 'error') {
-            stopStageWatcher(); // overlay will finally closed outside
+          if (stage === 'done') {
+            stopStageWatcher();
+
+            fetch(`${DETECT_RESULT_URL}?project=${encodeURIComponent(projectName)}`, {
+              cache: 'no-store'
+            })
+              .then(r => {
+                if (!r.ok) throw new Error('HTTP' + r.status);
+                return r.json();
+              })
+              .then(d => {
+                handleDetectionResult(d, projectName);
+              })
+              .catch(err => {
+                console.error("Fetch detect result error:", err);
+                hideProgressOverlay();
+                alert("⚠️ Detection finished but result failed to load.");
+                document.getElementById('drop-zone').style.display = 'flex';
+              });
+          }
+          else if (stage === 'error') {
+            stopStageWatcher();
+            hideProgressOverlay();
+            alert("⚠️ Detection error on server.");
+            document.getElementById('drop-zone').style.display = 'flex';
           }
         })
         .catch(() => {});
@@ -287,7 +310,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       .then(r => r.json())
       .then(d => {
         window.imgPath = d.image_url;
-        // previewImg.src = window.imgPath;
         previewContainer.style.display = 'block';
         document.getElementById('start-detect-btn').disabled = false;
       })
@@ -320,6 +342,78 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   dropUploadInput.addEventListener('change', () => {
     handleFileUpload(dropUploadInput.files[0], UPLOAD_IMAGE_URL)
   });
+
+
+  function handleDetectionResult(d, projectDir) {
+    const boxes         = d.boxes;
+    const [origW,origH] = d.orig_size;
+    const [dispW,dispH] = d.display_size;
+
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    // scale boxes for viewer display
+    window.bboxData = (scaleX !== 1 || scaleY !== 1)
+      ? boxes.map(b => ({
+          type: b.type,
+          coords: [
+            b.coords[0] * scaleX,
+            b.coords[1] * scaleY,
+            b.coords[2] * scaleX,
+            b.coords[3] * scaleY
+          ]
+        }))
+      : boxes.slice();
+
+    // UI update
+    document.getElementById('drop-zone').style.display = 'none';
+    hideProgressOverlay();
+    window.showMain();
+
+    clearBoxes();
+
+    // load display image
+    window.viewer.open({
+      type: 'image',
+      url: d.display_url,
+      buildPyramid: false
+    });
+
+    window.viewer.addOnceHandler('open', () => {
+      const vp = window.viewer.viewport;
+      vp.fitBounds(vp.getHomeBounds(), true);
+      window.zoomFloor = vp.getHomeZoom();
+
+      drawBbox(window.bboxData);
+
+      // enable all checkboxes
+      showAllBoxes();
+      $('#checkbox_All').prop('checked', true);
+      $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+        .prop('checked', true);
+    });
+
+    // Rebuild all charts
+    const wrappers = document.getElementById('barChart-wrappers');
+    document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
+    window.chartRefs = [];
+
+    // Chart #1 (full image)
+    const c1 = addBarChart('barChart-wrappers');
+    window.chartRefs.push(c1);
+
+    // Chart #2 (empty ROI chart)
+    const c2 = addBarChart('barChart-wrappers1');
+    window.chartRefs.push(c2);
+
+    // Add to history
+    import('./history.js').then(mod => {
+      mod.updateHistoryUI(historyStack);
+    });
+  }
+
+
+
 
   startDetectBtn.addEventListener('click', () => {
     const parts      = window.imgPath.split('/');
@@ -375,113 +469,116 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       return r.json();
     })
     .then(d => {
-      const boxes         = d.boxes;
-      const [origW,origH] = d.orig_size;
-      const [dispW,dispH] = d.display_size;
-      const scaleX        = dispW / origW;
-      const scaleY        = dispH / origH;
-      window.bboxData = (scaleX !== 1 || scaleY !== 1)
-        ? boxes.map(b => ({
-            type: b.type,
-            coords: [
-              b.coords[0] * scaleX,
-              b.coords[1] * scaleY,
-              b.coords[2] * scaleX,
-              b.coords[3] * scaleY
-            ]
-          }))
-        : boxes.slice();
-
-      dropZone.style.display                          = 'none';
-      hideProgressOverlay();
-      showMain();
-
-      // clearBoxes();
-      // drawBbox(window.bboxData);
-      clearBoxes();
-
-      window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
-      window.viewer.addOnceHandler('open', () => {
-        const vp = window.viewer.viewport;
-        vp.fitBounds(vp.getHomeBounds(), true);
-        window.zoomFloor = vp.getHomeZoom();
-
-        drawBbox(window.bboxData);
-
-        showAllBoxes();
-        $('#checkbox_All').prop('checked', true);
-        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-          .prop('checked', true);
-      });
-
-      const wrappers = document.getElementById('barChart-wrappers');
-      
-      // If charts exist, destroy and recreate them with new data
-      const allWrappers = document.querySelectorAll('.barChart-wrapper');
-      if (window.chartRefs.length > 0) {
-        window.chartRefs.forEach(c => c?.destroy?.());
-        window.chartRefs = [];
-        allWrappers.forEach(w => {
-          const canvas = w.querySelector('canvas.barChart');
-          if (!canvas) return;
-          const newChart = createBarChart(canvas.id);
-          initCheckboxes(window.bboxData, newChart);
-          const idx = parseInt(canvas.id.replace('barChart',''), 10);
-          if (idx === 1) {
-            updateChart(window.bboxData, newChart);     // full image results
-          } else {
-            newChart.data.datasets[0].data = [0,0,0,0,0,0]; // others: start empty
-            newChart.update();
-          }
-          window.chartRefs.push(newChart);
-        });
-      }
-      // If the current total is less than 2, add charts to make it 2 (#1 in wrappers, #2 in wrappers1)
-      const totalNow = document.querySelectorAll('.barChart-wrapper').length;
-      if (totalNow === 0) {
-       const c1 = addBarChart('barChart-wrappers');
-        window.chartRefs.push(c1);
-        const c2 = addBarChart('barChart-wrappers1');
-        window.chartRefs.push(c2);
-      } else if (totalNow === 1) {
-        const c2 = addBarChart('barChart-wrappers1');
-        window.chartRefs.push(c2);
-      }
-
-      historyStack.push({
-        dir:        projectDir,
-        name:       parts.pop().replace('_resized',''),
-        displayUrl: d.display_url,
-        boxes:      window.bboxData.slice(),
-        origSize:   d.orig_size,
-        dispSize:   d.display_size,
-        demo:       !!window.isDemoUpload
-      });
-      window.isDemoUpload = false;
-      import('./history.js').then(mod => {
-        mod.updateHistoryUI(historyStack);
-        setTimeout(() => {  
-          $('.history-item').removeClass('selected');
-          $(`.history-item[data-idx="${historyStack.length - 1}"]`).addClass('selected');
-        }, 0);
-      });
-
-      // Update all charts with new data and reset filters
-      if (Array.isArray(window.chartRefs)) {
-        $('#checkbox_All').prop('checked', true);
-        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
-        showAllBoxes();
-        window.chartRefs.forEach(chart => {
-          const isChart1 = chart?.canvas?.id === 'barChart1';
-          if (isChart1) {
-            updateChart(window.bboxData, chart);             // #1: full image results
-          } else {
-            chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: start empty
-            chart.update();
-          }
-        });
-      }
+      console.log("Detection job started:", d);
     })
+    // .then(d => {
+    //   const boxes         = d.boxes;
+    //   const [origW,origH] = d.orig_size;
+    //   const [dispW,dispH] = d.display_size;
+    //   const scaleX        = dispW / origW;
+    //   const scaleY        = dispH / origH;
+    //   window.bboxData = (scaleX !== 1 || scaleY !== 1)
+    //     ? boxes.map(b => ({
+    //         type: b.type,
+    //         coords: [
+    //           b.coords[0] * scaleX,
+    //           b.coords[1] * scaleY,
+    //           b.coords[2] * scaleX,
+    //           b.coords[3] * scaleY
+    //         ]
+    //       }))
+    //     : boxes.slice();
+
+    //   dropZone.style.display                          = 'none';
+    //   hideProgressOverlay();
+    //   showMain();
+
+    //   // clearBoxes();
+    //   // drawBbox(window.bboxData);
+    //   clearBoxes();
+
+    //   window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
+    //   window.viewer.addOnceHandler('open', () => {
+    //     const vp = window.viewer.viewport;
+    //     vp.fitBounds(vp.getHomeBounds(), true);
+    //     window.zoomFloor = vp.getHomeZoom();
+
+    //     drawBbox(window.bboxData);
+
+    //     showAllBoxes();
+    //     $('#checkbox_All').prop('checked', true);
+    //     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+    //       .prop('checked', true);
+    //   });
+
+    //   const wrappers = document.getElementById('barChart-wrappers');
+      
+    //   // If charts exist, destroy and recreate them with new data
+    //   const allWrappers = document.querySelectorAll('.barChart-wrapper');
+    //   if (window.chartRefs.length > 0) {
+    //     window.chartRefs.forEach(c => c?.destroy?.());
+    //     window.chartRefs = [];
+    //     allWrappers.forEach(w => {
+    //       const canvas = w.querySelector('canvas.barChart');
+    //       if (!canvas) return;
+    //       const newChart = createBarChart(canvas.id);
+    //       initCheckboxes(window.bboxData, newChart);
+    //       const idx = parseInt(canvas.id.replace('barChart',''), 10);
+    //       if (idx === 1) {
+    //         updateChart(window.bboxData, newChart);     // full image results
+    //       } else {
+    //         newChart.data.datasets[0].data = [0,0,0,0,0,0]; // others: start empty
+    //         newChart.update();
+    //       }
+    //       window.chartRefs.push(newChart);
+    //     });
+    //   }
+    //   // If the current total is less than 2, add charts to make it 2 (#1 in wrappers, #2 in wrappers1)
+    //   const totalNow = document.querySelectorAll('.barChart-wrapper').length;
+    //   if (totalNow === 0) {
+    //    const c1 = addBarChart('barChart-wrappers');
+    //     window.chartRefs.push(c1);
+    //     const c2 = addBarChart('barChart-wrappers1');
+    //     window.chartRefs.push(c2);
+    //   } else if (totalNow === 1) {
+    //     const c2 = addBarChart('barChart-wrappers1');
+    //     window.chartRefs.push(c2);
+    //   }
+
+    //   historyStack.push({
+    //     dir:        projectDir,
+    //     name:       parts.pop().replace('_resized',''),
+    //     displayUrl: d.display_url,
+    //     boxes:      window.bboxData.slice(),
+    //     origSize:   d.orig_size,
+    //     dispSize:   d.display_size,
+    //     demo:       !!window.isDemoUpload
+    //   });
+    //   window.isDemoUpload = false;
+    //   import('./history.js').then(mod => {
+    //     mod.updateHistoryUI(historyStack);
+    //     setTimeout(() => {  
+    //       $('.history-item').removeClass('selected');
+    //       $(`.history-item[data-idx="${historyStack.length - 1}"]`).addClass('selected');
+    //     }, 0);
+    //   });
+
+    //   // Update all charts with new data and reset filters
+    //   if (Array.isArray(window.chartRefs)) {
+    //     $('#checkbox_All').prop('checked', true);
+    //     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
+    //     showAllBoxes();
+    //     window.chartRefs.forEach(chart => {
+    //       const isChart1 = chart?.canvas?.id === 'barChart1';
+    //       if (isChart1) {
+    //         updateChart(window.bboxData, chart);             // #1: full image results
+    //       } else {
+    //         chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: start empty
+    //         chart.update();
+    //       }
+    //     });
+    //   }
+    // })
     .catch(err => {
       console.error('Detection error:', err);
       stopStageWatcher();

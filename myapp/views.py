@@ -10,6 +10,7 @@ import gc
 import numpy as np
 import tifffile as tiff
 import time
+import threading
 from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
 from PIL import Image
@@ -144,151 +145,235 @@ def upload_image(request):
 # ---------------------------
 # Detection
 # ---------------------------
+def _run_detection_job(project_name: str, image_url: str):
+    start = time.perf_counter()
+
+    try:
+        # ---------------------------
+        # 0) Initialization
+        # ---------------------------
+        project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+        if not os.path.isdir(project_dir):
+            logger.error("Project dir not found: %s", project_dir)
+            _set_progress_stage(project_name, "error")
+            return
+
+        orig_dir = os.path.join(project_dir, "original")
+        if not os.path.isdir(orig_dir):
+            logger.error("Original dir not found: %s", orig_dir)
+            _set_progress_stage(project_name, "error")
+            return
+
+        # Pick the first non-hidden file as the original image
+        orig_files = [f for f in os.listdir(orig_dir)
+                      if not f.startswith(".")]
+        if not orig_files:
+            logger.error("No original image in %s", orig_dir)
+            _set_progress_stage(project_name, "error")
+            return
+
+        orig_name = orig_files[0]
+        orig_path = os.path.join(orig_dir, orig_name)
+        ow, oh = _image_size_wh(orig_path)   # (width, height)
+
+        # Decide which image to show in the viewer (if any side > 20000, create a half-size display image)
+        _set_progress_stage(project_name, "gray")  # enter stage 1) gray
+        if oh > 20000 or ow > 20000:
+            disp_path = ImageResizer(orig_path, project_dir).resize()
+            logger.info("Resized display image created: %s", disp_path)
+        else:
+            disp_path = orig_path
+
+        init_stage_end = time.perf_counter()
+        logger.info("Initialization done")
+
+
+
+        # ---------------------------
+        # 1) Convert to grayscale
+        # ---------------------------
+        gray_stage_start = time.perf_counter()
+        GrayScaleImage(orig_path, project_dir).rgb_to_gray()
+        gc.collect()
+        gray_stage_end = time.perf_counter()
+        logger.info("Grayscale conversion done")
+
+
+
+        # ---------------------------
+        # 2) Cut patches
+        # ---------------------------
+        cut_stage_start = time.perf_counter()
+        _set_progress_stage(project_name, "cut")   # enter stage 2) cut
+
+        gray_dir = os.path.join(project_dir, "gray")
+        gray_files = [f for f in os.listdir(gray_dir)
+                      if not f.startswith(".")]
+        if not gray_files:
+            logger.error("No grayscale image in %s", gray_dir)
+            _set_progress_stage(project_name, "error")
+            return
+
+        gray_name = gray_files[0]
+        gray_path = os.path.join(gray_dir, gray_name)
+
+        CutImage(gray_path, project_dir).cut()
+        gc.collect()
+        cut_stage_end = time.perf_counter()
+        logger.info("Image cutting done")
+
+
+
+        # ---------------------------
+        # 3) YOLO Inference
+        # ---------------------------
+        yolo_stage_start = time.perf_counter()
+        _set_progress_stage(project_name, "yolo")  # enter stage 3) yolo
+
+        model = get_yolo_model()
+        patches_dir = os.path.join(project_dir, "patches")
+        pipeline = YOLOPipeline(model, patches_dir,
+                                orig_path, gray_path, project_dir)
+        detections = pipeline.run()
+        gc.collect()
+        yolo_stage_end = time.perf_counter()
+        logger.info("YOLO inference done (boxes=%d)", len(detections))
+
+
+
+        # ---------------------------
+        # 4) Processing Result
+        # ---------------------------
+        proc_stage_start = time.perf_counter()
+        _set_progress_stage(project_name, "proc")  # enter stage 4) proc
+
+        dw, dh = _image_size_wh(disp_path)  # display image (w, h)
+
+        # Create Original_Mmap.tiff
+        original_mmap_dir = os.path.join(project_dir, "original_mmap")
+        os.makedirs(original_mmap_dir, exist_ok=True)
+
+        annotated_jpg = os.path.join(
+            project_dir, "annotated", project_name + "_annotated.jpg"
+        )
+        original_mmap_inputs = [orig_path, annotated_jpg]
+
+        try:
+            combine_rgb_tiff_from_paths(
+                output_dir=original_mmap_dir,
+                img_paths=original_mmap_inputs,
+                filename=f"{project_name}_mmap.tif",
+                size_mode="pad",       # pad to the maximum width/height
+                pad_align="center",
+                pad_value=(255, 255, 255),  # white padding
+            )
+            logger.info("Original_Mmap.tiff created")
+        except Exception:
+            # If mmap creation fails, don't crash the whole job; just log it
+            logger.exception("Failed to generate Original_Mmap.tiff")
+
+        proc_stage_end = time.perf_counter()
+        logger.info("Processing result done")
+
+
+
+        # ---------------------------
+        # 5) Done stage + save result
+        # ---------------------------
+        done_stage_start = time.perf_counter()
+        _set_progress_stage(project_name, "done")  # enter stage 5) done
+
+        # Write result JSON for frontend /detect_result to read
+        result = {
+            "boxes": detections,
+            "orig_size": [oh, ow],
+            "display_size": [dh, dw],
+            "display_url": _to_media_url(disp_path),
+        }
+        result_path = os.path.join(project_dir, "_detect_result.json")
+        with open(result_path, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+
+        end = time.perf_counter()
+        logger.info("Detection job finished: result saved to %s", result_path)
+
+        # Log stage timings (corresponding to the original detect_image logs)
+        logger.info("1) Grayscale: %s",
+                    format_hms(gray_stage_end - gray_stage_start))
+        logger.info("2) Cut patches: %s",
+                    format_hms(cut_stage_end - cut_stage_start))
+        logger.info("3) YOLO pipeline: %s",
+                    format_hms(yolo_stage_end - yolo_stage_start))
+        logger.info("4) Processing Result: %s",
+                    format_hms(proc_stage_end - proc_stage_start))
+        logger.info("5) Done stage: %s",
+                    format_hms(end - done_stage_start))
+        logger.info("Total detection time: %s",
+                    format_hms(end - start))
+
+    except Exception:
+        logger.exception("Detection job failed (project=%s)", project_name)
+        _set_progress_stage(project_name, "error")
+
 @csrf_exempt
 def detect_image(request):
     """
-    Start Detection process:
-      1) Prepare display image (use resized or original)
-      2) Grayscale → cut patch (PIL version)
-      3) YOLO inference (lazy import)
-      4) Return boxes + size + display image URL
-      5) Generate Original_Mmap.tiff (compatible mode)
-      6) Clean up temp files
+    Only responsible for starting a background detection job so the HTTP request
+    returns immediately and does not time out.
     """
+    if request.method != "POST":
+        return JsonResponse({"error": "Invalid detect"}, status=400)
 
+    try:
+        body = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return HttpResponseBadRequest("invalid json")
 
-    """
-    0) Initialization
-    """
-    start = time.perf_counter()
-    # check request method is POST
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Invalid detect'}, status=400)
-
-    # Get project_name from request body
-    body = json.loads(request.body or "{}")                           # body = {'image_path': 'media/<project>/original/xxx.png'}
-    image_url = body.get('image_path')                                # image_url = 'media/<project>/original/xxx.png'
+    image_url = body.get("image_path")
     if not image_url:
         return HttpResponseBadRequest("image_path required")
-    project_name = image_url.strip('/').split('/')[1]                 # project_name = <project>
-    project_dir  = os.path.join(settings.MEDIA_ROOT, project_name)    # project_dir = home/site/wwwroot/media/<project>
 
-    # Get original image path, width and height
-    orig_dir  = os.path.join(project_dir, 'original')                 # orig_dir = home/site/wwwroot/media/<project>/original
-    orig_name = os.listdir(orig_dir)[0]                               # orig_name = xxx.png
-    orig_path = os.path.join(orig_dir, orig_name)                     # orig_path = home/site/wwwroot/media/<project>/original/xxx.png
-    ow, oh = _image_size_wh(orig_path)                                # ow, oh = original image width, height
+    # 'media/<project>/original/xxx.png' -> project_name
+    project_name = image_url.strip('/').split('/')[1]
 
-    # Prepare display image (resized if too large, else keep using original)
-    _set_progress_stage(project_name, 'gray')                         # Enter 1) gray stage
-    if oh > 20000 or ow > 20000:
-        disp_path = ImageResizer(orig_path, project_dir).resize()     # resize if any side >20000
-        logger.info("Resized display image created")
-    else:
-        disp_path = orig_path
-    init_stage_end = time.perf_counter()
-    logger.info("Initialization done")
+    # Clear old status and previous results
+    _set_progress_stage(project_name, "gray")    # or 'idle', depending on which stage you want to start displaying
+    proj_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+    try:
+        os.remove(os.path.join(proj_dir, "_detect_result.json"))
+    except FileNotFoundError:
+        pass
 
-
-
-
-    """
-    1) Convert to grayscale
-    """
-    gray_stage_start = time.perf_counter()
-    GrayScaleImage(orig_path, project_dir).rgb_to_gray()
-    gc.collect()
-    gray_stage_end = time.perf_counter()
-    logger.info("Grayscale conversion done")
-    
-
-
-
-    """
-    2) Cut patches
-    """
-    cut_stage_start = time.perf_counter()
-    _set_progress_stage(project_name, 'cut')                          # Enter 2) cut stage
-    gray_dir = os.path.join(project_dir, 'gray')
-    gray_name = os.listdir(gray_dir)[0]
-    gray_path = os.path.join(gray_dir, gray_name)
-    CutImage(gray_path, project_dir).cut()
-    gc.collect()
-    cut_stage_end = time.perf_counter()
-    logger.info("Image cutting done")
-    
-
-
-
-    """
-    3) YOLO Inference
-    """
-    yolo_stage_start = time.perf_counter()
-    _set_progress_stage(project_name, 'yolo')                         # Enter 3) yolo stage
-    model = get_yolo_model()
-    patches_dir = os.path.join(project_dir, 'patches')
-    pipeline = YOLOPipeline(model, patches_dir, orig_path, gray_path, project_dir)
-    detections = pipeline.run()
-    gc.collect()
-    yolo_stage_end = time.perf_counter()
-    logger.info("YOLO inference done")
-
-
-
-
-    """
-    4) Processing Result
-    """
-    proc_stage_start = time.perf_counter()
-    _set_progress_stage(project_name, 'proc')                         # Enter 4) proc stage
-    dw, dh = _image_size_wh(disp_path)                                # dw, dh = display image width, height
-
-    # Generate Original_Mmap.tiff
-    original_mmap_dir = os.path.join(project_dir, 'original_mmap')
-    os.makedirs(original_mmap_dir, exist_ok=True)
-
-    annotated_jpg = os.path.join(project_dir, 'annotated', project_name + '_annotated.jpg')
-    original_mmap_inputs = [orig_path, annotated_jpg]
-    combine_rgb_tiff_from_paths(
-        output_dir=original_mmap_dir,
-        img_paths=original_mmap_inputs,
-        filename=f"{project_name}_mmap.tif",
-        size_mode="pad",                  
-        pad_align="center",
-        pad_value=(255, 255, 255),
+    # Start background thread
+    th = threading.Thread(
+        target=_run_detection_job,
+        args=(project_name, image_url),
+        daemon=True
     )
-    gc.collect()
-    proc_stage_end = time.perf_counter()
-    logger.info("Mmap.tiff generation done")
+    th.start()
 
+    # Immediately respond; frontend only needs to know the job has started
+    return JsonResponse({"status": "started", "project": project_name})
 
-    
+@require_GET
+def detect_result(request):
+    """
+    Frontend calls this to fetch detection results when progress shows stage='done'.
+    """
+    project_name = request.GET.get("project") or ""
+    if not project_name:
+        return HttpResponseBadRequest("project required")
 
-    # --- 5) Finished ---
-    done_stage_start = time.perf_counter()
-    _set_progress_stage(project_name, 'done')                         # Enter 5) done stage
-    gc.collect()
-    end = time.perf_counter()
-    logger.info("Detection process completed")
+    proj_dir = os.path.join(settings.MEDIA_ROOT, project_name)
+    result_path = os.path.join(proj_dir, "_detect_result.json")
+    if not os.path.exists(result_path):
+        # still running / or not written yet
+        return JsonResponse({"status": "pending"}, status=202)
 
+    with open(result_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return JsonResponse(data)
 
-    
-
-    logger.info(f"0) Initialization: {format_hms(init_stage_end - start)}")
-    logger.info(f"1) Grayscale: {format_hms(gray_stage_end - gray_stage_start)}")
-    logger.info(f"2) Cut patches: {format_hms(cut_stage_end - cut_stage_start)}")
-    logger.info(f"3) YOLO pipeline: {format_hms(yolo_stage_end - yolo_stage_start)}")
-    logger.info(f"4) Processing Result: {format_hms(proc_stage_end - proc_stage_start)}")
-    logger.info(f"5) Done stage: {format_hms(end - done_stage_start)}")
-    logger.info(f"Total detection time: {format_hms(end - start)}")
-    
-
-    return JsonResponse({
-        'boxes': detections,
-        'orig_size': [oh, ow],
-        'display_size': [dh, dw],
-        'display_url': _to_media_url(disp_path),
-    })
 
 def format_hms(elapsed: float) -> str:
     """Format elapsed seconds to HH:MM:SS."""
