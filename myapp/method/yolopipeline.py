@@ -49,7 +49,6 @@ class YOLOPipeline:
         1. Process patches to get bounding boxes and labels.
         2. Save results to JSON.
         3. Annotate the large image with bounding boxes.
-        4. Generate Qmap from the large image and JSON results.
         Returns:
             List of dictionaries with bounding box coordinates and class types.
         """

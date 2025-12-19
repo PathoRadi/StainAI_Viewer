@@ -458,7 +458,7 @@ def delete_project(request):
         logger.exception("delete_project failed")
         return HttpResponseServerError("delete failed; see logs")
 
-#     return output_tiff_path
+# return output_tiff_path
 SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
 PadAlign = Literal["topleft", "center"]
 RGBVal = Union[int, Tuple[int, int, int]]
@@ -468,22 +468,23 @@ def combine_rgb_tiff_from_paths(
     img_paths: List[str],
     *,
     filename: str,
-    dtype: np.dtype = np.uint8,             # ImageJ 最相容：8-bit RGB
-    # 尺寸處理
+    dtype: np.dtype = np.uint8,             # ImageJ-compatible: 8-bit RGB
+    # size handling
     size_mode: SizeMode = "pad",            # "error" | "resize" | "pad" | "allow_mixed"
     target_size: Optional[Tuple[int, int]] = None,  # (H, W)
     pad_align: PadAlign = "center",
-    pad_value: RGBVal = (255, 255, 255),    # 補邊顏色（白）；要黑邊就 (0,0,0)
-    # 自動大圖優化
-    auto_tile_threshold: int = 10_000,      # 任一邊 ≥ 10k → tiled BigTIFF + 無壓縮
+    pad_value: RGBVal = (255, 255, 255),    # padding color (white); use (0,0,0) for black
+    # auto large-image optimization
+    auto_tile_threshold: int = 10_000,      # any side >= 10k -> tiled BigTIFF + no compression
     auto_tile_size: Tuple[int, int] = (1024, 1024),
 ) -> str:
     """
-    將多張彩色圖疊成 RGB 多頁 TIFF（ImageJ 顯示為 Z=頁數，不會拆成三色）。
-    - 一律轉為 RGB (H,W,3) with planarconfig='contig'
-    - 小圖預設：strip + LZW + predictor=2、無 metadata/description
-    - 大圖（任一邊 ≥ auto_tile_threshold 或估算逼近 4GiB）：
-        → 自動切換 tiled BigTIFF + 無壓縮（開啟更快、局部載入），仍為 RGB 單頁
+    Stack multiple color images into an RGB multi-page TIFF (ImageJ shows Z=pages).
+    - Always convert to RGB (H,W,3) with planarconfig='contig'
+    - Small images: strips + LZW + predictor=2, no metadata/description
+    - Large images (any side >= auto_tile_threshold or estimated near 4GiB):
+        -> automatically switch to tiled BigTIFF + no compression (faster opening, partial load),
+           still single-page RGB per page
     """
     if not img_paths:
         raise ValueError("img_paths cannot be empty")
@@ -492,7 +493,7 @@ def combine_rgb_tiff_from_paths(
     os.makedirs(output_dir, exist_ok=True)
     output_tiff_path = os.path.join(output_dir, filename)
 
-    # ---- 讀檔：一律轉成 RGB (H,W,3) ----
+    # ---- Load files: always convert to RGB (H,W,3) ----
     def _load_rgb(p: str) -> np.ndarray:
         with Image.open(p) as im:
             arr = np.asarray(im.convert("RGB"))
@@ -506,7 +507,7 @@ def combine_rgb_tiff_from_paths(
     dims = [(a.shape[0], a.shape[1]) for a in arrays]  # (H, W)
     H0, W0 = dims[0]
 
-    # ---- 決定目標尺寸 ----
+    # ---- Determine target size ----
     if size_mode == "resize":
         tgtH, tgtW = target_size if target_size else (H0, W0)
     elif size_mode == "pad":
@@ -518,46 +519,38 @@ def combine_rgb_tiff_from_paths(
     else:
         tgtH, tgtW = H0, W0
 
-    # ---- pad 顏色正規化 ----
+    # ---- Normalize pad color ----
     if isinstance(pad_value, tuple):
         if len(pad_value) != 3:
-            raise ValueError("pad_value 必須是長度 3 的 (R,G,B) 或單一整數")
+            raise ValueError("pad_value must be length-3 (R,G,B) or a single int")
         pv = tuple(int(x) for x in pad_value)
     else:
         pv = (int(pad_value),) * 3
 
-    # ---- 計算估算大小（決定是否 BigTIFF）----
-    # RGB 每頁未壓縮大小：約 tgtH * tgtW * 3 bytes
+
+    # ---- Estimate size (decide BigTIFF) ----
     est_bytes_per_page = int(tgtH) * int(tgtW) * 3
     num_pages = len(arrays)
     approx_uncompressed = est_bytes_per_page * num_pages
-    four_gib_safety = (1 << 32) - (1 << 25)  # ~4GiB - 32MiB，留些頭部/IFD 餘量
+    four_gib_safety = (1 << 32) - (1 << 25)  # ~4GiB - 32MiB
 
-    # 大圖判斷（尺寸 or 逼近 4GiB）
-    is_large = (tgtH >= auto_tile_threshold) or (tgtW >= auto_tile_threshold) or (approx_uncompressed > four_gib_safety)
+    # Enable BigTIFF only if the file truly approaches 4GiB
+    is_large = approx_uncompressed > four_gib_safety
 
-    # ---- 小圖預設參數：strip + LZW + predictor=2 -------
+    # ---- Unified params: use strips + LZW + predictor=2 (same for small and large images) ----
     compression = "lzw"
     predictor = 2
     rowsperstrip = 256
     use_tiles = False
     tile_size = None
-    bigtiff = bool(is_large)  # 大圖直接 BigTIFF；小圖可保持 False
-
-    # ---- 大圖自動切換：tiled BigTIFF + 無壓縮（開啟更快）----
-    if is_large:
-        compression = 'deflate'      # 無壓縮 → 開檔更快
-        predictor = 2 if compression in ('lzw','deflate') else None        # 無壓縮就不需要 predictor
-        use_tiles = True
-        tile_size = auto_tile_size
-        bigtiff = True
+    bigtiff = bool(is_large)  # Use BigTIFF only for very large files; otherwise treat like small images
 
     with tiff.TiffWriter(output_tiff_path, bigtiff=bigtiff) as tw:
         for arr, (h, w), path in zip(arrays, dims, img_paths):
-            # 尺寸處理
+            # size handling
             if size_mode == "error":
                 if (h, w) != (H0, W0):
-                    raise ValueError(f"所有輸入影像尺寸必須一致。第一張={(H0, W0)}，但 {path}={(h, w)}")
+                    raise ValueError(f"All input images must have the same size. First={(H0, W0)}, but {path}={(h, w)}")
                 out = arr
             elif size_mode == "resize":
                 if (h, w) != (tgtH, tgtW):
@@ -580,18 +573,18 @@ def combine_rgb_tiff_from_paths(
             elif size_mode == "allow_mixed":
                 out = arr
             else:
-                raise ValueError(f"未知 size_mode: {size_mode}")
+                raise ValueError(f"Unknown size_mode: {size_mode}")
 
             if out.dtype != dtype:
                 out = out.astype(dtype, copy=False)
 
-            # 寫檔參數（確保是一頁 RGB，不拆色版）
+            # write parameters (ensure single-page RGB, not split channels)
             write_kwargs = dict(
                 photometric="rgb",
-                planarconfig="contig",   # ✅ 單頁 RGB（不拆成三頁）
-                compression=compression, # None 或 'lzw'
+                planarconfig="contig",   # ✅ single-page RGB (not split into three pages)
+                compression=compression, # None or 'lzw'/'deflate'
                 metadata=None,
-                description="",          # 不寫 ImageDescription（避免 ImageJ hyperstack 誤判）
+                description="",          # do not write ImageDescription (avoid ImageJ hyperstack misinterpretation)
             )
             if predictor is not None and compression in ("lzw", "deflate"):
                 write_kwargs["predictor"] = predictor
