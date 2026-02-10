@@ -157,6 +157,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   const startDetectBtn   = document.getElementById('start-detect-btn');
   const resetBtn         = document.getElementById('upload-new-img-btn');
   window.chartRefs = [];
+  let isUploading = false;
 
   const mainEl = document.querySelector('.main-container');
   const showMain = () => { if (!mainEl) return; mainEl.hidden = false; };
@@ -273,6 +274,33 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     dropZone.classList.remove('blur');
   }
 
+  function resetPendingUpload() {
+    // 1) clear current uploaded path + disable start
+    window.imgPath = '';
+    window.isDemoUpload = false;
+    if (startDetectBtn) startDetectBtn.disabled = true;
+
+    // 2) clear preview image + container
+    if (previewImg) {
+      if (previewImg.dataset.objUrl) {
+        URL.revokeObjectURL(previewImg.dataset.objUrl);
+        delete previewImg.dataset.objUrl;
+      }
+      previewImg.onload = null;
+      previewImg.onerror = null;
+      previewImg.src = '';
+      previewImg.hidden = true;
+    }
+    if (previewContainer) previewContainer.style.display = 'none';
+
+    // 3) clear file input so selecting same file again still triggers change
+    if (dropUploadInput) dropUploadInput.value = '';
+  }
+
+  // expose so script.js (demo click) can call it before showing preview
+  window.resetPendingUpload = resetPendingUpload;
+
+
 
 
   window.__uploadFileViaDropZone = function(file){
@@ -281,12 +309,50 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   // Handle file upload to server
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
+    if (isUploading) {
+      console.warn('Upload already in progress, skip duplicate call');
+      return;
+    }
+    isUploading = true;
+
+    resetPendingUpload(); // clear old preview + reset previous temp upload
+
     const name = (file?.name || '').toLowerCase();
     if (name === 'demo.jpg' || name === 'demo.jpeg') {
       window.isDemoUpload = true;
     }
 
     const fd = new FormData();
+    // --- Local preview (works for click-upload & drop) ---
+    if (file && previewImg && previewContainer) {
+      // Revoke old objectURL (avoid memory leaks)
+      if (previewImg.dataset.objUrl) {
+        URL.revokeObjectURL(previewImg.dataset.objUrl);
+        delete previewImg.dataset.objUrl;
+      }
+
+      const objUrl = URL.createObjectURL(file);
+      previewImg.dataset.objUrl = objUrl;
+
+      // Show container first; image will be shown on load
+      previewContainer.style.display = 'block';
+      previewImg.hidden = true;
+
+      previewImg.onload = () => {
+        previewImg.hidden = false;
+        // Ensure the thumbnail is always visible: don't let max-height make it too small
+        previewImg.style.width = '70%';
+        previewImg.style.height = 'auto';
+        previewImg.style.objectFit = 'contain';
+      };
+
+      previewImg.onerror = () => {
+        previewImg.hidden = true;
+        previewContainer.style.display = 'none';
+      };
+
+      previewImg.src = objUrl;
+    }
     fd.append('image', file);
 
     const img = new Image();
@@ -314,7 +380,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         document.getElementById('start-detect-btn').disabled = false;
       })
       .catch(err => console.error(err))
-      .finally(() => hideProgressOverlay1());
+      .finally(() => {
+        hideProgressOverlay1();
+        isUploading = false;
+      });
     }
     img.src = URL.createObjectURL(file);
   }
@@ -337,6 +406,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     handleFileUpload(f, UPLOAD_IMAGE_URL);
   });
   dropUploadBtn.addEventListener('click',    () => {
+    resetPendingUpload(); // clear old preview + reset previous temp upload
     dropUploadInput.click()
   });
   dropUploadInput.addEventListener('change', () => {
@@ -492,114 +562,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     .then(d => {
       console.log("Detection job started:", d);
     })
-    // .then(d => {
-    //   const boxes         = d.boxes;
-    //   const [origW,origH] = d.orig_size;
-    //   const [dispW,dispH] = d.display_size;
-    //   const scaleX        = dispW / origW;
-    //   const scaleY        = dispH / origH;
-    //   window.bboxData = (scaleX !== 1 || scaleY !== 1)
-    //     ? boxes.map(b => ({
-    //         type: b.type,
-    //         coords: [
-    //           b.coords[0] * scaleX,
-    //           b.coords[1] * scaleY,
-    //           b.coords[2] * scaleX,
-    //           b.coords[3] * scaleY
-    //         ]
-    //       }))
-    //     : boxes.slice();
-
-    //   dropZone.style.display                          = 'none';
-    //   hideProgressOverlay();
-    //   showMain();
-
-    //   // clearBoxes();
-    //   // drawBbox(window.bboxData);
-    //   clearBoxes();
-
-    //   window.viewer.open({ type: 'image', url: d.display_url, buildPyramid: false });
-    //   window.viewer.addOnceHandler('open', () => {
-    //     const vp = window.viewer.viewport;
-    //     vp.fitBounds(vp.getHomeBounds(), true);
-    //     window.zoomFloor = vp.getHomeZoom();
-
-    //     drawBbox(window.bboxData);
-
-    //     showAllBoxes();
-    //     $('#checkbox_All').prop('checked', true);
-    //     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-    //       .prop('checked', true);
-    //   });
-
-    //   const wrappers = document.getElementById('barChart-wrappers');
-      
-    //   // If charts exist, destroy and recreate them with new data
-    //   const allWrappers = document.querySelectorAll('.barChart-wrapper');
-    //   if (window.chartRefs.length > 0) {
-    //     window.chartRefs.forEach(c => c?.destroy?.());
-    //     window.chartRefs = [];
-    //     allWrappers.forEach(w => {
-    //       const canvas = w.querySelector('canvas.barChart');
-    //       if (!canvas) return;
-    //       const newChart = createBarChart(canvas.id);
-    //       initCheckboxes(window.bboxData, newChart);
-    //       const idx = parseInt(canvas.id.replace('barChart',''), 10);
-    //       if (idx === 1) {
-    //         updateChart(window.bboxData, newChart);     // full image results
-    //       } else {
-    //         newChart.data.datasets[0].data = [0,0,0,0,0,0]; // others: start empty
-    //         newChart.update();
-    //       }
-    //       window.chartRefs.push(newChart);
-    //     });
-    //   }
-    //   // If the current total is less than 2, add charts to make it 2 (#1 in wrappers, #2 in wrappers1)
-    //   const totalNow = document.querySelectorAll('.barChart-wrapper').length;
-    //   if (totalNow === 0) {
-    //    const c1 = addBarChart('barChart-wrappers');
-    //     window.chartRefs.push(c1);
-    //     const c2 = addBarChart('barChart-wrappers1');
-    //     window.chartRefs.push(c2);
-    //   } else if (totalNow === 1) {
-    //     const c2 = addBarChart('barChart-wrappers1');
-    //     window.chartRefs.push(c2);
-    //   }
-
-    //   historyStack.push({
-    //     dir:        projectDir,
-    //     name:       parts.pop().replace('_resized',''),
-    //     displayUrl: d.display_url,
-    //     boxes:      window.bboxData.slice(),
-    //     origSize:   d.orig_size,
-    //     dispSize:   d.display_size,
-    //     demo:       !!window.isDemoUpload
-    //   });
-    //   window.isDemoUpload = false;
-    //   import('./history.js').then(mod => {
-    //     mod.updateHistoryUI(historyStack);
-    //     setTimeout(() => {  
-    //       $('.history-item').removeClass('selected');
-    //       $(`.history-item[data-idx="${historyStack.length - 1}"]`).addClass('selected');
-    //     }, 0);
-    //   });
-
-    //   // Update all charts with new data and reset filters
-    //   if (Array.isArray(window.chartRefs)) {
-    //     $('#checkbox_All').prop('checked', true);
-    //     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
-    //     showAllBoxes();
-    //     window.chartRefs.forEach(chart => {
-    //       const isChart1 = chart?.canvas?.id === 'barChart1';
-    //       if (isChart1) {
-    //         updateChart(window.bboxData, chart);             // #1: full image results
-    //       } else {
-    //         chart.data.datasets[0].data = [0,0,0,0,0,0];     // #2/#3/#4: start empty
-    //         chart.update();
-    //       }
-    //     });
-    //   }
-    // })
     .catch(err => {
       console.error('Detection error:', err);
       stopStageWatcher();

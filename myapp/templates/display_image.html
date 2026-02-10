@@ -23,6 +23,7 @@
   <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.7.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 
 <body>
@@ -285,6 +286,9 @@
     const DELETE_PROJECT_URL = "{% url 'myapp:delete_project' %}";
     const DOWNLOAD_WITH_ROIS_URL = "{% url 'myapp:download_with_rois' %}";
     const PROGRESS_URL       = "{% url 'myapp:progress' %}";
+
+    window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
+    
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });

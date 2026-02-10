@@ -118,13 +118,24 @@ class CutImage:
             return im
 
         def _save_one(y, x):
-            # Shrink to remaining size at borders (do not move start positions back to avoid duplicate patches)
             w = min(self.patch_size, max(W - x, 0))
             h = min(self.patch_size, max(H - y, 0))
             if w <= 0 or h <= 0:
                 return None
+
             im = _get_im()
             patch = im.crop((x, y, x + w, y + h))
+
+            # --- NEW: pad to 640x640 if needed ---
+            if w < self.patch_size or h < self.patch_size:
+                canvas = Image.new(
+                    patch.mode,
+                    (self.patch_size, self.patch_size),
+                    color=0   # black background
+                )
+                canvas.paste(patch, (0, 0))
+                patch = canvas
+
             fp = os.path.join(out_dir, f"patch_{y}_{x}.png")
             patch.save(fp, format="PNG", compress_level=1)
             patch.close()

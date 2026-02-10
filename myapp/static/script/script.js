@@ -561,19 +561,38 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       }
 
       // CASE 5 — Click on demo thumbnail:
-      // Fetch the demo file (same-origin for cookies),
-      // 1) Convert to Blob → File,
-      // 2) Preview immediately,
-      // 3) Upload via the same pipeline (flag: is demo).
       $demoImg
         .off('click.demo')
         .on('click.demo', async () => {
+
+            // ✅ Case 1: demo already detected (history contains demo)
+            const demoIdx = historyStack.findIndex(it =>
+            it && (it.demo === true || String(it.name || '').toLowerCase() === 'demo.jpg')
+            );
+
+            if (demoIdx !== -1 && typeof window.loadHistoryItemByIndex === 'function') {
+            window.loadHistoryItemByIndex(demoIdx);
+
+            // Sync the left history UI to select the demo
+            setTimeout(() => {
+              $('.history-item').removeClass('selected');
+              $(`.history-item[data-idx="${demoIdx}"]`).addClass('selected');
+            }, 0);
+
+            return;
+            }
+
+            // ✅ Case 2: demo not yet detected (history has no demo)
+            // Regardless of current view, go back to the homepage + show preview so the user can press Start Detection
           try {
+            window.hideMain?.();
+            $('#drop-zone').show();
+
             const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-            showPreviewFromBlob(file);
+            window.resetPendingUpload?.(); // clear old preview + reset previous temp upload
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (e) {
@@ -581,6 +600,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             alert('Failed to load demo image.');
           }
         });
+
 
       // CASE 6 — Start dragging the demo thumbnail:
       // Add custom MIME markers so the drop handler can distinguish demo drags
@@ -637,7 +657,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-            showPreviewFromBlob(file);
+            window.resetPendingUpload?.();  // Clear old preview + reset previous temp upload if any
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (err) {
@@ -650,7 +670,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         // 8B — Local file path
         if (dt.files && dt.files.length) {
           const file = dt.files[0];
-          showPreviewFromBlob(file);
+          window.resetPendingUpload?.();  // Clear old preview + reset previous temp upload if any
           window.isDemoUpload = false;
           uploadFn(file);
         }
