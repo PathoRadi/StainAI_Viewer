@@ -175,6 +175,7 @@ $(document).off('click.roiMenuBtn').on('click.roiMenuBtn', '.roi-menu-btn', func
   // Close other menus and remove old shields
   $('.roi-action-menu').hide();
   $('.menu-click-shield').remove();
+  document.activeElement?.blur?.();
 
   const $entry  = $(this).closest('.roi-entry');
   const layerId = $entry.data('layer-id');
@@ -208,6 +209,7 @@ $(document).off('click.roiMenuKeep').on('click.roiMenuKeep', '.roi-action-menu',
 $(document).off('click.roiMenuClose').on('click.roiMenuClose', function(){
   $('.roi-action-menu').hide();
   $('.menu-click-shield').remove();
+  document.activeElement?.blur?.();
 });
 
 
@@ -215,6 +217,8 @@ $(document).off('click.roiMenuClose').on('click.roiMenuClose', function(){
 $(document).off('click.roiRename').on('click.roiRename', '.roi-rename-btn', function (e) {
   e.stopPropagation();
   $('.roi-action-menu').hide();
+  $('.menu-click-shield').remove();
+  document.activeElement?.blur?.();
 
   const $menu   = $(this).closest('.roi-action-menu');
   const layerId = $menu.data('layer-id');
@@ -281,8 +285,12 @@ $(document).off('click.roiRename').on('click.roiRename', '.roi-rename-btn', func
 
 
 // Delete
-$(document).off('click.roiDelete').on('click.roiDelete', '.roi-delete-btn', function(){
+$(document).off('click.roiDelete').on('click.roiDelete', '.roi-delete-btn', function(e){
+  e.stopPropagation();
   $('.roi-action-menu').hide();
+  $('.menu-click-shield').remove();
+  document.activeElement?.blur?.();
+  
   const layerId = $(this).parent().data('layer-id');
   layerManagerApi.removeLayer(layerId);
 

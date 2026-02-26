@@ -18,7 +18,8 @@
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
-    overflow: auto;
+    overflow: hidden;
+    min-height: 0;
     background: var(--bg-left);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;

@@ -441,82 +441,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       );
     });
 
-
-    // =========================================
-    // ===== Try Demo Image Button & Logic =====
-    // =========================================
-    const $previewImg = $('#preview-img');
-    const $previewBox = $('#preview-container');
-
-    if ($previewImg.length) {
-      // Helper: consistently apply preview styles (50% width, keep aspect ratio)
-      const applyPreviewStyles = (el) => {
-        el.style.width     = '50%';
-        el.style.height    = 'auto';
-        el.style.objectFit = 'contain';
-        el.style.maxHeight = 'none';
-      };
-
-      // CASE 0 — Initial state:
-      // If there is no initial src attribute, hide the image element
-      // and also collapse the preview container to avoid showing a broken layout.
-      const initSrc = $previewImg.attr('src');
-      if (!initSrc) $previewImg.prop('hidden', true);
-      if ($previewBox.length) $previewBox.hide();
-
-      // CASE 1 — Image successfully loaded:
-      // When the real <img> load event fires, we reveal the image,
-      // expand the container, and ensure aspect ratio is preserved.
-      $previewImg
-        .off('load.preview')
-        .on('load.preview', function () {
-          $(this).prop('hidden', false);
-          if ($previewBox.length) $previewBox.show();
-          applyPreviewStyles(this);
-        });
-
-      // CASE 2 — Image load error:
-      // If an error occurs (bad URL / CORS / network), we keep the preview hidden
-      // and collapse the container so the UI does not show a broken image.
-      $previewImg
-        .off('error.preview')
-        .on('error.preview', function () {
-          $(this).prop('hidden', true);
-          if ($previewBox.length) $previewBox.hide();
-        });
-    }
-
-    function showPreviewFromBlob(blob) {
-      // Safety checks: ensure DOM targets exist and input is a Blob/File.
-      const img = document.getElementById('preview-img');
-      const $box = $('#preview-container');
-      if (!img || !$box.length || !(blob instanceof Blob)) return;
-
-      // CASE 3 — Show a Blob/File (demo or local) in preview:
-      // 1) Temporarily hide the <img> (to avoid flicker),
-      // 2) Make container visible,
-      // 3) Create an object URL, assign it to <img>.src,
-      // 4) On load → reveal and style; On error → hide and collapse again,
-      // 5) Revoke the object URL to free memory.
-      img.hidden = true;
-      $box.show();
-
-      const url = URL.createObjectURL(blob);
-      img.onload = () => {
-        img.hidden = false;
-        img.style.width = '50%';
-        img.style.height = 'auto';
-        img.style.objectFit = 'contain';
-        img.style.maxHeight = 'none';
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = () => {
-        img.hidden = true;
-        $box.hide();
-      };
-      img.src = url;
-    }
-
     // ===== Try Demo Image (MOVED INTO DOM READY) =====
     (async function setupDemoDnD() {
       // Utility — wait until the upload function is ready:
@@ -561,19 +485,38 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       }
 
       // CASE 5 — Click on demo thumbnail:
-      // Fetch the demo file (same-origin for cookies),
-      // 1) Convert to Blob → File,
-      // 2) Preview immediately,
-      // 3) Upload via the same pipeline (flag: is demo).
       $demoImg
         .off('click.demo')
         .on('click.demo', async () => {
+
+            // ✅ Case 1: demo already detected (history contains demo)
+            const demoIdx = historyStack.findIndex(it =>
+            it && (it.demo === true || String(it.name || '').toLowerCase() === 'demo.jpg')
+            );
+
+            if (demoIdx !== -1 && typeof window.loadHistoryItemByIndex === 'function') {
+            window.loadHistoryItemByIndex(demoIdx);
+
+            // Sync the left history UI to select the demo
+            setTimeout(() => {
+              $('.history-item').removeClass('selected');
+              $(`.history-item[data-idx="${demoIdx}"]`).addClass('selected');
+            }, 0);
+
+            return;
+            }
+
+          // ✅ Case 2: demo not yet detected (history has no demo)
+          // Go back to homepage; after upload, settings modal will pop up automatically
           try {
+            window.hideMain?.();
+            $('#drop-zone').show();
+
             const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-            showPreviewFromBlob(file);
+            window.resetPendingUpload?.(); // clear old preview + reset previous temp upload
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (e) {
@@ -581,6 +524,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             alert('Failed to load demo image.');
           }
         });
+
 
       // CASE 6 — Start dragging the demo thumbnail:
       // Add custom MIME markers so the drop handler can distinguish demo drags
@@ -637,7 +581,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             const blob = await resp.blob();
             const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
 
-            showPreviewFromBlob(file);
+            window.resetPendingUpload?.();  // Clear old preview + reset previous temp upload if any
             window.isDemoUpload = true;
             uploadFn(file);
           } catch (err) {
@@ -650,7 +594,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         // 8B — Local file path
         if (dt.files && dt.files.length) {
           const file = dt.files[0];
-          showPreviewFromBlob(file);
+          window.resetPendingUpload?.();  // Clear old preview + reset previous temp upload if any
           window.isDemoUpload = false;
           uploadFn(file);
         }

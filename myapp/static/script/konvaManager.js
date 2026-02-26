@@ -673,10 +673,11 @@ export function initKonvaManager({
     if (!target) return;
     layerManagerApi.removeLayer(target.layerId); // onChange will sync UI
     if (layerManagerApi.getLayers().length === 0) {
+      // After clearing all, reset preview/filter state
       if (previewMode) onShowAllBoxes?.(); else onApplyFilters?.();
-      if (Array.isArray(window.chartRefs)) {
-        window.chartRefs.forEach(ch => updateChartAll(window.bboxData, ch));
-      }
+
+      // ROI chart turn to empty state
+      window.updateROIChart?.();
     }
   });
 
