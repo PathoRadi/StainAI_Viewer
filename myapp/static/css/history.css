@@ -1,13 +1,39 @@
 /* static/css/history.css */
 
 /* ------- History Stack ------- */
+#upload-panel{
+    flex: 1 1 auto;     
+    min-height: 0;      
+    overflow-y: auto;   
+    overflow-x: hidden; 
+}
+#upload-panel::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+#upload-panel::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 2px solid var(--scrollbar-track);
+}
+#upload-panel::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+/* Firefox */
+#upload-panel {
+    scrollbar-width: thin;                       /* thin / auto / none */
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
 #history-container {
-    margin: 20px;
+    margin: 0;
+    padding: 20px;
     display: flex;
     flex-direction: column;
     gap: 8px;
     max-height: calc(100vh - 200px);
     overflow-y: auto;
+    box-sizing: border-box;
 }
 .file_icon {
     width: 14px;
@@ -30,6 +56,7 @@
     text-align: left;
     cursor: pointer;
     margin-bottom: 8px;
+    overflow: hidden;
 }
 .history-item:hover {
     background: var(--bg-history-item-hover);
@@ -47,6 +74,13 @@
 .history-item.is-demo:hover,
 .history-item.is-demo.selected {
     background: linear-gradient(90deg, rgb(233, 121, 189) 0%, rgb(194, 106, 189) 50%, rgb(150, 89, 189) 100%);  
+}
+.history-filename {
+  flex: 1 1 auto;       
+  min-width: 0;         
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .history-menu-btn {
     position: absolute;
@@ -87,6 +121,7 @@
 .history-action-menu button:hover {
     background: var(--bg-history-action-menu-button-hover);
 }
+
 
 /* Page That Shows If Deleting History Item */
 .modal-overlay {

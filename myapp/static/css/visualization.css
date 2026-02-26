@@ -118,6 +118,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: grabbing;
 }
 .non-draw-icon {
     display: inline-flex;

@@ -73,7 +73,8 @@ export function updateHistoryUI(historyStack) {
       <div class="history-entry">
         <button class="history-item${demoClass}" data-idx="${idx}">
           <img class="file_icon" src="/static/logo/file_icon.png">
-          ${item.name}<span class="history-menu-btn">⋯</span>
+          <span class="history-filename">${item.name}</span>
+          <span class="history-menu-btn">⋯</span>
         </button>
         <div class="history-action-menu">
           <button class="history-download-btn" data-idx="${idx}">Download</button>
@@ -85,14 +86,73 @@ export function updateHistoryUI(historyStack) {
 }
 
 export function initHistoryHandlers(historyStack) {
-  // click on an entry → load that image and its boxes/chart
-  $(document).on('click', '.history-item', function() {
-    $('.history-item').removeClass('selected');
-    $(this).addClass('selected');
-    
-    const idx  = $(this).data('idx');
-    console.log('Loading history item:', idx);
+  // Hard reset to homepage (no history items)
+  function hardResetToHomepage() {
+    // 0) call backend reset (clear media/session)
+    try {
+      if (window.RESET_MEDIA_URL) navigator.sendBeacon(window.RESET_MEDIA_URL);
+    } catch (e) {
+      console.warn('reset_media beacon failed:', e);
+    }
+
+    // 1) UI: show homepage, hide viewer
+    $('.main-container').prop('hidden', true);
+    $('#drop-zone').show();
+
+    // 2) Clear OpenSeadragon viewer
+    try { window.viewer?.close(); } catch(e) {}
+
+    // 3) Clear bbox state + overlay
+    window.bboxData = [];
+    try { clearBoxes(); } catch(e) {}
+
+    // 4) Clear ROI / Konva
+    try {
+      // If you have a single/central method to clear ROIs, call it here
+      if (window.layerManagerApi?.clearAll) window.layerManagerApi.clearAll();
+      if (window.layerManagerApi?.removeAll) window.layerManagerApi.removeAll();
+      if (window.konvaStage) {
+      window.konvaStage.destroyChildren();
+      window.konvaStage.draw();
+      }
+    } catch(e) {}
+
+    // 5) Clear charts to zero (avoid ghost)
+    if (Array.isArray(window.chartRefs)) {
+      window.chartRefs.forEach(ch => {
+      if (!ch) return;
+      ch.data.datasets[0].data = [0,0,0,0,0,0];
+      ch.update();
+      });
+    }
+
+    // 6) Clear the homepage preview (the section you highlighted in your screenshot)
+    const img = document.getElementById('preview-img');
+    const box = document.getElementById('preview-container');
+
+    if (img) {
+      img.src = '';            // clear blob/url
+      img.hidden = true;       // hide the <img>
+    }
+    if (box) {
+      box.style.display = 'none'; // collapse the preview container (match your CSS initial state)
+    }
+
+    // 7) Clear the file input to avoid being unable to re-select the same file
+    const input = document.getElementById('drop-upload-input');
+    if (input) input.value = '';
+
+    // 8) Prevent Start Detection from being clickable (safety)
+    const startBtn = document.getElementById('start-detect-btn');
+    if (startBtn) startBtn.disabled = true;
+  }
+
+  // Public: load a history item by index (used by Demo button, etc.)
+  function loadHistoryItemByIndex(idx) {
     const item = historyStack[idx];
+    if (!item) return;
+
+    console.log('Loading history item:', idx);
 
     // hide upload UI / show main viewer
     $('#drop-zone').hide();
@@ -111,26 +171,21 @@ export function initHistoryHandlers(historyStack) {
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide();
 
-      // reset global bboxData to this item's boxes
       window.bboxData = item.boxes.slice();
 
-      // redraw exactly those boxes
       clearBoxes();
       drawBbox(window.bboxData);
 
       if (window.chartRefs && window.chartRefs.length) {
         window.chartRefs.forEach((chart, i) => {
-          // Re-bind filter checkboxes (each chart needs its own)
           initCheckboxes(window.bboxData, chart);
           $('#checkbox_All').prop('checked', true);
           $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
           showAllBoxes();
 
           if (i === 0) {
-            // For the first barChart: keep "whole image" logic
             updateChart(window.bboxData, chart);
-              } else {
-            // For the 2nd/3rd/4th: reset data and uncheck the ROI checkbox for that panel
+          } else {
             chart.data.datasets[0].data = [0,0,0,0,0,0];
             chart.update();
 
@@ -141,16 +196,27 @@ export function initHistoryHandlers(historyStack) {
           }
         });
 
-        // Re-render ROI list and each panel's state (charts with unchecked ROI will stay at 0)
         if (typeof window.renderROIList === 'function') window.renderROIList();
       } else {
-        // If there are no charts, still create the first one ("whole image") — keep original logic
         window.chartRefs = [];
         const c1 = addBarChart();
         window.chartRefs.push(c1);
       }
     });
+  }
+
+  // expose for other modules (e.g., demo thumbnail click)
+  window.loadHistoryItemByIndex = loadHistoryItemByIndex;
+  
+  // click on an entry → load that image and its boxes/chart
+  $(document).on('click', '.history-item', function() {
+    $('.history-item').removeClass('selected');
+    $(this).addClass('selected');
+
+    const idx = $(this).data('idx');
+    loadHistoryItemByIndex(idx);
   });
+
 
   /* ========= History Action Menu (align: menu TL = item BR) ========= */
 
@@ -296,6 +362,10 @@ export function initHistoryHandlers(historyStack) {
       if (res.success) {
         historyStack.splice(pendingDeleteIdx, 1);
         updateHistoryUI(historyStack);
+
+        if (historyStack.length === 0) {
+          hardResetToHomepage();
+        }
       } else {
         alert('Delete failed: ' + (res.message || ''));
       }

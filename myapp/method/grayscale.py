@@ -1,138 +1,170 @@
-# grayscale.py
 import os
-from PIL import Image, ImageOps, ImageStat
+import numpy as np
+from PIL import Image
+from scipy import ndimage
 
-try:
-    import pyvips
-    _HAS_VIPS = True
-except Exception:
-    _HAS_VIPS = False
 
-class GrayScaleImage:
-    def __init__(self, image_path, output_dir, is_cut=True):
+class GrayscaleConverter:
+    """
+    Azure-friendly grayscale converter:
+    - No pyvips
+    - No cv2
+    Dependencies: pillow, scipy
+    """
+
+    def __init__(self, image_path, output_dir, p_low, p_high, gamma, gain):
         self.image_path = image_path
         self.output_dir = output_dir
-        self.is_cut = is_cut
+        self.p_low = float(p_low)
+        self.p_high = float(p_high)
+        self.gamma = float(gamma)
+        self.gain = float(gain)
 
-    def _save_with_ext_params_vips(self, img, output_path):
-        ext = os.path.splitext(output_path)[1].lower()
-        if ext in (".jpg", ".jpeg"):
-            # set Q=85, progressive if JPEG
-            img.jpegsave(output_path, Q=85, optimize_coding=True, interlace=True)
-        elif ext == ".png":
-            # set compression=1 for PNG
-            img.pngsave(output_path, compression=1)
-        else:
-            # for other formats, just save directly
-            img.write_to_file(output_path)
+    # ---------------------------
+    # IO
+    # ---------------------------
+    def _save_png(self, out_u8: np.ndarray) -> str:
+        gray_dir = os.path.join(self.output_dir, "gray")
+        os.makedirs(gray_dir, exist_ok=True)
 
-    def _rgb_to_gray_vips(self, src_path, dst_path):
-        # streaming reading, avoid loading full image into memory
-        im = pyvips.Image.new_from_file(src_path, access="sequential")
+        filename = os.path.basename(self.image_path)
+        out_path = os.path.join(gray_dir, filename)
 
-        # 1) convert to single channel grayscale
-        if im.bands > 1:
-            im = im.colourspace(pyvips.Interpretation.B_W)
-        # make sure 8-bit
-        if im.format != "uchar":
-            im = im.cast("uchar")
+        Image.fromarray(out_u8, mode="L").save(out_path)
+        print(f"Grayscale image saved at {out_path}")
+        return out_path
 
-        w, h = im.width, im.height
-        kx = 10 if w >= 10 else w
-        ky = 10 if h >= 10 else h
+    # ---------------------------
+    # Utils
+    # ---------------------------
+    def _read_rgb(self) -> np.ndarray:
+        # Pillow reads as RGB
+        img = Image.open(self.image_path).convert("RGB")
+        arr = np.asarray(img, dtype=np.uint8)
+        return arr
 
-        # 2) Average the four corners kx*ky blocks (fully streaming)
-        tl = im.extract_area(0,        0,        kx, ky).avg()
-        tr = im.extract_area(w - kx,   0,        kx, ky).avg()
-        bl = im.extract_area(0,        h - ky,   kx, ky).avg()
-        br = im.extract_area(w - kx,   h - ky,   kx, ky).avg()
-        mean_bg = (float(tl) + float(tr) + float(bl) + float(br)) / 4.0
-
-        # 3) invert if background is bright (255 - x)
-        if mean_bg > 127:
-            # linear transform: out = -1 * x + 255
-            im = im.linear(-1, 255).cast("uchar")
-
-        # 4) save with appropriate params
-        self._save_with_ext_params_vips(im, dst_path)
-
-        return dst_path
-
-    def rgb_to_gray(self):
+    def _norm_percentile(self, x: np.ndarray) -> np.ndarray:
         """
-        - convert to L (grayscale)
-        - average the four corners (up to 10x10) to estimate the background
-        - if mean_bg > 127 then invert the image
-        - save according to file extension
-        Prefer using pyvips (streaming); fall back to PIL if pyvips is unavailable.
+        Percentile stretch to [0,1].
+        p_low/p_high are percentiles (0-100).
         """
-        if self.is_cut:
-            gray_dir = os.path.join(self.output_dir, "gray")
-            os.makedirs(gray_dir, exist_ok=True)
-            filename = os.path.basename(self.image_path)
-            output_path = os.path.join(gray_dir, filename)
+        x = x.astype(np.float32)
+        lo = np.percentile(x, self.p_low)
+        hi = np.percentile(x, self.p_high)
+        if hi <= lo:
+            hi = lo + 1e-6
+        y = (x - lo) / (hi - lo)
+        return np.clip(y, 0.0, 1.0)
 
-            if _HAS_VIPS:
-                try:
-                    return self._rgb_to_gray_vips(self.image_path, output_path)
-                except Exception:
-                    # if vips fails, fall back to PIL
-                    pass
+    def _enhance(self, norm01: np.ndarray) -> np.ndarray:
+        y = np.power(norm01, self.gamma) * self.gain
+        y = np.clip(y, 0.0, 1.0)
+        return (y * 255.0).astype(np.uint8)
+    
+    def _read_rgb_downsample(self, max_side: int = 1024) -> np.ndarray:
+        """
+        Read RGB but downsample to keep memory small.
+        """
+        img = Image.open(self.image_path).convert("RGB")
+        w, h = img.size
+        scale = min(1.0, max_side / float(max(w, h)))
+        if scale < 1.0:
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.BILINEAR)
+        return np.asarray(img, dtype=np.uint8)
 
-            # ---------- PIL: Use it if vips fail ----------
-            with Image.open(self.image_path) as im_pil:
-                im_gray = im_pil.convert("L")
-                w, h = im_gray.size
-                kx = 10 if w >= 10 else w
-                ky = 10 if h >= 10 else h
+    def _estimate_background_luma(self, rgb: np.ndarray, border_ratio: float = 0.06) -> float:
+        """
+        Estimate background brightness by sampling border pixels only.
+        Return mean luminance in [0..255].
+        """
+        h, w, _ = rgb.shape
+        b = max(1, int(min(h, w) * border_ratio))
 
-                tl = im_gray.crop((0, 0, kx, ky))
-                tr = im_gray.crop((w - kx, 0, w, ky))
-                bl = im_gray.crop((0, h - ky, kx, h))
-                br = im_gray.crop((w - kx, h - ky, w, h))
+        # border strips
+        top    = rgb[:b, :, :]
+        bottom = rgb[h-b:, :, :]
+        left   = rgb[:, :b, :]
+        right  = rgb[:, w-b:, :]
 
-                means = [
-                    ImageStat.Stat(tl).mean[0],
-                    ImageStat.Stat(tr).mean[0],
-                    ImageStat.Stat(bl).mean[0],
-                    ImageStat.Stat(br).mean[0],
-                ]
-                mean_bg = float(sum(means) / 4.0)
+        border = np.concatenate([
+            top.reshape(-1, 3),
+            bottom.reshape(-1, 3),
+            left.reshape(-1, 3),
+            right.reshape(-1, 3),
+        ], axis=0).astype(np.float32)
 
-                if mean_bg > 127:
-                    im_gray = ImageOps.invert(im_gray)
+        # luminance
+        luma = 0.2126 * border[:, 0] + 0.7152 * border[:, 1] + 0.0722 * border[:, 2]
+        return float(luma.mean())
 
-                ext = os.path.splitext(output_path)[1].lower()
-                if ext in (".jpg", ".jpeg"):
-                    im_gray.save(output_path, format="JPEG",
-                                 quality=85, optimize=True, progressive=True)
-                elif ext == ".png":
-                    im_gray.save(output_path, format="PNG", compress_level=1)
-                else:
-                    im_gray.save(output_path)
+    def auto_detect_mode(self, thr: float = 110.0) -> str:
+        """
+        If background is dark => fluorescence, else brightfield.
+        thr is luminance threshold (0..255).
+        """
+        rgb = self._read_rgb_downsample(max_side=1024)
+        bg = self._estimate_background_luma(rgb, border_ratio=0.06)
+        return "fluorescence" if bg < thr else "brightfield"
 
-            return output_path
+    def convert_to_grayscale_auto(self) -> str:
+        mode = self.auto_detect_mode()
+        if mode == "fluorescence":
+            return self.convert_to_grayscale_fluorescence()
+        return self.convert_to_grayscale_brightfield()
+    
 
-        else:
-            # vips is preferred for this simple case
-            gray_dir = os.path.join(self.output_dir, "qmap")
-            os.makedirs(gray_dir, exist_ok=True)
-            output_path = os.path.join(gray_dir, "gmap_slice0.png")
 
-            if _HAS_VIPS:
-                try:
-                    im = pyvips.Image.new_from_file(self.image_path, access="sequential")
-                    if im.bands > 1:
-                        im = im.colourspace(pyvips.Interpretation.B_W)
-                    if im.format != "uchar":
-                        im = im.cast("uchar")
-                    im.pngsave(output_path, compression=1)
-                    return output_path
-                except Exception:
-                    pass
+    # ===================================================
+    # Fluorescence
+    # ===================================================
+    def convert_to_grayscale_fluorescence(self, kernel_size: int = 25) -> str:
+        """
+        Fluorescence pipeline (cv2-like):
+        - Green channel
+        - Top-hat = image - opening(image)
+        - Percentile stretch (on top-hat)
+        - Gamma + gain
+        """
+        rgb = self._read_rgb()
+        green = rgb[..., 1].astype(np.float32)
 
-            # PIL fallback
-            with Image.open(self.image_path) as im_pil:
-                im_gray = im_pil.convert("L")
-                im_gray.save(output_path, format="PNG", compress_level=1)
-            return output_path
+        # SciPy grey opening (structuring element = square)
+        # Note: cv2 used MORPH_ELLIPSE; square works fine for YOLO preprocessing.
+        opened = ndimage.grey_opening(green, size=(kernel_size, kernel_size))
+        top_hat = green - opened
+        top_hat[top_hat < 0] = 0
+
+        norm = self._norm_percentile(top_hat)
+        out = self._enhance(norm)
+        return self._save_png(out)
+
+    # ===================================================
+    # Brightfield (DAB)
+    # ===================================================
+    def convert_to_grayscale_brightfield(self, kernel_size: int = 41, bg_thr: int = 245) -> str:
+        """
+        Brightfield pipeline (cv2-like):
+        - Use approximate luminance (instead of full LAB to avoid heavy deps)
+        - Black-hat = closing(L) - L
+        - Percentile stretch
+        - Gamma + gain
+        - Background mask: set very bright background to 0
+        """
+        rgb = self._read_rgb().astype(np.float32)
+
+        # Approx luminance (close enough for DAB)
+        # (OpenCV LAB L is different, but this works for background/object contrast)
+        L = 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
+
+        closed = ndimage.grey_closing(L, size=(kernel_size, kernel_size))
+        black_hat = closed - L
+        black_hat[black_hat < 0] = 0
+
+        norm = self._norm_percentile(black_hat)
+        out = self._enhance(norm)
+
+        # background mask (bright background -> black)
+        # Need L in 0-255 scale (it is)
+        out[L > bg_thr] = 0
+
+        return self._save_png(out)

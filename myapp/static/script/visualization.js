@@ -15,6 +15,7 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
                       .getPropertyValue('--chart-tick-color').trim();
 
   const ctx = document.getElementById(canvasId).getContext('2d');
+  Chart.register(ChartDataLabels);
   return new Chart(ctx, {
     type: 'bar',
     data: {
@@ -45,6 +46,7 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
         },
         y: {
           beginAtZero: true,
+          grace: '15%',
           ticks: { 
             color: tickColor,
             font: { size: 14 }
@@ -72,6 +74,21 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
         legend: {
           display: false,
           labels: { color: tickColor }
+        },
+        datalabels: {
+          anchor: 'end',
+          align: 'end',
+          offset: 2,
+          color: tickColor,
+          font: {
+            size: 12,
+            weight: '500'
+          },
+          formatter: (value) => {
+            return value > 0 ? value : '';
+          },
+          clip: false,
+          clamp: true
         }
       }
     }
