@@ -26,8 +26,12 @@ class YOLOPipeline:
 
         self.result_dir      = os.path.join(output_dir, "result")
         self.annotated_dir = os.path.join(output_dir, "annotated")
+        self.fm_images_dir = os.path.join(output_dir, "fm_images")
+        self.qmap_dir      = os.path.join(output_dir, "qmap")
         os.makedirs(self.result_dir,      exist_ok=True)
         os.makedirs(self.annotated_dir, exist_ok=True)
+        os.makedirs(self.fm_images_dir, exist_ok=True)
+        os.makedirs(self.qmap_dir,      exist_ok=True)
 
         self.class_mapping = {
             0: ['R',  (0,255,0)],

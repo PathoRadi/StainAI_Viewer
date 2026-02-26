@@ -145,13 +145,9 @@ else:
 
 
 # ===== Media =====
-# For deploy
+MEDIA_URL  = '/media/'
 DEFAULT_MEDIA_ROOT = "/home/site/wwwroot/media"
 MEDIA_ROOT = str(Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT)))
-
-# For local
-# MEDIA_URL = '/media/'
-# MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 os.makedirs(MEDIA_ROOT, exist_ok=True)
 

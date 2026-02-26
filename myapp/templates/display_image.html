@@ -82,78 +82,17 @@
     <p>Drag &amp; Drop Image Here</p>
     <button id="drop-upload-btn">Or Click to Upload</button>
     <input type="file" id="drop-upload-input" accept="image/*" style="display:none" />
-  </div>
 
-  <!-- Grayscale Settings Modal -->
-  <div id="settings-overlay" class="settings-overlay" hidden>
-    <div class="settings-modal">
-      <button id="settings-close-btn" class="settings-close">✕</button>
-
-      <div class="settings-left">
-        <img id="settings-preview-img" alt="preview"/>
-        <canvas id="settings-preview-canvas"></canvas>
-      </div>
-
-      <div class="settings-right">
-        <div class="settings-title" id="settings-title">Grayscale Parameter Settings</div>
-        <div class="settings-title" id="settings-image-name">filename.png</div>
-
-        <!-- Resolution -->
-        <div class="settings-row">
-          <label>Image Resolution</label>
-          <div class="resolution-wrapper">
-            <input id="inp-resolution" type="number" inputmode="decimal">
-            <span class="unit">(μm/pixel)</span>
-          </div>
-        </div>
-
-        <div class="grayscale-parameter-wrapper">
-          <!-- Contrast -->
-          <div class="settings-row">
-            <label>Contrast</label>
-            <div class="slider-with-value">
-              <input class="scrollbar" id="s-gamma" type="range" min="0.1" max="2.5" step="0.01">
-              <input class="value-input" id="i-gamma" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
-            </div>
-          </div>
-
-          <!-- Brightness -->
-          <div class="settings-row">
-            <label>Brightness</label>
-            <div class="slider-with-value">
-              <input class="scrollbar" id="s-gain" type="range" min="0.1" max="5.0" step="0.01">
-              <input class="value-input" id="i-gain" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
-            </div>
-          </div>
-
-          <!-- Black Level -->
-          <div class="settings-row">
-            <label>Black Level</label>
-            <div class="slider-with-value">
-              <input class="scrollbar" id="s-p_low" type="range" min="0" max="100" step="1">
-              <input class="value-input" id="i-p_low" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
-            </div>
-          </div>
-
-          <!-- White Level -->
-          <div class="settings-row">
-            <label>White Level</label>
-            <div class="slider-with-value">
-              <input class="scrollbar" id="s-p_high" type="range" min="0" max="100" step="1">
-              <input class="value-input" id="i-p_high" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
-            </div>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="settings-actions">
-          <button id="settings-reset-btn">Default</button>
-          <button id="settings-start-btn">Start Detection</button>
-        </div>
-      </div>
+    <!-- ─── Preview + Start Button (hidden until upload) ─── -->
+    <div id="preview-container">
+      <img id="preview-img"
+          src="" 
+          alt="Uploaded preview" hidden />
+      <button id="start-detect-btn">
+        Start Detection
+      </button>
     </div>
   </div>
-
 
 
   <!-- ───── PROGRESS OVERLAY ───── -->
@@ -349,7 +288,7 @@
     const PROGRESS_URL       = "{% url 'myapp:progress' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
-
+    
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });

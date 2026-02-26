@@ -25,14 +25,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 
 # Your method / pipeline
-from .method.display_image_generator import DisplayImageGenerator
 from .method.image_resizer import ImageResizer
-from .method.grayscale import GrayscaleConverter
+from .method.grayscale import GrayScaleImage
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
 
 logger = logging.getLogger(__name__)
-
 
 # ---------------------------
 # Progress tracking
@@ -112,9 +110,6 @@ def display_image(request):
 # ---------------------------
 # Upload Image
 # ---------------------------
-# Media Root:　/home/site/wwwroot/media
-# project dir: /home/site/wwwroot/media/<project_name>/
-
 @csrf_exempt
 def upload_image(request):
     """
@@ -125,11 +120,11 @@ def upload_image(request):
     if request.method == 'POST' and request.FILES.get('image'):
         img = request.FILES['image']                                                # Get uploaded file
         image_name = os.path.splitext(img.name)[0]                                  # get file name without extension
-        project_dir = os.path.join(settings.MEDIA_ROOT, image_name)                 # get project dir: /home/site/wwwroot/media/<image_name>/
+        project_dir = os.path.join(settings.MEDIA_ROOT, image_name)                 # get project dir
         os.makedirs(project_dir, exist_ok=True)                                     # create project dir if not exists
 
         # 1) Save original file
-        original_dir = os.path.join(project_dir, 'original')                        # get original dir: /home/site/wwwroot/media/<image_name>/original/
+        original_dir = os.path.join(project_dir, 'original')                        # get original dir
         os.makedirs(original_dir, exist_ok=True)                                    # create original dir if not exists
         original_path = os.path.join(original_dir, img.name)                        # get original file path
         with open(original_path, 'wb+') as f:                                       # save original file in original dir
@@ -147,13 +142,11 @@ def upload_image(request):
 
 
 
+
 # ---------------------------
 # Detection
 # ---------------------------
-# Media Root:　/home/site/wwwroot/media
-# project dir: /home/site/wwwroot/media/<project_name>/
-# Original dir: /home/site/wwwroot/media/<project_name>/original
-def _run_detection_job(project_name: str, image_url: str, params: dict):
+def _run_detection_job(project_name: str, image_url: str):
     start = time.perf_counter()
 
     try:
@@ -172,39 +165,22 @@ def _run_detection_job(project_name: str, image_url: str, params: dict):
             _set_progress_stage(project_name, "error")
             return
 
-        # Get the original image path; assume there's only one image in the original dir
-        orig_files = [f for f in os.listdir(orig_dir) if not f.startswith(".")]
+        # Pick the first non-hidden file as the original image
+        orig_files = [f for f in os.listdir(orig_dir)
+                      if not f.startswith(".")]
         if not orig_files:
-            logger.error("No source image (non-resized) in %s", orig_dir)
+            logger.error("No original image in %s", orig_dir)
             _set_progress_stage(project_name, "error")
             return
 
         orig_name = orig_files[0]
         orig_path = os.path.join(orig_dir, orig_name)
-
-        # Generate resized image from original image (make its scale 0.464, which is the same as the train set)
-        current_res = params.get("resolution")
-        current_res = float(current_res) if current_res not in (None, "", "null") else None
-
-        # --- training-scale resize ---
-        if current_res is not None:
-            resized_path = ImageResizer(
-                image_path=orig_path,
-                output_dir=orig_dir,
-                current_res=current_res,
-                target_res=0.464,  # 你 training 的 um/px
-            ).resize()  # save to original/
-        else:
-            # if user doesn't provide resolution, skip resizing and use original image for the rest of the pipeline
-            resized_path = orig_path
-
-        orig_path = resized_path
-        ow, oh = _image_size_wh(orig_path)
+        ow, oh = _image_size_wh(orig_path)   # (width, height)
 
         # Decide which image to show in the viewer (if any side > 20000, create a half-size display image)
         _set_progress_stage(project_name, "gray")  # enter stage 1) gray
         if oh > 20000 or ow > 20000:
-            disp_path = DisplayImageGenerator(orig_path, project_dir).generate_display_image()
+            disp_path = ImageResizer(orig_path, project_dir).resize()
             logger.info("Resized display image created: %s", disp_path)
         else:
             disp_path = orig_path
@@ -218,32 +194,7 @@ def _run_detection_job(project_name: str, image_url: str, params: dict):
         # 1) Convert to grayscale
         # ---------------------------
         gray_stage_start = time.perf_counter()
-
-        # mode = (params.get("mode") or "fluorescence").lower()
-
-        p_low  = float(params.get("p_low", 5))
-        p_high = float(params.get("p_high", 99))
-        gamma  = float(params.get("gamma", 0.55))
-        gain   = float(params.get("gain", 1.6))
-
-        p_low = max(0.0, min(100.0, p_low))
-        p_high = max(0.0, min(100.0, p_high))
-        if p_high <= p_low:
-            p_high = min(100.0, p_low + 1.0)
-
-        gcvt = GrayscaleConverter(
-            orig_path, project_dir,
-            p_low=p_low, p_high=p_high,
-            gamma=gamma, gain=gain
-        )
-
-        gcvt = GrayscaleConverter(
-            orig_path, project_dir,
-            p_low=p_low, p_high=p_high,
-            gamma=gamma, gain=gain
-        )
-        gcvt.convert_to_grayscale_auto()
-
+        GrayScaleImage(orig_path, project_dir).rgb_to_gray()
         gc.collect()
         gray_stage_end = time.perf_counter()
         logger.info("Grayscale conversion done")
@@ -257,14 +208,15 @@ def _run_detection_job(project_name: str, image_url: str, params: dict):
         _set_progress_stage(project_name, "cut")   # enter stage 2) cut
 
         gray_dir = os.path.join(project_dir, "gray")
-        gray_files = [f for f in os.listdir(gray_dir) if not f.startswith(".")]
+        gray_files = [f for f in os.listdir(gray_dir)
+                      if not f.startswith(".")]
         if not gray_files:
             logger.error("No grayscale image in %s", gray_dir)
             _set_progress_stage(project_name, "error")
             return
 
-        gray_files.sort(key=lambda fn: os.path.getmtime(os.path.join(gray_dir, fn)), reverse=True)
-        gray_path = os.path.join(gray_dir, gray_files[0])
+        gray_name = gray_files[0]
+        gray_path = os.path.join(gray_dir, gray_name)
 
         CutImage(gray_path, project_dir).cut()
         gc.collect()
@@ -382,8 +334,6 @@ def detect_image(request):
     image_url = body.get("image_path")
     if not image_url:
         return HttpResponseBadRequest("image_path required")
-    
-    params = body.get("params") or {}
 
     # 'media/<project>/original/xxx.png' -> project_name
     project_name = image_url.strip('/').split('/')[1]
@@ -399,7 +349,7 @@ def detect_image(request):
     # Start background thread
     th = threading.Thread(
         target=_run_detection_job,
-        args=(project_name, image_url, params),
+        args=(project_name, image_url),
         daemon=True
     )
     th.start()
@@ -496,35 +446,17 @@ def reset_media(request):
 def delete_project(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
-
     try:
-        project_name = None
-
-        # 1) Try JSON body: {"project_name": "..."}
-        try:
-            body = json.loads(request.body or "{}")
-            project_name = body.get("project_name")
-        except Exception:
-            project_name = None
-
-        # 2) Fallback: query string ?project=...
-        if not project_name:
-            project_name = request.GET.get("project")
-
-        if not project_name:
-            return JsonResponse({'error': 'project_name required'}, status=400)
-
+        body = json.loads(request.body or "{}")
+        project_name = body.get('project_name')
         project_dir = os.path.join(settings.MEDIA_ROOT, project_name)
         if os.path.isdir(project_dir):
             shutil.rmtree(project_dir, ignore_errors=True)
             return JsonResponse({'success': True})
-
         return JsonResponse({'error': 'Not found'}, status=404)
-
     except Exception:
         logger.exception("delete_project failed")
         return HttpResponseServerError("delete failed; see logs")
-
 
 # return output_tiff_path
 SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
@@ -703,16 +635,20 @@ def download_project_with_rois(request):
                                    else zipfile.ZIP_DEFLATED
 
     with zipfile.ZipFile(tmpf, "w") as main_zip:
-        for sub in ("original_mmap", "result"):
+        for sub in ("original_mmap", "qmap", "result"):
+        # for sub in ("original_mmap", "result"):
             folder = os.path.join(project_dir, sub)
             if os.path.isdir(folder):
                 for root, _, files in os.walk(folder):
                     for fn in files:
-                        src = os.path.join(root, fn)
-                        arc = os.path.join(project_name, fn)
-                        ctype = _compress_type_for(fn)
-                        main_zip.write(src, arcname=arc, compress_type=ctype,
-                                    compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
+                        if fn == "gmap_slice0.png":
+                            continue  # skip qmap/gmap_slice0.png
+                        else:
+                            src = os.path.join(root, fn)
+                            arc = os.path.join(project_name, fn)
+                            ctype = _compress_type_for(fn)
+                            main_zip.write(src, arcname=arc, compress_type=ctype,
+                                        compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
 
         if rois:
             roi_buf = BytesIO()

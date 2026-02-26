@@ -34,31 +34,6 @@
   --text-start-detect-btn: rgb(255,255,255);
   --border-start-detect-btn: 1px solid rgb(255, 255, 255);
 
-  /* Grayscale Setting Modal */
-  --bg-settings-modal: rgb(0,0,0);
-  --bg-settings-close-btn: rgb(0,0,0);
-  --border-settings-close-btn: 2px solid rgb(255,255,255);
-  --cross-settings-close-btn: rgb(255,255,255);
-  --text-settings-title: rgb(255,255,255);
-  --text-settings-row-label: rgb(255,255,255);
-  --bg-mode-btn: rgb(0,0,0);
-  --border-mode-btn: 2px solid rgb(0,0,0);
-  --text-mode-btn: rgb(255,255,255);
-  --bg-mode-btn-active: rgb(0,0,0);
-  --border-mode-btn-active: 2px solid rgb(255,255,255);
-  --text-mode-btn-active: rgb(255,255,255);
-  --bg-inp-resolution: rgb(0,0,0);
-  --border-inp-resolution: 2px solid rgb(255,255,255);
-  --text-inp-resolution: rgb(255,255,255);
-  --text-unit: rgb(255,255,255);
-  --bg-grayscale-parameter-wrapper: rgb(0,0,0,0.78);
-  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
-  --bg-scrollbar: rgba(255,255,255,0.25);
-  --border-scrollbar: 1px solid rgba(255,255,255,0.25);
-  --bg-settings-start-btn: rgb(0,0,0);
-  --border-settings-start-btn: 2px solid rgb(255,255,255);
-  --text-settings-start-btn: rgb(255,255,255);
-
 
 
   /* Main Container */
@@ -150,33 +125,6 @@
   --bg-start-detect-btn: rgb(97, 136, 155);
   --text-start-detect-btn: rgb(255, 255, 255);
   --border-start-detect-btn: none;
-
-
-  /* Grayscale Setting Modal */
-  --bg-settings-modal: rgb(255,255,255);
-  --bg-settings-close-btn: rgb(255,255,255);
-  --border-settings-close-btn: 2px solid rgb(209,209,209);
-  --cross-settings-close-btn: rgb(209,209,209);
-  --text-settings-title: rgb(110,156,176);
-  --text-settings-row-label: rgb(110,156,176);
-  --bg-mode-btn: rgb(255,255,255);
-  --border-mode-btn: 2px solid rgb(187,187,187);
-  --text-mode-btn: rgb(75,75,75);
-  --bg-mode-btn-active: rgb(110,156,176);
-  --border-mode-btn-active: 2px solid rgb(110,156,176);
-  --text-mode-btn-active: rgb(255,255,255);
-  --bg-inp-resolution: rgb(255,255,255);
-  --border-inp-resolution: 2px solid rgb(187,187,187);
-  --text-inp-resolution: rgb(75,75,75);
-  --text-unit: rgb(110,156,176);
-  --bg-grayscale-parameter-wrapper: rgb(255,255,255);
-  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
-  --bg-scrollbar: rgb(255,255,255);
-  --border-scrollbar: 1px solid rgb(187,187,187);
-  --bg-settings-start-btn: rgb(255,255,255);
-  --border-settings-start-btn: 2px solid rgb(209,209,209);
-  --text-settings-start-btn: rgb(110,156,176);
-
 
 
 
