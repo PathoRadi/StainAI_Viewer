@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST, require_GET
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
-from .method.image_resizer import ImageResizer
+# from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayscaleConverter
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
@@ -515,12 +515,13 @@ def _run_detection_job(image_name: str, params: dict):
 
         # --- training-scale resize ---
         if current_res is not None:
-            resized_path = ImageResizer(
-                image_path=orig_path,
-                output_dir=orig_dir,
-                current_res=current_res,
-                target_res=0.464,  # 你 training 的 um/px
-            ).resize()  # save to original/
+            # resized_path = ImageResizer(
+            #     image_path=orig_path,
+            #     output_dir=orig_dir,
+            #     current_res=current_res,
+            #     target_res=0.464,  # 你 training 的 um/px
+            # ).resize()  # save to original/
+            resized_path = orig_path
         else:
             # if user doesn't provide resolution, skip resizing and use original image for the rest of the pipeline
             resized_path = orig_path
@@ -853,87 +854,6 @@ def delete_image(request):
 # ---------------------------
 # Rename image
 # ---------------------------
-# @csrf_exempt
-# @require_POST
-# def rename_image(request):
-#     try:
-#         body = json.loads(request.body or "{}")
-
-#         old_image_name = (body.get("old_image_name") or "").strip()
-#         new_image_name = (body.get("new_image_name") or "").strip()
-
-#         if not old_image_name or not new_image_name:
-#             return JsonResponse({
-#                 "success": False,
-#                 "message": "old_image_name and new_image_name are required"
-#             }, status=400)
-
-#         # avoid illegal filename characters
-#         new_image_name = safe_filename(new_image_name)
-
-#         if not new_image_name:
-#             return JsonResponse({
-#                 "success": False,
-#                 "message": "Invalid new image name"
-#             }, status=400)
-
-#         old_dir = _image_dir(old_image_name)
-#         new_dir = _image_dir(new_image_name)
-
-#         if not os.path.isdir(old_dir):
-#             return JsonResponse({
-#                 "success": False,
-#                 "message": "Original image folder not found"
-#             }, status=404)
-
-#         if old_image_name == new_image_name:
-#             # no-op, but still return success
-#             return JsonResponse({
-#                 "success": True,
-#                 "image_name": new_image_name
-#             })
-
-#         if os.path.exists(new_dir):
-#             return JsonResponse({
-#                 "success": False,
-#                 "message": "A project folder with this name already exists"
-#             }, status=409)
-
-#         shutil.move(old_dir, new_dir)
-
-#         # Try to rebuild display_url after rename
-#         display_url = None
-#         result_path = os.path.join(new_dir, "_detect_result.json")
-#         if os.path.exists(result_path):
-#             try:
-#                 with open(result_path, "r", encoding="utf-8") as f:
-#                     data = json.load(f)
-
-#                 old_display_url = data.get("display_url")
-#                 if old_display_url:
-#                     # replace /media/<old_image_name>/... -> /media/<new_image_name>/...
-#                     old_prefix = f"{settings.MEDIA_URL}images/{old_image_name}/"
-#                     new_prefix = f"{settings.MEDIA_URL}images/{new_image_name}/"
-#                     display_url = old_display_url.replace(old_prefix, new_prefix, 1)
-#                     data["display_url"] = display_url
-
-#                     with open(result_path, "w", encoding="utf-8") as f:
-#                         json.dump(data, f)
-#             except Exception:
-#                 logger.exception("Failed to update _detect_result.json after rename")
-
-#         return JsonResponse({
-#             "success": True,
-#             "image_name": new_image_name,
-#             "display_url": display_url,
-#         })
-
-#     except Exception:
-#         logger.exception("rename_image failed")
-#         return JsonResponse({
-#             "success": False,
-#             "message": "rename failed"
-#         }, status=500)
 @csrf_exempt
 @require_POST
 def rename_image(request):
