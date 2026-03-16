@@ -145,6 +145,15 @@ export function addBarChart(barChartWrappers) {
   return chart;
 }
 
+function getImageDirFromPath(path){
+  const parts = path.split('/');
+  const idx = parts.indexOf('images');
+  if(idx >= 0 && parts.length > idx+1){
+      return parts[idx+1];
+  }
+  return null;
+}
+
 
 
 // Initialize the process logic for file upload, detection, and chart management
@@ -1016,8 +1025,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.displayUrl = d.display_url || '';   
         window.previewUrl  = d.preview_url  || '';
 
-        const parts = (window.imgPath || '').split('/');
-        pendingImageDir = parts[3] || null;
+        pendingImageDir = getImageDirFromPath(window.imgPath);
 
         pendingParams = defaultParams();
         openSettingsModal(file?.name || '');
@@ -1154,7 +1162,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     readUIToParams();
 
     // image dir
-    const imageDir = pendingImageDir || (window.imgPath || '').split('/')[3];
+    const imageDir = pendingImageDir || getImageDirFromPath(window.imgPath);
     if (!imageDir) {
       alert("⚠️ image not ready. Please re-upload.");
       return;

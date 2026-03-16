@@ -443,7 +443,19 @@ def detect_image(request):
     params = body.get("params") or {}
 
     # 'media/<project>/original/xxx.png' -> project_name
-    image_name = original_image_path.strip('/').split('/')[2]
+    parts = original_image_path.strip('/').split('/')
+
+    # expected:
+    # /images/<image_name>/original/<filename>
+    if (
+        len(parts) < 4 or
+        parts[0] != "images" or
+        parts[2] != "original"
+    ):
+        logger.error("Invalid image_path received: %s", original_image_path)
+        return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")
+
+    image_name = parts[1]
 
     # Clear old status and previous results
     image_dir = _image_dir(image_name)
