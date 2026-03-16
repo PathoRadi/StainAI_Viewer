@@ -6,13 +6,34 @@ import gc
 import glob
 import numpy as np
 from natsort import natsorted
-from PIL import Image, ImageDraw
+from PIL import Image, ImageFile, ImageDraw
 from torchvision.ops import nms
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+try:
+    import tifffile as tiff
+    _HAS_TIFFFILE = True
+except Exception:
+    _HAS_TIFFFILE = False
+
+try:
+    import imageio.v3 as iio
+    _HAS_IMAGEIO = True
+except Exception:
+    _HAS_IMAGEIO = False
+
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # headless / server safe
+    import matplotlib.pyplot as plt
+    _HAS_MPL = True
+except Exception:
+    _HAS_MPL = False
+
 class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
+    ImageFile.LOAD_TRUNCATED_IMAGES = True
 
     def __init__(self, model, patches_dir, large_img_path, gray_image_path, output_dir):
         self.model = model
@@ -26,12 +47,8 @@ class YOLOPipeline:
 
         self.result_dir      = os.path.join(output_dir, "result")
         self.annotated_dir = os.path.join(output_dir, "annotated")
-        self.fm_images_dir = os.path.join(output_dir, "fm_images")
-        self.qmap_dir      = os.path.join(output_dir, "qmap")
         os.makedirs(self.result_dir,      exist_ok=True)
         os.makedirs(self.annotated_dir, exist_ok=True)
-        os.makedirs(self.fm_images_dir, exist_ok=True)
-        os.makedirs(self.qmap_dir,      exist_ok=True)
 
         self.class_mapping = {
             0: ['R',  (0,255,0)],
@@ -59,11 +76,16 @@ class YOLOPipeline:
         gc.collect()
 
         # 2. Generate annotated image
-        self.annotate_large_image(bbox, labels)
+        annotated_img_path_orig = self.annotate_large_image(self.large_img_path, bbox, labels)
+        annotated_img_path_gray = self.annotate_large_image(self.gray_image_path, bbox, labels)
+
+        # 3. Save full image bar chart
+        self.save_full_image_barchart(detections, self.large_img_path)
+
         self.log.info(f"Generating annotated image done")
         gc.collect()
 
-        return detections
+        return detections, annotated_img_path_orig, annotated_img_path_gray
 
 
 
@@ -750,46 +772,222 @@ class YOLOPipeline:
 
         return num / max(den, 1)
 
-
-
-
-
-    ##############################################
-    # ------ 3) Generate Annotated Imaage ------ #
-    ##############################################
-    def annotate_large_image(self, bbox, labels, alpha=0.3):
+    def annotate_large_image(self, in_path, bbox, labels, alpha=0.3):
         """
-        For very large images: draw boxes on a downsampled image to avoid loading a huge RGBA overlay.
-        Outputs <original_filename>_annotated_preview.jpg
+        Draw all bboxes on the original large image and save.
+        - Keep original bit depth if possible (uint8/uint16)
+        - Output is RGB (because colored overlay)
+        - TIFF is the most reliable for uint16 RGB
         """
-        try:
-            base_img = Image.open(self.large_img_path).convert("RGB")
-        except Exception:
-            print(f"Cannot read {self.large_img_path}")
-            return
+        base = os.path.basename(in_path)
+        root, ext = os.path.splitext(base)
+        ext_l = ext.lower() if ext else ""
 
-        W, H = base_img.size
+        os.makedirs(self.annotated_dir, exist_ok=True)
 
-        # Convert to RGBA for drawing (only at downsampled size)
-        base_img = base_img.convert("RGBA")
-        overlay  = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        draw     = ImageDraw.Draw(overlay)
-        a255     = max(0, min(255, int(round(alpha * 255))))
+        # output path follows original ext by default
+        out_path = os.path.join(
+            self.annotated_dir,
+            f"{root}_annotated{ext_l if ext_l else '.tif'}"
+        )
 
+        # ----------------------------
+        # 1) Read image with dtype kept
+        # ----------------------------
+        if ext_l in (".tif", ".tiff") and _HAS_TIFFFILE:
+            img = tiff.imread(in_path)  # can be (H,W), (H,W,3), (H,W,4)
+        elif _HAS_IMAGEIO:
+            img = iio.imread(in_path)   # may keep uint16 for some formats
+        else:
+            with Image.open(in_path) as im:
+                img = np.array(im)
+
+        if img is None:
+            self.log.error("annotate_large_image: cannot read %s", in_path)
+            return None
+
+        # normalize to HxWx3 RGB, keep dtype
+        if img.ndim == 2:
+            img_rgb = np.stack([img, img, img], axis=-1)
+        elif img.ndim == 3:
+            if img.shape[2] >= 3:
+                img_rgb = img[:, :, :3]
+            else:
+                img_rgb = np.repeat(img, 3, axis=2)
+        else:
+            self.log.error("annotate_large_image: unsupported shape=%s", getattr(img, "shape", None))
+            return None
+
+        H, W, _ = img_rgb.shape
+        dtype = img_rgb.dtype
+
+        # alpha clamp
+        a = float(alpha)
+        a = 0.0 if a < 0 else (1.0 if a > 1 else a)
+
+        # dtype range
+        if np.issubdtype(dtype, np.integer):
+            maxv = float(np.iinfo(dtype).max)
+        else:
+            # assume float 0..1
+            maxv = 1.0
+
+        out = img_rgb.copy()
+
+        # ----------------------------
+        # 2) Draw ALL boxes (IMPORTANT: no save/return inside this loop)
+        # ----------------------------
         for box, lbl in zip(bbox, labels):
             x1, y1, x2, y2 = box
-            # Boundary protection
-            x1 = max(0, min(x1, W)); x2 = max(0, min(x2, W))
-            y1 = max(0, min(y1, H)); y2 = max(0, min(y2, H))
+
+            # robust int + clip
+            x1 = int(np.floor(x1)); y1 = int(np.floor(y1))
+            x2 = int(np.ceil(x2));  y2 = int(np.ceil(y2))
+
+            x1 = max(0, min(x1, W))
+            x2 = max(0, min(x2, W))
+            y1 = max(0, min(y1, H))
+            y2 = max(0, min(y2, H))
             if x2 <= x1 or y2 <= y1:
                 continue
 
-            # Your class_mapping is BGR; Pillow wants RGB
-            b, g, r = self.class_mapping[int(lbl) if hasattr(lbl, "item") else int(lbl)][1]
-            draw.rectangle([x1, y1, x2, y2], fill=(r, g, b, a255))
+            cls = int(lbl.item() if hasattr(lbl, "item") else lbl)
 
-        annotated = Image.alpha_composite(base_img, overlay).convert("RGB")
-        os.makedirs(self.annotated_dir, exist_ok=True)
-        out_name = os.path.basename(self.large_img_path)[:-4] + "_annotated.jpg"
-        annotated_path = os.path.join(self.annotated_dir, out_name)
-        annotated.save(annotated_path, format="JPEG", quality=88, optimize=True, progressive=True)
+            # your mapping is BGR; output image is RGB
+            b, g, r = self.class_mapping[cls][1]
+
+            # scale color to dtype range (uint16 -> 0..65535)
+            scale = maxv / 255.0
+            rr = float(r) * scale
+            gg = float(g) * scale
+            bb = float(b) * scale
+
+            region = out[y1:y2, x1:x2, :].astype(np.float32, copy=False)
+
+            # blend: region = (1-a)*region + a*color
+            region[:, :, 0] = region[:, :, 0] * (1.0 - a) + rr * a
+            region[:, :, 1] = region[:, :, 1] * (1.0 - a) + gg * a
+            region[:, :, 2] = region[:, :, 2] * (1.0 - a) + bb * a
+
+            if np.issubdtype(dtype, np.integer):
+                out[y1:y2, x1:x2, :] = np.clip(region, 0.0, maxv).astype(dtype, copy=False)
+            else:
+                out[y1:y2, x1:x2, :] = np.clip(region, 0.0, 1.0).astype(dtype, copy=False)
+
+        # ----------------------------
+        # 3) Save (AFTER all boxes)
+        # ----------------------------
+        # JPEG: must be uint8
+        if ext_l in (".jpg", ".jpeg"):
+            if out.dtype != np.uint8:
+                out8 = (out.astype(np.float32) / maxv * 255.0 + 0.5).astype(np.uint8)
+            else:
+                out8 = out
+            Image.fromarray(out8, mode="RGB").save(out_path, format="JPEG", quality=90, optimize=True, progressive=True)
+            return out_path
+
+        # TIFF: best for uint16 RGB
+        if ext_l in (".tif", ".tiff"):
+            if not _HAS_TIFFFILE:
+                raise RuntimeError("tifffile is required to save TIFF annotated images.")
+            tiff.imwrite(out_path, out, photometric="rgb", compression="lzw")
+            return out_path
+
+        # PNG: try write; if uint16 RGB fails -> fallback to TIFF (most reliable)
+        if ext_l == ".png":
+            try:
+                if _HAS_IMAGEIO:
+                    iio.imwrite(out_path, out)
+                    return out_path
+                # pillow path (uint8 safe)
+                if out.dtype != np.uint8:
+                    raise TypeError("Pillow cannot reliably save non-uint8 RGB PNG here.")
+                Image.fromarray(out, mode="RGB").save(out_path, format="PNG", compress_level=6)
+                return out_path
+            except Exception:
+                # fallback -> TIFF
+                if not _HAS_TIFFFILE:
+                    raise RuntimeError("Need tifffile to save uint16 RGB annotated output (PNG writer failed).")
+                out_path = os.path.splitext(out_path)[0] + ".tif"
+                tiff.imwrite(out_path, out, photometric="rgb", compression="lzw")
+                return out_path
+
+        # unknown ext -> fallback to TIFF
+        if not _HAS_TIFFFILE:
+            # last resort: save uint8 png
+            if out.dtype != np.uint8:
+                out8 = (out.astype(np.float32) / maxv * 255.0 + 0.5).astype(np.uint8)
+            else:
+                out8 = out
+            out_path = os.path.splitext(out_path)[0] + ".png"
+            Image.fromarray(out8, mode="RGB").save(out_path, format="PNG", compress_level=6)
+            return out_path
+
+        out_path = os.path.splitext(out_path)[0] + ".tif"
+        tiff.imwrite(out_path, out, photometric="rgb", compression="lzw")
+        return out_path
+    
+    def save_full_image_barchart(
+        self,
+        detections,
+        in_path
+    ):
+        """
+        Save a 'Full Image' bar chart PNG into self.result_dir.
+        detections format: [{"coords":[x1,y1,x2,y2], "type": "R"}, ...]
+        """
+        out_name = os.path.basename(in_path)
+
+        if not _HAS_MPL:
+            self.log.warning("matplotlib not available, skip saving full image bar chart.")
+            return None
+
+        # fixed order (match your UI)
+        order = ["R", "H", "B", "A", "RD", "HR"]
+        counts = {k: 0 for k in order}
+
+        # detections['type'] is already class name in your pipeline output
+        # see det_list creation: {"type": cls} where cls is self.class_mapping[int(i)][0]
+        for d in (detections or []):
+            t = d.get("type", None)
+            if t in counts:
+                counts[t] += 1
+
+        values = [counts[k] for k in order]
+
+        # Colors: your class_mapping stores BGR, convert to RGB for matplotlib
+        name_to_rgb = {}
+        for _, (name, bgr) in self.class_mapping.items():
+            b, g, r = bgr
+            name_to_rgb[name] = (r / 255.0, g / 255.0, b / 255.0)
+
+        bar_colors = [name_to_rgb.get(k, (1, 1, 1)) for k in order]
+
+        # Figure
+        fig = plt.figure(figsize=(6.2, 3.2), dpi=220)
+        ax = fig.add_subplot(111)
+
+        bars = ax.bar(order, values, color=bar_colors)
+
+        title = os.path.splitext(os.path.basename(in_path))[0]
+        ax.set_title(f"{title} Full Image Counts")
+        ax.set_ylabel("Count")
+
+        # show numbers on bars (like your UI)
+        for rect, v in zip(bars, values):
+            ax.text(
+                rect.get_x() + rect.get_width() / 2.0,
+                v,
+                f"{v}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+        fig.tight_layout()
+
+        out_path = os.path.join(self.result_dir, out_name)
+        fig.savefig(out_path)  # transparent works well on dark UI backgrounds
+        plt.close(fig)
+
+        return out_path

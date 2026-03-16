@@ -4,7 +4,8 @@
 :root {
   /* ----- Left Container ----- */
   --bg-left:             rgb(23,23,23);
-  --bg-left-bottom:        rgb(23,23,23);
+  --bg-left-header:      rgb(23,23,23);
+  --bg-left-bottom:      rgb(23,23,23);
   --text-app-title:      rgb(255, 255, 255);
   --bg-upload-new-img-btn: rgb(23,23,23);
   --text-upload-new-img-btn: rgb(255, 255, 255);
@@ -33,6 +34,31 @@
   --bg-start-detect-btn: rgb(23,23,23);
   --text-start-detect-btn: rgb(255,255,255);
   --border-start-detect-btn: 1px solid rgb(255, 255, 255);
+
+  /* Grayscale Setting Modal */
+  --bg-settings-modal: rgb(0,0,0);
+  --bg-settings-close-btn: rgb(0,0,0);
+  --border-settings-close-btn: 2px solid rgb(255,255,255);
+  --cross-settings-close-btn: rgb(255,255,255);
+  --text-settings-title: rgb(255,255,255);
+  --text-settings-row-label: rgb(255,255,255);
+  --bg-mode-btn: rgb(0,0,0);
+  --border-mode-btn: 2px solid rgb(0,0,0);
+  --text-mode-btn: rgb(255,255,255);
+  --bg-mode-btn-active: rgb(0,0,0);
+  --border-mode-btn-active: 2px solid rgb(255,255,255);
+  --text-mode-btn-active: rgb(255,255,255);
+  --bg-inp-resolution: rgb(0,0,0);
+  --border-inp-resolution: 2px solid rgb(255,255,255);
+  --text-inp-resolution: rgb(255,255,255);
+  --text-unit: rgb(255,255,255);
+  --bg-grayscale-parameter-wrapper: rgb(0,0,0,0.78);
+  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
+  --bg-scrollbar: rgba(255,255,255,0.25);
+  --border-scrollbar: 1px solid rgba(255,255,255,0.25);
+  --bg-settings-start-btn: rgb(0,0,0);
+  --border-settings-start-btn: 2px solid rgb(255,255,255);
+  --text-settings-start-btn: rgb(255,255,255);
 
 
 
@@ -86,9 +112,9 @@
   --bg-roi-action-menu: rgb(120,120,120);
   --bg-roi-action-menu-hover: rgb(70,70,70);
   --text-roi-action-menu: rgb(255,255,255);
-  --scrollbar-track: rgba(255,255,255,0.08);
-  --scrollbar-thumb: rgba(255,255,255,0.35);
-  --scrollbar-thumb-hover: rgba(255,255,255,0.55);
+  --scrollbar-track: rgba(23,23,23);
+  --scrollbar-thumb: rgba(48,48,48);
+  --scrollbar-thumb-hover: rgba(200,200,200);
   /* chart labels */
   --chart-tick-color:    rgb(255, 255, 255);
 }
@@ -96,7 +122,9 @@
 [data-theme="light"] {
   /* Left Container */
   --bg-left:            linear-gradient(to bottom, rgb(74, 106, 118), rgb(40, 39, 40));
-  --bg-left-bottom:     rgb(40, 39, 40);
+  --bg-left-header:     linear-gradient(to bottom, rgb(74, 106, 118), rgb(69, 95, 106));
+  --bg-left-middle:     linear-gradient(to bottom, rgb(69, 95, 106), rgb(43, 45, 47));
+  --bg-left-bottom:     linear-gradient(to bottom, rgb(43, 45, 47), rgb(40, 39, 40));
   --text-app-title:      rgb(47, 47, 47);
   --bg-upload-new-img-btn: rgb(97, 136, 155);
   --text-upload-new-img-btn: rgb(255, 255, 255);
@@ -125,6 +153,33 @@
   --bg-start-detect-btn: rgb(97, 136, 155);
   --text-start-detect-btn: rgb(255, 255, 255);
   --border-start-detect-btn: none;
+
+
+  /* Grayscale Setting Modal */
+  --bg-settings-modal: rgb(255,255,255);
+  --bg-settings-close-btn: rgb(255,255,255);
+  --border-settings-close-btn: 2px solid rgb(209,209,209);
+  --cross-settings-close-btn: rgb(209,209,209);
+  --text-settings-title: rgb(110,156,176);
+  --text-settings-row-label: rgb(110,156,176);
+  --bg-mode-btn: rgb(255,255,255);
+  --border-mode-btn: 2px solid rgb(187,187,187);
+  --text-mode-btn: rgb(75,75,75);
+  --bg-mode-btn-active: rgb(110,156,176);
+  --border-mode-btn-active: 2px solid rgb(110,156,176);
+  --text-mode-btn-active: rgb(255,255,255);
+  --bg-inp-resolution: rgb(255,255,255);
+  --border-inp-resolution: 2px solid rgb(187,187,187);
+  --text-inp-resolution: rgb(75,75,75);
+  --text-unit: rgb(110,156,176);
+  --bg-grayscale-parameter-wrapper: rgb(255,255,255);
+  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
+  --bg-scrollbar: rgb(255,255,255);
+  --border-scrollbar: 1px solid rgb(187,187,187);
+  --bg-settings-start-btn: rgb(255,255,255);
+  --border-settings-start-btn: 2px solid rgb(209,209,209);
+  --text-settings-start-btn: rgb(110,156,176);
+
 
 
 
@@ -226,7 +281,7 @@
     overflow-y: visible;
     width: 100%;
     max-width: calc(100vw - 200px);
-    height: auto;
+    height: 100%;
     min-height: 100vh;
     background: var(--bg-right);
 }

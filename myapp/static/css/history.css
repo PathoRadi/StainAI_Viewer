@@ -1,38 +1,14 @@
 /* static/css/history.css */
 
 /* ------- History Stack ------- */
-#upload-panel{
-    flex: 1 1 auto;     
-    min-height: 0;      
-    overflow-y: auto;   
-    overflow-x: hidden; 
-}
-#upload-panel::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
-}
-#upload-panel::-webkit-scrollbar-thumb {
-    background-color: var(--scrollbar-thumb);
-    border-radius: 10px;
-    border: 2px solid var(--scrollbar-track);
-}
-#upload-panel::-webkit-scrollbar-track {
-    background: var(--scrollbar-track);
-}
-/* Firefox */
-#upload-panel {
-    scrollbar-width: thin;                       /* thin / auto / none */
-    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-}
-
 #history-container {
     margin: 0;
-    padding: 20px;
+    padding: 8px 20px 20px 20px;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: calc(100vh - 200px);
-    overflow-y: auto;
+    max-height: none;
+    overflow: visible;
     box-sizing: border-box;
 }
 .file_icon {
@@ -45,6 +21,7 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    height: 35px;
     width: 100%;
     padding: 8px 36px 8px 12px;
     background: var(--bg-history-item);
@@ -100,7 +77,7 @@
     position: absolute;
     transform: none !important;
     width: 15px;
-    height: 90px;
+    height: 130px;
     margin: 0 !important;
     background: var(--bg-history-action-menu);
     border-radius: 8px;

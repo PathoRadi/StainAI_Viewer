@@ -8,27 +8,130 @@
     width: 200px;
     height: 100vh;
     z-index: 3000;
+
+    overflow: hidden;
+    min-height: 0;
+
     background: var(--bg-left);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
 }
+
+
+
 .left-container-header {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    overflow: hidden;
-    min-height: 0;
-    background: var(--bg-left);
+    position: relative;
+    z-index: 4000;
+    width: 190px;
+    background: var(--bg-left-header);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
 }
+.image-history-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 177px;
+
+    padding-top: 133px;   /* logo + upload button 高度 */
+    padding-bottom: 80px; /* bottom toggle 高度 */
+
+    padding-right: 8px;
+    box-sizing: border-box;
+}
+/* Scrollbar Styles for .image-history-container */
+/* Chrome, Safari */
+.image-history-container::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+.image-history-container::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 2px solid var(--scrollbar-track);
+}
+.image-history-container::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+/* Firefox */
+.image-history-container {
+    scrollbar-width: thin;                       
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+/* ===== Sidebar section toggle ===== */
+.sidebar-section-toggle{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    width: 100%;
+    min-height: 40px;
+    padding: 10px 16px 6px 20px;
+
+    border: none;
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+
+    position: sticky;
+    top: 0;              
+    z-index: 5;
+    background: var(--bg-left);
+}
+.sidebar-section-toggle:hover{
+    opacity: 0.9;
+}
+.sidebar-section-title{
+    pointer-events: none;
+}
+.sidebar-section-chevron{
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+    pointer-events: none;
+}
+.sidebar-section-toggle.collapsed .sidebar-section-chevron{
+    transform: rotate(-90deg);
+}
+/* wrapper for collapse */
+#history-container-wrapper{
+    overflow: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, margin-top 0.18s ease;
+    max-height: 2000px;
+    opacity: 1;
+    margin-top: 0;
+}
+#history-container-wrapper.collapsed{
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
+
+
+
+
+
+
 .left-container-bottom {
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 4000;
+    width: 190px;
     background: var(--bg-left-bottom);
     margin-top: auto;
     padding-bottom: 0;
@@ -45,17 +148,19 @@
 /* -----App Logo----- */
 .logo-container {
     display: flex;
+    position: relative;
+    z-index: 4000;
     align-items: center;
     justify-content: center;
-    width: 200px;
+    width: 190px;
     height: 78px;
 }
 .app-logo {
     width: 148px;
     height: 36px;
-    /* width: 118.4px;
-    height: 28.8px; */
-    margin: 18px 18px 18px 18px;
+    justify-content: center;
+    align-items: center;
+    object-fit: contain;
 }
 
 
@@ -65,11 +170,13 @@
 /* -----Upload Image & Start Detection Button----- */
 #upload-new-img-btn {
     display: flex;
+    position: relative;
+    z-index: 4000;
     justify-content: center;
     align-items: center;
     width: 160px;
     height: 35px;
-    margin: 20px;
+    margin: 15px;
     background: var(--bg-upload-new-img-btn);
     color: var(--text-upload-new-img-btn);
     border: var(--border-upload-new-img-btn);
@@ -223,7 +330,7 @@
 .theme-toggle-wrapper {
     display: flex;
     align-items: center;
-    width: 200px;
+    width: 190px;
     height: 61px;
     margin: 0px;
     font-family: 'PingFangHKWeb', sans-serif;

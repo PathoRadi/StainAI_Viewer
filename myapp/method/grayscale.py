@@ -1,138 +1,263 @@
-# grayscale.py
 import os
-from PIL import Image, ImageOps, ImageStat
+import numpy as np
+from PIL import Image, ImageFile
 
-try:
-    import pyvips
-    _HAS_VIPS = True
-except Exception:
-    _HAS_VIPS = False
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+Image.MAX_IMAGE_PIXELS = None
 
-class GrayScaleImage:
-    def __init__(self, image_path, output_dir, is_cut=True):
-        self.image_path = image_path
+
+class GrayscaleConverter:
+    """
+    Bit-depth aware GrayscaleConverter.
+
+    Core design:
+    - Read image and preserve bit depth whenever possible (uint8/uint16).
+    - Convert to float32 in [0,1] for all processing (percentile, gamma, gain).
+    - Save output following ORIGINAL extension and (ideally) original bit depth:
+        * PNG/TIFF: can save 8-bit or 16-bit
+        * JPEG: always 8-bit (format limitation)
+    - Optionally also write an extra 8-bit PNG for downstream YOLO / frontend usage.
+
+    Pipelines:
+    - previewlike: match frontend algorithm (no morphology, no bg mask)
+    - morph: optional morphology-enhanced version (requires scipy)
+    """
+
+    def __init__(
+        self,
+        img_path: str,
+        output_dir: str,
+        p_low: float = 5,
+        p_high: float = 99,
+        gamma: float = 1.0,
+        gain: float = 1.0,
+        fluo_kernel: int = 25,
+        bright_kernel: int = 41,
+        bright_bg_L_thr: int = 245,
+        write_u8_png: bool = True,   # <-- strongly recommended
+    ):
+        self.img_path = img_path
         self.output_dir = output_dir
-        self.is_cut = is_cut
 
-    def _save_with_ext_params_vips(self, img, output_path):
-        ext = os.path.splitext(output_path)[1].lower()
-        if ext in (".jpg", ".jpeg"):
-            # set Q=85, progressive if JPEG
-            img.jpegsave(output_path, Q=85, optimize_coding=True, interlace=True)
-        elif ext == ".png":
-            # set compression=1 for PNG
-            img.pngsave(output_path, compression=1)
-        else:
-            # for other formats, just save directly
-            img.write_to_file(output_path)
+        self.p_low = float(p_low)
+        self.p_high = float(p_high)
+        self.gamma = float(gamma)
+        self.gain = float(gain)
 
-    def _rgb_to_gray_vips(self, src_path, dst_path):
-        # streaming reading, avoid loading full image into memory
-        im = pyvips.Image.new_from_file(src_path, access="sequential")
+        self.fluo_kernel = int(fluo_kernel)
+        self.bright_kernel = int(bright_kernel)
+        self.bright_bg_L_thr = int(bright_bg_L_thr)
 
-        # 1) convert to single channel grayscale
-        if im.bands > 1:
-            im = im.colourspace(pyvips.Interpretation.B_W)
-        # make sure 8-bit
-        if im.format != "uchar":
-            im = im.cast("uchar")
+        self.write_u8_png = bool(write_u8_png)
 
-        w, h = im.width, im.height
-        kx = 10 if w >= 10 else w
-        ky = 10 if h >= 10 else h
+        base = os.path.basename(img_path)
+        self.root, self.ext = os.path.splitext(base)
+        self.ext_l = self.ext.lower()
 
-        # 2) Average the four corners kx*ky blocks (fully streaming)
-        tl = im.extract_area(0,        0,        kx, ky).avg()
-        tr = im.extract_area(w - kx,   0,        kx, ky).avg()
-        bl = im.extract_area(0,        h - ky,   kx, ky).avg()
-        br = im.extract_area(w - kx,   h - ky,   kx, ky).avg()
-        mean_bg = (float(tl) + float(tr) + float(bl) + float(br)) / 4.0
+        # JPEG cannot store 16-bit grayscale in typical workflows.
+        self._force_u8_output = self.ext_l in (".jpg", ".jpeg")
 
-        # 3) invert if background is bright (255 - x)
-        if mean_bg > 127:
-            # linear transform: out = -1 * x + 255
-            im = im.linear(-1, 255).cast("uchar")
+        # cache input bit depth info
+        self._input_dtype = None  # np.uint8 / np.uint16
+        self._input_is_rgb = None
 
-        # 4) save with appropriate params
-        self._save_with_ext_params_vips(im, dst_path)
+    # ------------------------------------------------------------------
+    # IO helpers
+    # ------------------------------------------------------------------
+    def _gray_dir(self) -> str:
+        d = os.path.join(self.output_dir, "gray")
+        os.makedirs(d, exist_ok=True)
+        return d
 
-        return dst_path
-
-    def rgb_to_gray(self):
+    def _save_follow_ext(self, out_arr: np.ndarray, out_dtype, suffix: str = "") -> str:
         """
-        - convert to L (grayscale)
-        - average the four corners (up to 10x10) to estimate the background
-        - if mean_bg > 127 then invert the image
-        - save according to file extension
-        Prefer using pyvips (streaming); fall back to PIL if pyvips is unavailable.
+        Save grayscale array with extension following original image extension.
+        out_arr: uint8 or uint16 2D
+        out_dtype: np.uint8 or np.uint16
         """
-        if self.is_cut:
-            gray_dir = os.path.join(self.output_dir, "gray")
-            os.makedirs(gray_dir, exist_ok=True)
-            filename = os.path.basename(self.image_path)
-            output_path = os.path.join(gray_dir, filename)
+        out_dir = self._gray_dir()
 
-            if _HAS_VIPS:
-                try:
-                    return self._rgb_to_gray_vips(self.image_path, output_path)
-                except Exception:
-                    # if vips fails, fall back to PIL
-                    pass
+        ext_l = self.ext_l
+        if ext_l not in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
+            ext_l = ".png"
 
-            # ---------- PIL: Use it if vips fail ----------
-            with Image.open(self.image_path) as im_pil:
-                im_gray = im_pil.convert("L")
-                w, h = im_gray.size
-                kx = 10 if w >= 10 else w
-                ky = 10 if h >= 10 else h
+        out_path = os.path.join(out_dir, f"{self.root}{suffix}_gray{ext_l}")
 
-                tl = im_gray.crop((0, 0, kx, ky))
-                tr = im_gray.crop((w - kx, 0, w, ky))
-                bl = im_gray.crop((0, h - ky, kx, h))
-                br = im_gray.crop((w - kx, h - ky, w, h))
+        if ext_l in (".jpg", ".jpeg"):
+            # always u8
+            u8 = out_arr.astype(np.uint8, copy=False)
+            Image.fromarray(u8, mode="L").save(
+                out_path, format="JPEG", quality=90, optimize=True, progressive=True
+            )
+            return out_path
 
-                means = [
-                    ImageStat.Stat(tl).mean[0],
-                    ImageStat.Stat(tr).mean[0],
-                    ImageStat.Stat(bl).mean[0],
-                    ImageStat.Stat(br).mean[0],
-                ]
-                mean_bg = float(sum(means) / 4.0)
-
-                if mean_bg > 127:
-                    im_gray = ImageOps.invert(im_gray)
-
-                ext = os.path.splitext(output_path)[1].lower()
-                if ext in (".jpg", ".jpeg"):
-                    im_gray.save(output_path, format="JPEG",
-                                 quality=85, optimize=True, progressive=True)
-                elif ext == ".png":
-                    im_gray.save(output_path, format="PNG", compress_level=1)
-                else:
-                    im_gray.save(output_path)
-
-            return output_path
-
+        # PNG / TIFF can be 8 or 16 bit
+        if out_dtype == np.uint16 and not self._force_u8_output:
+            im = Image.fromarray(out_arr.astype(np.uint16, copy=False), mode="I;16")
         else:
-            # vips is preferred for this simple case
-            gray_dir = os.path.join(self.output_dir, "qmap")
-            os.makedirs(gray_dir, exist_ok=True)
-            output_path = os.path.join(gray_dir, "gmap_slice0.png")
+            im = Image.fromarray(out_arr.astype(np.uint8, copy=False), mode="L")
 
-            if _HAS_VIPS:
-                try:
-                    im = pyvips.Image.new_from_file(self.image_path, access="sequential")
-                    if im.bands > 1:
-                        im = im.colourspace(pyvips.Interpretation.B_W)
-                    if im.format != "uchar":
-                        im = im.cast("uchar")
-                    im.pngsave(output_path, compression=1)
-                    return output_path
-                except Exception:
-                    pass
+        if ext_l == ".png":
+            im.save(out_path, format="PNG", compress_level=6)
+        else:
+            im.save(out_path, format="TIFF", compression="tiff_lzw")
+        return out_path
 
-            # PIL fallback
-            with Image.open(self.image_path) as im_pil:
-                im_gray = im_pil.convert("L")
-                im_gray.save(output_path, format="PNG", compress_level=1)
-            return output_path
+    def _save_extra_u8_png(self, out01: np.ndarray, suffix: str = "_u8") -> str:
+        """
+        Save extra 8-bit png derived from float01.
+        Always writes <root><suffix>.png into gray/
+        """
+        out_dir = self._gray_dir()
+        out_path = os.path.join(out_dir, f"{self.root}{suffix}.png")
+        u8 = (np.clip(out01, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+        Image.fromarray(u8, mode="L").save(out_path, format="PNG", compress_level=6)
+        return out_path
+
+    # ------------------------------------------------------------------
+    # Reading / dtype handling
+    # ------------------------------------------------------------------
+    def _read_keep_bit(self):
+        """
+        Returns:
+          arr: np.ndarray
+          is_rgb: bool
+          dtype: np.uint8 or np.uint16
+        Notes:
+          - 16-bit grayscale PNG/TIF from ImageJ often comes as mode "I;16"
+          - Many RGB images will come as 8-bit after PIL convert("RGB")
+        """
+        with Image.open(self.img_path) as im:
+            mode = im.mode
+
+            # 16-bit grayscale
+            if mode in ("I;16", "I;16B", "I;16L"):
+                arr = np.array(im, dtype=np.uint16)
+                self._input_dtype = np.uint16
+                self._input_is_rgb = False
+                return arr, False, np.uint16
+
+            # 8-bit grayscale
+            if mode == "L":
+                arr = np.array(im, dtype=np.uint8)
+                self._input_dtype = np.uint8
+                self._input_is_rgb = False
+                return arr, False, np.uint8
+
+            # everything else -> RGB (typically uint8)
+            rgb = im.convert("RGB")
+            arr = np.asarray(rgb, dtype=np.uint8)
+            self._input_dtype = np.uint8
+            self._input_is_rgb = True
+            return arr, True, np.uint8
+
+    def _to_float01(self, x: np.ndarray, dtype) -> np.ndarray:
+        maxv = 65535.0 if dtype == np.uint16 else 255.0
+        return x.astype(np.float32) / maxv
+
+    def _from_float01(self, y01: np.ndarray, dtype):
+        y01 = np.clip(y01, 0.0, 1.0)
+        if dtype == np.uint16 and not self._force_u8_output:
+            return (y01 * 65535.0 + 0.5).astype(np.uint16), np.uint16
+        return (y01 * 255.0 + 0.5).astype(np.uint8), np.uint8
+
+    # ------------------------------------------------------------------
+    # Core math in float01
+    # ------------------------------------------------------------------
+    def _norm_percentile01(self, x01: np.ndarray) -> np.ndarray:
+        lo = np.percentile(x01, self.p_low)
+        hi = np.percentile(x01, self.p_high)
+        if hi <= lo:
+            hi = lo + 1e-6
+        y = (x01 - lo) / (hi - lo)
+        return np.clip(y, 0.0, 1.0)
+
+    def _enhance01(self, norm01: np.ndarray) -> np.ndarray:
+        y = np.power(norm01, self.gamma) * self.gain
+        return np.clip(y, 0.0, 1.0)
+
+    def _edge_bg_mean_0_1(self, gray01: np.ndarray) -> float:
+        """
+        Mimic frontend: mean brightness of a border strip.
+        Use ~3% border thickness (min 32px, max 256px).
+        """
+        H, W = gray01.shape
+        t = int(max(32, min(256, round(0.03 * min(H, W)))))
+        top = gray01[:t, :]
+        bot = gray01[H - t:, :]
+        left = gray01[:, :t]
+        right = gray01[:, W - t:]
+        vals = np.concatenate([top.ravel(), bot.ravel(), left.ravel(), right.ravel()])
+        return float(vals.mean())
+
+    def auto_detect_mode(self, thr: float = 110.0) -> str:
+        """
+        Decide fluorescence vs brightfield based on border mean brightness.
+        Frontend uses threshold ~110 on 8-bit domain; we mirror it in float01 domain.
+        """
+        arr, is_rgb, dtype = self._read_keep_bit()
+
+        if is_rgb:
+            # use luma (same coefficients as frontend)
+            rgb01 = arr.astype(np.float32) / 255.0
+            L = 0.2126 * rgb01[:, :, 0] + 0.7152 * rgb01[:, :, 1] + 0.0722 * rgb01[:, :, 2]
+            bg01 = self._edge_bg_mean_0_1(L)
+        else:
+            gray01 = self._to_float01(arr, dtype=dtype)
+            bg01 = self._edge_bg_mean_0_1(gray01)
+
+        thr01 = float(thr) / 255.0
+        return "fluorescence" if bg01 < thr01 else "brightfield"
+
+    # ------------------------------------------------------------------
+    # PREVIEWLIKE pipelines (match frontend)
+    # ------------------------------------------------------------------
+    def convert_to_grayscale_fluorescence(self):
+        arr, is_rgb, dtype = self._read_keep_bit()
+
+        if is_rgb:
+            # green channel (uint8)
+            g = arr[:, :, 1]
+            g01 = g.astype(np.float32) / 255.0
+            out01 = self._enhance01(self._norm_percentile01(g01))
+            out_arr, out_dtype = self._from_float01(out01, np.uint8)  # rgb images end up as u8
+        else:
+            # already grayscale (could be u16)
+            x01 = self._to_float01(arr, dtype=dtype)
+            out01 = self._enhance01(self._norm_percentile01(x01))
+            out_arr, out_dtype = self._from_float01(out01, dtype)
+
+        main_path = self._save_follow_ext(out_arr, out_dtype)
+        extra_u8 = None
+        if self.write_u8_png:
+            extra_u8 = self._save_extra_u8_png(out01, suffix="_u8")
+
+        return {"gray_path": main_path, "gray_u8_path": extra_u8, "mode": "fluorescence"}
+
+    def convert_to_grayscale_brightfield(self):
+        arr, is_rgb, dtype = self._read_keep_bit()
+
+        if is_rgb:
+            rgb01 = arr.astype(np.float32) / 255.0
+            L = 0.2126 * rgb01[:, :, 0] + 0.7152 * rgb01[:, :, 1] + 0.0722 * rgb01[:, :, 2]
+            inv = 1.0 - L
+            out01 = self._enhance01(self._norm_percentile01(inv))
+            out_arr, out_dtype = self._from_float01(out01, np.uint8)
+        else:
+            x01 = self._to_float01(arr, dtype=dtype)
+            inv = 1.0 - x01
+            out01 = self._enhance01(self._norm_percentile01(inv))
+            out_arr, out_dtype = self._from_float01(out01, dtype)
+
+        main_path = self._save_follow_ext(out_arr, out_dtype)
+        extra_u8 = None
+        if self.write_u8_png:
+            extra_u8 = self._save_extra_u8_png(out01, suffix="_u8")
+
+        return {"gray_path": main_path, "gray_u8_path": extra_u8, "mode": "brightfield"}
+
+    def convert_to_grayscale_auto(self, thr: float = 110.0):
+        mode = self.auto_detect_mode(thr=thr)
+        if mode == "fluorescence":
+            return self.convert_to_grayscale_fluorescence()
+        return self.convert_to_grayscale_brightfield()

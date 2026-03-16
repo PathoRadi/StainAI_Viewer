@@ -4,66 +4,6 @@ import { updateChart, initCheckboxes } from './visualization.js';
 import { csrftoken } from './cookie.js';
 import { addBarChart } from './process.js';
 
-
-
-function generateImageJRoi(points, name='ROI') {
-  const n  = points.length;
-  const xs = points.map(p=>Math.round(p.x));
-  const ys = points.map(p=>Math.round(p.y));
-  const top    = Math.min(...ys);
-  const left   = Math.min(...xs);
-  const bottom = Math.max(...ys);
-  const right  = Math.max(...xs);
-
-  const headerSize  = 64;
-  const coordBytes  = 2*n + 2*n;           // 2 bytes per X plus 2 bytes per Y
-  const buf         = new ArrayBuffer(headerSize + coordBytes);
-  const dv          = new DataView(buf);
-  let off = 0;
-
-  // ---- 0–3: magic "Iout" ----
-  'Iout'.split('').forEach(c=>
-    dv.setUint8(off++, c.charCodeAt(0))
-  );
-
-  // ---- 4–5: version (use <=218 so no header2) ----
-  dv.setUint16(off, 218, false);
-  off += 2;
-
-  // ---- 6–7: roiType=0 (polygon) & dummy ----
-  dv.setUint16(off, 0, false);
-  off += 2;
-
-  // ---- 8–15: bounds ----
-  dv.setUint16(off, top,    false); off += 2;
-  dv.setUint16(off, left,   false); off += 2;
-  dv.setUint16(off, bottom, false); off += 2;
-  dv.setUint16(off, right,  false); off += 2;
-
-  // ---- 16–17: number of points ----
-  dv.setUint16(off, n, false);
-  off += 2;
-
-  // (the rest of bytes 18–63 are left as zero)
-
-  // ---- write coords at offset 64 ----
-  off = headerSize;
-  // 1) all X’s relative to left
-  for (let i = 0; i < n; i++) {
-    dv.setInt16(off, xs[i] - left, false);
-    off += 2;
-  }
-  // 2) all Y’s relative to top
-  for (let i = 0; i < n; i++) {
-    dv.setInt16(off, ys[i] - top, false);
-    off += 2;
-  }
-
-  return buf;
-}
-
-
-
 export function updateHistoryUI(historyStack) {
   const container = $('#history-container');
   container.empty();
@@ -78,6 +18,7 @@ export function updateHistoryUI(historyStack) {
         </button>
         <div class="history-action-menu">
           <button class="history-download-btn" data-idx="${idx}">Download</button>
+          <button class="history-rename-btn" data-idx="${idx}">Rename</button>
           <button class="history-delete-btn" data-idx="${idx}">Delete</button>
         </div>
       </div>`);
@@ -207,6 +148,27 @@ export function initHistoryHandlers(historyStack) {
 
   // expose for other modules (e.g., demo thumbnail click)
   window.loadHistoryItemByIndex = loadHistoryItemByIndex;
+
+  // ===== Your Images collapse / expand =====
+  const toggleBtn = document.getElementById('your-images-toggle');
+  const wrapper = document.getElementById('history-container-wrapper');
+
+  function setHistoryCollapsed(collapsed) {
+    if (!toggleBtn || !wrapper) return;
+
+    toggleBtn.classList.toggle('collapsed', collapsed);
+    toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    wrapper.classList.toggle('collapsed', collapsed);
+    wrapper.classList.toggle('expanded', !collapsed);
+  }
+
+  // 預設展開
+  setHistoryCollapsed(false);
+
+  toggleBtn?.addEventListener('click', () => {
+    const isCollapsed = wrapper.classList.contains('collapsed');
+    setHistoryCollapsed(!isCollapsed);
+  });
   
   // click on an entry → load that image and its boxes/chart
   $(document).on('click', '.history-item', function() {
@@ -317,6 +279,108 @@ export function initHistoryHandlers(historyStack) {
   });
 
   /* ========= /History Action Menu ========= */
+  // Rename history item (inline / in-place)
+  $(document).off('click.histRename').on('click.histRename', '.history-rename-btn', function (e) {
+    e.stopPropagation();
+
+    $('.history-action-menu').hide();
+    $('.menu-click-shield').remove();
+    restoreMenusToOrigin();
+    document.activeElement?.blur?.();
+
+    const idx = $(this).data('idx');
+    const item = historyStack[idx];
+    if (!item) return;
+
+    const $entry = $(`.history-item[data-idx="${idx}"]`);
+    if (!$entry.length) return;
+
+    const $textSpan = $entry.find('.history-filename');
+    const oldText = $textSpan.text();
+    const oldDir = item.dir;
+
+    if ($entry.data('editing')) {
+      $entry.find('.history-rename-input').focus().select();
+      return;
+    }
+    $entry.data('editing', true);
+
+    const $input = $(`<input type="text" class="history-rename-input" maxlength="120">`).val(oldText);
+
+    $textSpan.hide().after($input);
+    $input.focus().select();
+
+    const commit = async () => {
+      const val = String($input.val()).trim();
+      $input.off().remove();
+      $entry.data('editing', false);
+      $textSpan.show();
+
+      const newName = val || oldText;
+      if (!val || newName === oldText) {
+        $textSpan.text(oldText);
+        return;
+      }
+
+      try {
+        const res = await fetch(RENAME_IMAGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify({
+            old_image_name: oldDir,
+            new_image_name: newName
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+          alert('Rename failed: ' + (data.message || ''));
+          $textSpan.text(oldText);
+          return;
+        }
+
+        item.name = data.image_name;
+        item.dir = data.image_name;
+
+        if (data.display_url) {
+          item.displayUrl = data.display_url;
+        } else if (item.displayUrl) {
+          item.displayUrl = item.displayUrl.replace(
+            `/media/images/${oldDir}/`,
+            `/media/images/${data.image_name}/`
+          );
+        }
+
+        $textSpan.text(data.image_name);
+
+      } catch (err) {
+        console.error(err);
+        alert('Rename failed');
+        $textSpan.text(oldText);
+      }
+    };
+
+    const cancel = () => {
+      $input.off().remove();
+      $entry.data('editing', false);
+      $textSpan.show();
+    };
+
+    $input
+      .on('keydown', ev => {
+        if (ev.key === 'Enter') commit();
+        else if (ev.key === 'Escape') cancel();
+        ev.stopPropagation();
+      })
+      .on('blur', commit)
+      .on('mousedown click', ev => {
+        ev.stopPropagation();
+      });
+  });
 
 
 
@@ -349,13 +413,13 @@ export function initHistoryHandlers(historyStack) {
 
   $('#modal-delete').on('click', () => {
     const item = historyStack[pendingDeleteIdx];
-    fetch(DELETE_PROJECT_URL, {
+    fetch(DELETE_IMAGE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-CSRFToken': csrftoken
       },
-      body: JSON.stringify({ project_name: item.dir })
+      body: JSON.stringify({ image_name: item.dir })
     })
     .then(r => r.json())
     .then(res => {
@@ -384,7 +448,7 @@ export function initHistoryHandlers(historyStack) {
     e.stopPropagation();
     const idx  = $(this).data('idx');
     const item = historyStack[idx];
-    const projectName = item.dir;
+    const imageName = item.dir;
     
     // Let the browser handle download: use form POST to trigger download (Save As dialog appears immediately)
     const layers = window.layerManagerApi.getLayers();
@@ -418,8 +482,8 @@ export function initHistoryHandlers(historyStack) {
     
     const p = document.createElement('input');
     p.type = 'hidden';
-    p.name = 'project_name';
-    p.value = projectName;
+    p.name = 'image_name';
+    p.value = imageName;
     
     const r = document.createElement('input');
     r.type = 'hidden';

@@ -29,30 +29,46 @@
 <body>
   <!-- ───── Left container ───── -->
   <div class="left-container">
-    <!-- Left Container Upper Part -->
     <div class="left-container-header">
-      <!-- Title & Logo -->
+      <!-- Logo -->
       <div class="logo-container">
         <img class="app-logo logo-dark" src="{% static 'logo/konva_control/logo_dark.png' %}">
         <img class="app-logo logo-light" src="{% static 'logo/konva_control/logo_light.png' %}">
       </div>
       <!-- Upload New Images -->
       <button id="upload-new-img-btn">+ MORE IMAGE</button>
-      <!-- UPLOAD & HISTORY PANEL -->
-      <div id="upload-panel">
+    </div>
+
+    <div class="image-history-container">
+      <!-- Your Images toggle and items -->
+      <button id="your-images-toggle" class="sidebar-section-toggle" type="button" aria-expanded="true">
+        <span class="sidebar-section-title">Your Images</span>
+        <span class="sidebar-section-chevron">⌄</span>
+      </button>
+      <div id="history-container-wrapper" class="expanded">
         <div id="history-container"></div>
       </div>
+      <!-- Your Projects toggle and items -->
+      <button id="your-projects-toggle" class="sidebar-section-toggle" type="button" aria-expanded="true">
+        <span class="sidebar-section-title">Your Projects</span>
+        <span class="sidebar-section-chevron">⌄</span>
+      </button>
+      <div id="projects-container-wrapper" class="expanded">
+        <div id="projects-container"></div>
+      </div>
     </div>
+
     <!-- Left Container Lowwer Part -->
     <div class="left-container-bottom">
-      <img class="try-icon" id="try-icon1" src="{% static 'logo/try_icon.png' %}">
-      <img class="try-icon" id="try-icon2" src="{% static 'logo/try_icon1.png' %}">
-      <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" 
-      data-demo-url="{% static 'demo/demo.jpg' %}" alt="demo preview">
+      <!-- <img class="try-icon" id="try-icon1" src="{% static 'logo/try_icon.png' %}">
+      <img class="try-icon" id="try-icon2" src="{% static 'logo/try_icon1.png' %}"> -->
+      <!-- <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" 
+      data-demo-url="{% static 'demo/demo.jpg' %}" alt="demo preview"> -->
+
       <!-- ReadMe -->
-      <button class="readme-btn">
+      <!-- <button class="readme-btn">
         <img class="readme-btn-icon" src="{% static 'logo/readme_icon.png' %}">
-      </button>
+      </button> -->
       <!-- Dark/Light Mode Toggle -->
       <div class="theme-toggle-wrapper">
         <span id="theme-mode-text">Dark Mode</span>
@@ -82,17 +98,78 @@
     <p>Drag &amp; Drop Image Here</p>
     <button id="drop-upload-btn">Or Click to Upload</button>
     <input type="file" id="drop-upload-input" accept="image/*" style="display:none" />
+  </div>
 
-    <!-- ─── Preview + Start Button (hidden until upload) ─── -->
-    <div id="preview-container">
-      <img id="preview-img"
-          src="" 
-          alt="Uploaded preview" hidden />
-      <button id="start-detect-btn">
-        Start Detection
-      </button>
+  <!-- Grayscale Settings Modal -->
+  <div id="settings-overlay" class="settings-overlay" hidden>
+    <div class="settings-modal">
+      <button id="settings-close-btn" class="settings-close">✕</button>
+
+      <div class="settings-left">
+        <img id="settings-preview-img" alt="preview"/>
+        <canvas id="settings-preview-canvas"></canvas>
+      </div>
+
+      <div class="settings-right">
+        <div class="settings-title" id="settings-title">Grayscale Parameter Settings</div>
+        <div class="settings-title" id="settings-image-name">filename.png</div>
+
+        <!-- Resolution -->
+        <div class="settings-row">
+          <label>Image Resolution</label>
+          <div class="resolution-wrapper">
+            <input id="inp-resolution" type="number" inputmode="decimal">
+            <span class="unit">(μm/pixel)</span>
+          </div>
+        </div>
+
+        <div class="grayscale-parameter-wrapper">
+          <!-- Contrast -->
+          <div class="settings-row">
+            <label>Contrast</label>
+            <div class="slider-with-value">
+              <input class="scrollbar" id="s-gamma" type="range" min="0" max="10.0" step="0.01">
+              <input class="value-input" id="i-gamma" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+
+          <!-- Brightness -->
+          <div class="settings-row">
+            <label>Brightness</label>
+            <div class="slider-with-value">
+              <input class="scrollbar" id="s-gain" type="range" min="0" max="10.0" step="0.01">
+              <input class="value-input" id="i-gain" type="text" inputmode="decimal" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+
+          <!-- Black Level -->
+          <div class="settings-row">
+            <label>Black Level</label>
+            <div class="slider-with-value">
+              <input class="scrollbar" id="s-p_low" type="range" min="0" max="100" step="1">
+              <input class="value-input" id="i-p_low" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+
+          <!-- White Level -->
+          <div class="settings-row">
+            <label>White Level</label>
+            <div class="slider-with-value">
+              <input class="scrollbar" id="s-p_high" type="range" min="0" max="100" step="1">
+              <input class="value-input" id="i-p_high" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="settings-actions">
+          <button id="settings-reset-btn">Default</button>
+          <button id="settings-start-btn">Start Detection</button>
+        </div>
+      </div>
     </div>
   </div>
+
 
 
   <!-- ───── PROGRESS OVERLAY ───── -->
@@ -283,12 +360,13 @@
     const UPLOAD_IMAGE_URL   = "{% url 'myapp:upload_image' %}";
     const DETECT_IMAGE_URL   = "{% url 'myapp:detect_image' %}";
     const DETECT_RESULT_URL  = "{% url 'myapp:detect_result' %}";
-    const DELETE_PROJECT_URL = "{% url 'myapp:delete_project' %}";
+    const DELETE_IMAGE_URL = "{% url 'myapp:delete_image' %}";
+    const RENAME_IMAGE_URL = "{% url 'myapp:rename_image' %}";
     const DOWNLOAD_WITH_ROIS_URL = "{% url 'myapp:download_with_rois' %}";
     const PROGRESS_URL       = "{% url 'myapp:progress' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
-    
+
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });
