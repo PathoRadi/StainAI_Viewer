@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST, require_GET
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
-from .method.image_resizer import ImageResizer
+# from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayscaleConverter
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
@@ -249,12 +249,13 @@ def _run_detection_job(image_name: str, params: dict):
 
         # --- training-scale resize ---
         if current_res is not None:
-            resized_path = ImageResizer(
-                image_path=orig_path,
-                output_dir=orig_dir,
-                current_res=current_res,
-                target_res=0.464,  # 你 training 的 um/px
-            ).resize()  # save to original/
+            # resized_path = ImageResizer(
+            #     image_path=orig_path,
+            #     output_dir=orig_dir,
+            #     current_res=current_res,
+            #     target_res=0.464,  # 你 training 的 um/px
+            # ).resize()  # save to original/
+            resized_path = orig_path  # skip resizing for now; just use original image for the rest of the pipeline
         else:
             # if user doesn't provide resolution, skip resizing and use original image for the rest of the pipeline
             resized_path = orig_path
