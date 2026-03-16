@@ -3,15 +3,17 @@ import { clearBoxes, drawBbox, showAllBoxes } from './box.js';
 import { updateChart, initCheckboxes } from './visualization.js';
 import { csrftoken } from './cookie.js';
 import { addBarChart } from './process.js';
+import { getMoveToProjectMenuHtml, moveImageToImages, updateProjectsUI } from './project.js';
 
 export function updateHistoryUI(historyStack) {
   const container = $('#history-container');
   container.empty();
   historyStack.forEach((item, idx) => {
+    if (item.projectName) return; // Skip project items in history list (they are shown in the Projects section)
     const demoClass = item.demo ? ' is-demo' : '';
     const entry = $(`
       <div class="history-entry">
-        <button class="history-item${demoClass}" data-idx="${idx}">
+        <button class="history-item${demoClass}" data-idx="${idx}" draggable="true">
           <img class="file_icon" src="/static/logo/file_icon.png">
           <span class="history-filename">${item.name}</span>
           <span class="history-menu-btn">⋯</span>
@@ -19,6 +21,9 @@ export function updateHistoryUI(historyStack) {
         <div class="history-action-menu">
           <button class="history-download-btn" data-idx="${idx}">Download</button>
           <button class="history-rename-btn" data-idx="${idx}">Rename</button>
+
+          ${getMoveToProjectMenuHtml(idx)}
+
           <button class="history-delete-btn" data-idx="${idx}">Delete</button>
         </div>
       </div>`);
@@ -109,6 +114,11 @@ export function initHistoryHandlers(historyStack) {
       buildPyramid: false
     });
 
+    window.viewer.addOnceHandler('open-failed', () => {
+      $('#progress-overlay1').hide();
+      alert('Failed to load image result.');
+    });
+
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide();
 
@@ -177,6 +187,81 @@ export function initHistoryHandlers(historyStack) {
 
     const idx = $(this).data('idx');
     loadHistoryItemByIndex(idx);
+  });
+
+  // Drag and Drop support for history items (drag to canvas to load)
+  $(document).on('dragstart', '.history-item', function (e) {
+    const idx = Number($(this).data('idx'));
+    const item = historyStack[idx];
+    if (!item) return;
+
+    // 只允許拖還在 Your Images 的 image
+    if (item.projectName) {
+      e.preventDefault();
+      return;
+    }
+
+    e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
+      idx,
+      image_name: item.dir
+    }));
+    e.originalEvent.dataTransfer.effectAllowed = 'move';
+
+    $('body').addClass('dragging-history-item');
+  });
+  $(document).on('dragend', '.history-item', function () {
+    $('body').removeClass('dragging-history-item');
+    $('.project-item').removeClass('drag-over');
+  });
+  $(document).on('dragover', '#history-container', function (e) {
+    e.preventDefault();
+    e.originalEvent.dataTransfer.dropEffect = 'move';
+    $(this).addClass('drag-over-images');
+  });
+  $(document).on('dragleave', '#history-container', function () {
+    $(this).removeClass('drag-over-images');
+  });
+  $(document).on('drop', '#history-container', async function (e) {
+    e.preventDefault();
+
+    $(this).removeClass('drag-over-images');
+    $('body').removeClass('dragging-image-item');
+
+    let payload = null;
+    try {
+      payload = JSON.parse(e.originalEvent.dataTransfer.getData('text/plain'));
+    } catch (_) {
+      return;
+    }
+
+    const idx = Number(payload?.idx);
+    const item = historyStack[idx];
+    if (!item) return;
+
+    const sourceProjectName = item.projectName || '';
+
+    // 已經在 Your Images 就不用動
+    if (!sourceProjectName) return;
+
+    try {
+      await moveImageToImages(item.dir, sourceProjectName);
+
+      const oldPrefix = `/media/${sourceProjectName}/${item.dir}/`;
+      const newPrefix = `/media/images/${item.dir}/`;
+
+      item.projectName = null;
+
+      if (item.displayUrl) {
+        item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      }
+
+      updateHistoryUI(historyStack);
+      await updateProjectsUI(historyStack);
+
+    } catch (err) {
+      console.error('Drag move back to images failed:', err);
+      alert(`Move failed: ${err.message}`);
+    }
   });
 
 
@@ -261,11 +346,13 @@ export function initHistoryHandlers(historyStack) {
   });
 
   /** Global click also closes menu (prevents leftovers) */
-  $(document).off('click.histMenuClose').on('click.histMenuClose', function () {
+  $(document).off('click.histMenuClose').on('click.histMenuClose', function (e) {
+    if ($(e.target).closest('#project-modal-overlay').length) return;
+
     const $open = $('.history-action-menu:visible');
     if ($open.length) $open.hide();
     $('.menu-click-shield').remove();
-    restoreMenusToOrigin();  // ★ Move back to origin entry
+    restoreMenusToOrigin();
   });
 
   /** Optional: ESC key closes menu */
@@ -331,7 +418,8 @@ export function initHistoryHandlers(historyStack) {
           },
           body: JSON.stringify({
             old_image_name: oldDir,
-            new_image_name: newName
+            new_image_name: newName,
+            project_name: item.projectName || ''
           })
         });
 
@@ -349,10 +437,15 @@ export function initHistoryHandlers(historyStack) {
         if (data.display_url) {
           item.displayUrl = data.display_url;
         } else if (item.displayUrl) {
-          item.displayUrl = item.displayUrl.replace(
-            `/media/images/${oldDir}/`,
-            `/media/images/${data.image_name}/`
-          );
+          const oldPrefix = item.projectName
+            ? `/media/${item.projectName}/${oldDir}/`
+            : `/media/images/${oldDir}/`;
+
+          const newPrefix = item.projectName
+            ? `/media/${item.projectName}/${data.image_name}/`
+            : `/media/images/${data.image_name}/`;
+
+          item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
         }
 
         $textSpan.text(data.image_name);
@@ -419,7 +512,9 @@ export function initHistoryHandlers(historyStack) {
         'Content-Type': 'application/json',
         'X-CSRFToken': csrftoken
       },
-      body: JSON.stringify({ image_name: item.dir })
+      body: JSON.stringify({ 
+        image_name: item.dir, project_name: item.projectName || '' 
+      })
     })
     .then(r => r.json())
     .then(res => {
@@ -489,8 +584,13 @@ export function initHistoryHandlers(historyStack) {
     r.type = 'hidden';
     r.name = 'rois';
     r.value = JSON.stringify(roisPayload);
+
+    const pj = document.createElement('input');
+    pj.type = 'hidden';
+    pj.name = 'project_name';
+    pj.value = item.projectName || '';
     
-    form.append(csrf, p, r);
+    form.append(csrf, p, r, pj);
     document.body.appendChild(form);
     form.submit();
     form.remove();

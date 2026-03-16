@@ -1,0 +1,456 @@
+/* static/css/project.css */
+
+/* ===== Projects container ===== */
+#projects-container{
+    margin: 0;
+    padding: 4px 20px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: none;
+    overflow: visible;
+    box-sizing: border-box;
+}
+
+/* ===== Empty state ===== */
+.project-empty-state{
+    padding: 6px 4px 10px 4px;
+    color: var(--text-history-item);
+    opacity: 0.7;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+}
+
+/* ===== New Project button ===== */
+.new-project-row{
+    display: flex;
+    width: 100%;
+    margin-bottom: 4px;
+    background: transparent;
+}
+
+.new-project-btn{
+    width: 100%;
+    height: 35px;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px dashed rgba(255,255,255,0.25);
+    border-radius: 15px;
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
+}
+
+.new-project-btn:hover{
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.4);
+}
+
+/* ===== Project entry ===== */
+.project-entry{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.project-item{
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 35px;
+    padding: 8px 34px 8px 12px;
+    background: var(--bg-history-item);
+    border: none;
+    border-radius: 15px;
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease;
+    padding-right: 34px;
+}
+
+.project-item:hover{
+    background: var(--bg-history-item-hover);
+}
+.project-item:hover .project-item-menu-btn{
+    display: block;
+}
+/* project folder rename input */
+.project-item .history-rename-input{
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+
+    height: 24px;
+    box-sizing: border-box;
+
+    margin: 0;
+    padding: 2px 6px;
+
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 6px;
+
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+    line-height: 1.2;
+
+    outline: none;
+}
+.project-item .history-rename-input:focus{
+    border-color: rgba(255,255,255,0.35);
+}
+.project-item-menu-btn{
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--bg-history-menu-btn);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+.project-item-left{
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    margin: 0 0 0 0 !important;
+}
+.folder_icon{
+    width: 16px;
+    height: 16px;
+    margin: 0 8px 0 0;
+    object-fit: contain;
+}
+.project-filename{
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+
+/* ##########################
+            Drag
+###########################*/ 
+.project-item.drag-over{
+    background: rgba(255,255,255,0.16);
+    outline: 1px dashed rgba(255,255,255,0.45);
+}
+body.dragging-history-item .project-item{
+    transition: background 0.12s ease, outline 0.12s ease;
+}
+
+
+
+
+/* ##########################
+    Project Menu Button
+###########################*/ 
+.project-action-menu{
+    position: absolute;
+    transform: none !important;
+    margin: 0 !important;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    min-width: 140px;
+    width: auto;
+    height: auto;
+    display: none;
+    overflow: visible;
+    z-index: 3000;
+}
+
+.project-action-menu button{
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+}
+
+.project-action-menu button:hover{
+    background: var(--bg-history-action-menu-button-hover);
+}
+
+.project-chevron{
+    font-size: 14px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+    flex: 0 0 auto;
+}
+.project-item.expanded .project-chevron{
+    transform: rotate(90deg);
+}
+
+/* ===== Images under project ===== */
+.project-images-list{
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-left: 12px;
+    overflow: hidden;
+    max-height: 1200px;
+    opacity: 1;
+    transition: max-height 0.22s ease, opacity 0.18s ease, padding-top 0.18s ease;
+}
+
+.project-images-list.collapsed{
+    max-height: 0;
+    opacity: 0;
+    padding-top: 0;
+    gap: 0;
+}
+
+.project-history-entry{
+    display: flex;
+    flex-direction: column;
+}
+
+.project-history-item{
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 33px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.04);
+    border: none;
+    border-radius: 12px;
+    color: var(--text-history-item);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.18s ease;
+}
+
+.project-history-item:hover{
+    background: rgba(255,255,255,0.08);
+}
+
+.project-history-item.selected{
+    background: rgba(255,255,255,0.12);
+}
+
+.project-history-item{
+    position: relative;
+    padding-right: 34px;
+}
+
+.project-history-menu-btn{
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--bg-history-menu-btn);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.project-history-item:hover .project-history-menu-btn{
+    display: block;
+}
+
+.project-history-action-menu{
+    position: absolute;
+    transform: none !important;
+    margin: 0 !important;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    min-width: 160px;
+    width: auto;
+    height: auto;
+    display: none;
+    overflow: visible;
+    z-index: 3000;
+}
+.project-history-action-menu button{
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+}
+.project-history-action-menu button:hover{
+    background: var(--bg-history-action-menu-button-hover);
+}
+.project-move-wrapper{
+    position: relative;
+}
+.project-move-btn{
+    width: 100%;
+}
+.project-move-submenu{
+    position: absolute;
+    top: 0;
+    left: calc(100% - 4px);
+    min-width: 160px;
+    max-width: 220px;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    display: none;
+    z-index: 3100;
+}
+.project-move-submenu.visible{
+    display: block;
+}
+.project-move-wrapper:hover .project-move-submenu{
+    display: block;
+}
+
+
+
+
+.project-history-left{
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+}
+
+/* ===== Move to Project submenu ===== */
+.history-move-wrapper{
+    position: relative;
+}
+
+.history-move-btn{
+    width: 100%;
+}
+
+.history-move-submenu{
+    position: absolute;
+    top: 0;
+    left: calc(100% - 4px);
+    min-width: 160px;
+    max-width: 220px;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    display: none;
+    z-index: 3100;
+}
+
+.history-move-submenu.visible{
+    display: block;
+}
+
+.history-move-wrapper:hover .history-move-submenu{
+    display: block;
+}
+
+.move-project-option,
+.move-project-empty{
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+}
+
+.move-project-option:hover{
+    background: var(--bg-history-action-menu-button-hover);
+}
+
+.move-project-option:disabled,
+.move-project-empty:disabled{
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* ===== Project modal ===== */
+#project-modal-overlay[hidden]{
+    display: none !important;
+}
+
+.project-modal-box,
+#project-modal-overlay .modal-box{
+    position: relative;
+    min-width: 320px;
+    max-width: 420px;
+    padding: 22px 20px 18px 20px;
+}
+
+#project-name-input{
+    width: 100%;
+    height: 38px;
+    margin: 10px 0 14px 0;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    outline: none;
+    color: var(--text-modal-box);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+}
+
+#project-name-input:focus{
+    border-color: rgba(255,255,255,0.35);
+}
+
+#project-modal-create{
+    background: rgb(60, 179, 113);
+}
+
+#project-modal-create:hover{
+    background: rgb(76, 199, 127);
+}
+
+#project-modal-cancel{
+    background: rgb(100,100,100);
+}
+
+#project-modal-close{
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-modal-box);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+
+#project-modal-close:hover{
+    background: rgba(255,255,255,0.08);
+}

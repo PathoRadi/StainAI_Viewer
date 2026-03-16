@@ -6,6 +6,7 @@ import { showAllBoxes, drawBbox } from './box.js';
 window.showAllBoxes = showAllBoxes;
 import { layerManagerApi } from './layerManager.js';
 import { initROI } from './roi.js';
+import { updateProjectsUI, initProjectHandlers } from './project.js';
 import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 (function($){
@@ -65,6 +66,9 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     initProcess(window.bboxData, historyStack, { get value(){ return window.barChart; }, set value(v){ window.barChart = v; } });
     updateHistoryUI(historyStack);
     initHistoryHandlers(historyStack);
+
+    updateProjectsUI(historyStack);
+    initProjectHandlers(historyStack);
 
     // Theme toggle
     const toggle = document.getElementById('theme-toggle');

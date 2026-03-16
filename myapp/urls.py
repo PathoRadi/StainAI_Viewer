@@ -12,4 +12,11 @@ urlpatterns = [
     path('download_with_rois/', views.download_project_with_rois, name='download_with_rois'),
     path("progress", views.progress, name="progress"),
     path("api/detect_result/", views.detect_result, name="detect_result"),
+    path('create_project/', views.create_project, name='create_project'),
+    path('list_projects/', views.list_projects, name='list_projects'),
+    path('move_image_to_project/', views.move_image_to_project, name='move_image_to_project'),
+    path('move_image_to_images/', views.move_image_to_images, name='move_image_to_images'),
+    path('get_project_images/', views.get_project_images, name='get_project_images'),
+    path('rename_project/', views.rename_project, name='rename_project'),
+    path('delete_project/', views.delete_project, name='delete_project'),
 ]

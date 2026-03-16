@@ -26,7 +26,7 @@ from django.views.decorators.http import require_POST, require_GET
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
-# from .method.image_resizer import ImageResizer
+from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayscaleConverter
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
@@ -139,6 +139,30 @@ def _image_dir(image_name: str):
     """
     return os.path.join(_images_root(), image_name)
 
+def _project_dir(project_name: str):
+    return os.path.join(_media_root(), project_name)
+
+def _project_image_dir(project_name: str, image_name: str):
+    return os.path.join(_project_dir(project_name), image_name)
+
+def _is_reserved_root_name(name: str) -> bool:
+    return name in {"images"}
+
+def _list_project_names():
+    root = _media_root()
+    if not os.path.isdir(root):
+        return []
+
+    out = []
+    for name in os.listdir(root):
+        path = os.path.join(root, name)
+        if not os.path.isdir(path):
+            continue
+        if _is_reserved_root_name(name):
+            continue
+        out.append(name)
+    return sorted(out, key=str.lower)
+
 
 
 # ---------------------------
@@ -203,6 +227,248 @@ def upload_image(request):
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)                    # Return error if not POST or no file
 
+@csrf_exempt
+@require_POST
+def create_project(request):
+    try:
+        body = json.loads(request.body or "{}")
+        project_name = safe_filename((body.get("project_name") or "").strip())
+
+        if not project_name:
+            return JsonResponse({"success": False, "message": "project_name required"}, status=400)
+
+        if _is_reserved_root_name(project_name):
+            return JsonResponse({"success": False, "message": "Reserved name"}, status=400)
+
+        project_dir = _project_dir(project_name)
+        if os.path.exists(project_dir):
+            return JsonResponse({"success": False, "message": "Project already exists"}, status=409)
+
+        os.makedirs(project_dir, exist_ok=False)
+        return JsonResponse({"success": True, "project_name": project_name})
+    except Exception:
+        logger.exception("create_project failed")
+        return JsonResponse({"success": False, "message": "create failed"}, status=500)
+    
+@require_GET
+def list_projects(request):
+    projects = []
+    for project_name in _list_project_names():
+        image_names = []
+        project_dir = _project_dir(project_name)
+        for child in os.listdir(project_dir):
+            child_path = os.path.join(project_dir, child)
+            if os.path.isdir(child_path):
+                image_names.append(child)
+
+        projects.append({
+            "project_name": project_name,
+            "image_count": len(image_names),
+            "images": sorted(image_names, key=str.lower)
+        })
+
+    return JsonResponse({"projects": projects})
+
+@csrf_exempt
+@require_POST
+def move_image_to_project(request):
+    try:
+        body = json.loads(request.body or "{}")
+        image_name = (body.get("image_name") or "").strip()
+        project_name = (body.get("project_name") or "").strip()
+        source_project_name = (
+            body.get("source_project_name")
+            or body.get("source_project")
+            or ""
+        ).strip()
+
+        if not image_name or not project_name:
+            return JsonResponse(
+                {"success": False, "message": "image_name and project_name required"},
+                status=400
+            )
+
+        # source folder:
+        # 1) from Your Images  -> media/images/<image_name>
+        # 2) from Project A    -> media/<source_project_name>/<image_name>
+        if source_project_name:
+            src_dir = _project_image_dir(source_project_name, image_name)
+        else:
+            src_dir = _image_dir(image_name)
+
+        if not os.path.isdir(src_dir):
+            return JsonResponse(
+                {"success": False, "message": "Image folder not found"},
+                status=404
+            )
+
+        # target project folder must exist
+        project_dir = _project_dir(project_name)
+        if not os.path.isdir(project_dir):
+            return JsonResponse(
+                {"success": False, "message": "Project folder not found"},
+                status=404
+            )
+
+        # target image folder path
+        dst_dir = _project_image_dir(project_name, image_name)
+        if os.path.exists(dst_dir):
+            return JsonResponse(
+                {"success": False, "message": "Same image name already exists in project"},
+                status=409
+            )
+
+        # optional: moving to same project is meaningless
+        if source_project_name and source_project_name == project_name:
+            return JsonResponse(
+                {"success": False, "message": "Image is already in this project"},
+                status=409
+            )
+
+        shutil.move(src_dir, dst_dir)
+
+        # 修正 _detect_result.json 內的 display_url
+        result_path = os.path.join(dst_dir, "_detect_result.json")
+        if os.path.exists(result_path):
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                if source_project_name:
+                    old_prefix = f"{settings.MEDIA_URL}{source_project_name}/{image_name}/"
+                else:
+                    old_prefix = f"{settings.MEDIA_URL}images/{image_name}/"
+
+                new_prefix = f"{settings.MEDIA_URL}{project_name}/{image_name}/"
+
+                if data.get("display_url"):
+                    data["display_url"] = data["display_url"].replace(old_prefix, new_prefix, 1)
+
+                with open(result_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+
+            except Exception:
+                logger.exception("Failed to rewrite detect_result after move")
+
+        print("MOVE DEBUG")
+        print("image_name =", image_name)
+        print("source_project_name =", source_project_name)
+        print("project_name =", project_name)
+        print("src_dir =", src_dir)
+        print("dst_dir =", dst_dir)
+
+        return JsonResponse({
+            "success": True,
+            "project_name": project_name,
+            "image_name": image_name,
+            "source_project_name": source_project_name,
+        })
+
+    except Exception:
+        logger.exception("move_image_to_project failed")
+        return JsonResponse(
+            {"success": False, "message": "move failed"},
+            status=500
+        )
+    
+@csrf_exempt
+@require_POST
+def move_image_to_images(request):
+    try:
+        body = json.loads(request.body or "{}")
+        image_name = (body.get("image_name") or "").strip()
+        source_project_name = (
+            body.get("source_project_name")
+            or body.get("source_project")
+            or ""
+        ).strip()
+
+        if not image_name or not source_project_name:
+            return JsonResponse(
+                {"success": False, "message": "image_name and source_project_name required"},
+                status=400
+            )
+
+        src_dir = _project_image_dir(source_project_name, image_name)
+        if not os.path.isdir(src_dir):
+            return JsonResponse(
+                {"success": False, "message": "Image folder not found"},
+                status=404
+            )
+
+        images_root = _images_root()
+        os.makedirs(images_root, exist_ok=True)
+
+        dst_dir = _image_dir(image_name)
+        if os.path.exists(dst_dir):
+            return JsonResponse(
+                {"success": False, "message": "Same image name already exists in images"},
+                status=409
+            )
+
+        shutil.move(src_dir, dst_dir)
+
+        result_path = os.path.join(dst_dir, "_detect_result.json")
+        if os.path.exists(result_path):
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                old_prefix = f"{settings.MEDIA_URL}{source_project_name}/{image_name}/"
+                new_prefix = f"{settings.MEDIA_URL}images/{image_name}/"
+
+                if data.get("display_url"):
+                    data["display_url"] = data["display_url"].replace(old_prefix, new_prefix, 1)
+
+                with open(result_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+            except Exception:
+                logger.exception("Failed to rewrite detect_result after move to images")
+
+        return JsonResponse({
+            "success": True,
+            "image_name": image_name,
+            "source_project_name": source_project_name,
+        })
+
+    except Exception:
+        logger.exception("move_image_to_images failed")
+        return JsonResponse({"success": False, "message": "move failed"}, status=500)
+
+@require_GET
+def get_project_images(request):
+    project_name = (request.GET.get("project_name") or "").strip()
+    if not project_name:
+        return JsonResponse({"success": False, "message": "project_name required"}, status=400)
+
+    project_dir = _project_dir(project_name)
+    if not os.path.isdir(project_dir):
+        return JsonResponse({"success": False, "message": "Project not found"}, status=404)
+
+    items = []
+    for image_name in sorted(os.listdir(project_dir), key=str.lower):
+        image_dir = os.path.join(project_dir, image_name)
+        if not os.path.isdir(image_dir):
+            continue
+
+        result_path = os.path.join(image_dir, "_detect_result.json")
+        display_url = None
+        if os.path.exists(result_path):
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                display_url = data.get("display_url")
+            except Exception:
+                pass
+
+        items.append({
+            "dir": image_name,
+            "name": image_name,
+            "project_name": project_name,
+            "displayUrl": display_url,
+        })
+
+    return JsonResponse({"success": True, "images": items})
 
 
 
@@ -249,13 +515,12 @@ def _run_detection_job(image_name: str, params: dict):
 
         # --- training-scale resize ---
         if current_res is not None:
-            # resized_path = ImageResizer(
-            #     image_path=orig_path,
-            #     output_dir=orig_dir,
-            #     current_res=current_res,
-            #     target_res=0.464,  # 你 training 的 um/px
-            # ).resize()  # save to original/
-            resized_path = orig_path  # skip resizing for now; just use original image for the rest of the pipeline
+            resized_path = ImageResizer(
+                image_path=orig_path,
+                output_dir=orig_dir,
+                current_res=current_res,
+                target_res=0.464,  # 你 training 的 um/px
+            ).resize()  # save to original/
         else:
             # if user doesn't provide resolution, skip resizing and use original image for the rest of the pipeline
             resized_path = orig_path
@@ -442,7 +707,7 @@ def detect_image(request):
     
     params = body.get("params") or {}
 
-    # 'media/<project>/original/xxx.png' -> project_name
+        # 'media/<project>/original/xxx.png' -> project_name
     parts = original_image_path.strip('/').split('/')
 
     # expected:
@@ -566,23 +831,15 @@ def delete_image(request):
         return JsonResponse({'error': 'Invalid request'}, status=400)
 
     try:
-        image_name = None
-
-        # 1) Try JSON body: {"image_name": "..."}
-        try:
-            body = json.loads(request.body or "{}")
-            image_name = body.get("image_name")
-        except Exception:
-            image_name = None
-
-        # 2) Fallback: query string ?image=...
-        if not image_name:
-            image_name = request.GET.get("image")
+        body = json.loads(request.body or "{}")
+        image_name = (body.get("image_name") or request.GET.get("image") or "").strip()
+        project_name = (body.get("project_name") or "").strip()
 
         if not image_name:
             return JsonResponse({'error': 'image_name required'}, status=400)
 
-        image_dir = _image_dir(image_name)
+        image_dir = _project_image_dir(project_name, image_name) if project_name else _image_dir(image_name)
+
         if os.path.isdir(image_dir):
             shutil.rmtree(image_dir, ignore_errors=True)
             return JsonResponse({'success': True})
@@ -596,6 +853,87 @@ def delete_image(request):
 # ---------------------------
 # Rename image
 # ---------------------------
+# @csrf_exempt
+# @require_POST
+# def rename_image(request):
+#     try:
+#         body = json.loads(request.body or "{}")
+
+#         old_image_name = (body.get("old_image_name") or "").strip()
+#         new_image_name = (body.get("new_image_name") or "").strip()
+
+#         if not old_image_name or not new_image_name:
+#             return JsonResponse({
+#                 "success": False,
+#                 "message": "old_image_name and new_image_name are required"
+#             }, status=400)
+
+#         # avoid illegal filename characters
+#         new_image_name = safe_filename(new_image_name)
+
+#         if not new_image_name:
+#             return JsonResponse({
+#                 "success": False,
+#                 "message": "Invalid new image name"
+#             }, status=400)
+
+#         old_dir = _image_dir(old_image_name)
+#         new_dir = _image_dir(new_image_name)
+
+#         if not os.path.isdir(old_dir):
+#             return JsonResponse({
+#                 "success": False,
+#                 "message": "Original image folder not found"
+#             }, status=404)
+
+#         if old_image_name == new_image_name:
+#             # no-op, but still return success
+#             return JsonResponse({
+#                 "success": True,
+#                 "image_name": new_image_name
+#             })
+
+#         if os.path.exists(new_dir):
+#             return JsonResponse({
+#                 "success": False,
+#                 "message": "A project folder with this name already exists"
+#             }, status=409)
+
+#         shutil.move(old_dir, new_dir)
+
+#         # Try to rebuild display_url after rename
+#         display_url = None
+#         result_path = os.path.join(new_dir, "_detect_result.json")
+#         if os.path.exists(result_path):
+#             try:
+#                 with open(result_path, "r", encoding="utf-8") as f:
+#                     data = json.load(f)
+
+#                 old_display_url = data.get("display_url")
+#                 if old_display_url:
+#                     # replace /media/<old_image_name>/... -> /media/<new_image_name>/...
+#                     old_prefix = f"{settings.MEDIA_URL}images/{old_image_name}/"
+#                     new_prefix = f"{settings.MEDIA_URL}images/{new_image_name}/"
+#                     display_url = old_display_url.replace(old_prefix, new_prefix, 1)
+#                     data["display_url"] = display_url
+
+#                     with open(result_path, "w", encoding="utf-8") as f:
+#                         json.dump(data, f)
+#             except Exception:
+#                 logger.exception("Failed to update _detect_result.json after rename")
+
+#         return JsonResponse({
+#             "success": True,
+#             "image_name": new_image_name,
+#             "display_url": display_url,
+#         })
+
+#     except Exception:
+#         logger.exception("rename_image failed")
+#         return JsonResponse({
+#             "success": False,
+#             "message": "rename failed"
+#         }, status=500)
 @csrf_exempt
 @require_POST
 def rename_image(request):
@@ -604,6 +942,7 @@ def rename_image(request):
 
         old_image_name = (body.get("old_image_name") or "").strip()
         new_image_name = (body.get("new_image_name") or "").strip()
+        project_name = (body.get("project_name") or "").strip()
 
         if not old_image_name or not new_image_name:
             return JsonResponse({
@@ -620,8 +959,13 @@ def rename_image(request):
                 "message": "Invalid new image name"
             }, status=400)
 
-        old_dir = _image_dir(old_image_name)
-        new_dir = _image_dir(new_image_name)
+        # source / target dir
+        if project_name:
+            old_dir = _project_image_dir(project_name, old_image_name)
+            new_dir = _project_image_dir(project_name, new_image_name)
+        else:
+            old_dir = _image_dir(old_image_name)
+            new_dir = _image_dir(new_image_name)
 
         if not os.path.isdir(old_dir):
             return JsonResponse({
@@ -630,7 +974,6 @@ def rename_image(request):
             }, status=404)
 
         if old_image_name == new_image_name:
-            # no-op, but still return success
             return JsonResponse({
                 "success": True,
                 "image_name": new_image_name
@@ -639,7 +982,7 @@ def rename_image(request):
         if os.path.exists(new_dir):
             return JsonResponse({
                 "success": False,
-                "message": "A project folder with this name already exists"
+                "message": "A folder with this name already exists"
             }, status=409)
 
         shutil.move(old_dir, new_dir)
@@ -654,9 +997,13 @@ def rename_image(request):
 
                 old_display_url = data.get("display_url")
                 if old_display_url:
-                    # replace /media/<old_image_name>/... -> /media/<new_image_name>/...
-                    old_prefix = f"{settings.MEDIA_URL}images/{old_image_name}/"
-                    new_prefix = f"{settings.MEDIA_URL}images/{new_image_name}/"
+                    if project_name:
+                        old_prefix = f"{settings.MEDIA_URL}{project_name}/{old_image_name}/"
+                        new_prefix = f"{settings.MEDIA_URL}{project_name}/{new_image_name}/"
+                    else:
+                        old_prefix = f"{settings.MEDIA_URL}images/{old_image_name}/"
+                        new_prefix = f"{settings.MEDIA_URL}images/{new_image_name}/"
+
                     display_url = old_display_url.replace(old_prefix, new_prefix, 1)
                     data["display_url"] = display_url
 
@@ -677,6 +1024,86 @@ def rename_image(request):
             "success": False,
             "message": "rename failed"
         }, status=500)
+    
+@csrf_exempt
+@require_POST
+def rename_project(request):
+    try:
+        body = json.loads(request.body or "{}")
+        old_project_name = safe_filename((body.get("old_project_name") or "").strip())
+        new_project_name = safe_filename((body.get("new_project_name") or "").strip())
+
+        if not old_project_name or not new_project_name:
+            return JsonResponse({"success": False, "message": "old_project_name and new_project_name required"}, status=400)
+
+        if _is_reserved_root_name(new_project_name):
+            return JsonResponse({"success": False, "message": "Reserved name"}, status=400)
+
+        old_dir = _project_dir(old_project_name)
+        new_dir = _project_dir(new_project_name)
+
+        if not os.path.isdir(old_dir):
+            return JsonResponse({"success": False, "message": "Project folder not found"}, status=404)
+
+        if old_project_name == new_project_name:
+            return JsonResponse({"success": True, "project_name": new_project_name})
+
+        if os.path.exists(new_dir):
+            return JsonResponse({"success": False, "message": "A project with this name already exists"}, status=409)
+
+        shutil.move(old_dir, new_dir)
+
+        # 修正裡面每個 image 的 _detect_result.json
+        for image_name in os.listdir(new_dir):
+            image_dir = os.path.join(new_dir, image_name)
+            if not os.path.isdir(image_dir):
+                continue
+
+            result_path = os.path.join(image_dir, "_detect_result.json")
+            if not os.path.exists(result_path):
+                continue
+
+            try:
+                with open(result_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                old_prefix = f"{settings.MEDIA_URL}{old_project_name}/{image_name}/"
+                new_prefix = f"{settings.MEDIA_URL}{new_project_name}/{image_name}/"
+
+                if data.get("display_url"):
+                    data["display_url"] = data["display_url"].replace(old_prefix, new_prefix, 1)
+
+                with open(result_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f)
+            except Exception:
+                logger.exception("Failed to update detect_result during project rename")
+
+        return JsonResponse({"success": True, "project_name": new_project_name})
+
+    except Exception:
+        logger.exception("rename_project failed")
+        return JsonResponse({"success": False, "message": "rename failed"}, status=500)
+    
+@csrf_exempt
+@require_POST
+def delete_project(request):
+    try:
+        body = json.loads(request.body or "{}")
+        project_name = safe_filename((body.get("project_name") or "").strip())
+
+        if not project_name:
+            return JsonResponse({"success": False, "message": "project_name required"}, status=400)
+
+        project_dir = _project_dir(project_name)
+        if not os.path.isdir(project_dir):
+            return JsonResponse({"success": False, "message": "Project folder not found"}, status=404)
+
+        shutil.rmtree(project_dir, ignore_errors=True)
+        return JsonResponse({"success": True})
+
+    except Exception:
+        logger.exception("delete_project failed")
+        return JsonResponse({"success": False, "message": "delete failed"}, status=500)
 
 
 # return output_tiff_path
@@ -843,17 +1270,22 @@ def combine_rgb_tiff_from_paths(
 @require_POST
 def download_project_with_rois(request):
     """
-    Generate <project>.zip, including:
-      - Original_Mmap.tiff / qmap/*.nii etc.
+    Generate <image_name>.zip, including:
+      - original_mmap / result files
       - rois.zip (multiple ROI polygons zipped inside)
+    Support both:
+      1) media/images/<image_name>
+      2) media/<project_name>/<image_name>
     """
     # Parse payload (support JSON and form)
     if request.content_type and request.content_type.startswith("application/json"):
         payload = json.loads(request.body or "{}")
-        image_name = payload.get("image_name")
+        image_name = (payload.get("image_name") or "").strip()
+        project_name = (payload.get("project_name") or "").strip()
         rois = payload.get("rois") or []
     else:
-        image_name = request.POST.get("image_name")
+        image_name = (request.POST.get("image_name") or "").strip()
+        project_name = (request.POST.get("project_name") or "").strip()
         rois_raw = request.POST.get("rois")
         try:
             rois = json.loads(rois_raw) if rois_raw else []
@@ -863,7 +1295,12 @@ def download_project_with_rois(request):
     if not image_name:
         return HttpResponseBadRequest("image_name required")
 
-    image_dir = _image_dir(image_name)
+    # Resolve image directory
+    if project_name:
+        image_dir = _project_image_dir(project_name, image_name)
+    else:
+        image_dir = _image_dir(image_name)
+
     if not os.path.isdir(image_dir):
         return HttpResponseNotFound("Image not found")
 
@@ -882,21 +1319,34 @@ def download_project_with_rois(request):
                         src = os.path.join(root, fn)
                         arc = os.path.join(image_name, fn)
                         ctype = _compress_type_for(fn)
-                        main_zip.write(src, arcname=arc, compress_type=ctype,
-                                    compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None)
+                        main_zip.write(
+                            src,
+                            arcname=arc,
+                            compress_type=ctype,
+                            compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None
+                        )
 
         if rois:
             roi_buf = BytesIO()
             with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
                 for r in rois:
                     name = safe_filename(r.get("name"))
-                    pts  = r.get("points") or []
+                    pts = r.get("points") or []
                     rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
-            main_zip.writestr(os.path.join(image_name, f"{image_name}_rois.zip"), roi_buf.getvalue())
+
+            main_zip.writestr(
+                os.path.join(image_name, f"{image_name}_rois.zip"),
+                roi_buf.getvalue()
+            )
 
     tmpf.seek(0)
     filename = f"{image_name}.zip"
-    return FileResponse(tmpf, as_attachment=True, filename=filename, content_type="application/zip")
+    return FileResponse(
+        tmpf,
+        as_attachment=True,
+        filename=filename,
+        content_type="application/zip"
+    )
 
 # helper function
 def safe_filename(name: str) -> str:

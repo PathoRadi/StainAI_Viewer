@@ -2,6 +2,7 @@
 import { clearBoxes, drawBbox, showAllBoxes } from './box.js';
 import { createBarChart, updateChart, initCheckboxes } from './visualization.js';
 import { csrftoken } from './cookie.js';
+import { refreshProjectsUI } from './project.js';
 
 window.chartRefs = [];
 
@@ -145,6 +146,7 @@ export function addBarChart(barChartWrappers) {
   return chart;
 }
 
+
 function getImageDirFromPath(path){
   const parts = path.split('/');
   const idx = parts.indexOf('images');
@@ -153,7 +155,6 @@ function getImageDirFromPath(path){
   }
   return null;
 }
-
 
 
 // Initialize the process logic for file upload, detection, and chart management
@@ -1135,6 +1136,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     historyStack.push({
       dir:        imageDir,                    // used later for reusing detection
       name:       fileName.replace('_resized',''),
+      projectName: null,
       displayUrl: d.display_url,
       boxes:      window.bboxData.slice(),       // store a snapshot of bbox
       origSize:   d.orig_size,
@@ -1152,6 +1154,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         $(`.history-item[data-idx="${historyStack.length - 1}"]`).addClass('selected');
       }, 0);
     });
+    refreshProjectsUI();
   }
 
 
@@ -1169,7 +1172,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }
 
     // 如果在 history，沿用舊結果（跟你原本邏輯一樣）
-    const histIdx = historyStack.findIndex(item => item.dir === imageDir);
+    const histIdx = historyStack.findIndex(item =>
+      item.dir === imageDir && (item.projectName || '') === ''
+    );
     if (histIdx !== -1) {
       closeSettingsModal();
       const item = historyStack[histIdx];
