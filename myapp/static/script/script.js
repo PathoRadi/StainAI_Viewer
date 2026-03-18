@@ -770,7 +770,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       const loginLink = document.getElementById("viewer-login-link");
       const logoutLink = document.getElementById("viewer-logout-link");
 
-      if (!container || !btn || !menu || !loginLink || !logoutLink) return;
+      if (!container || !btn || !menu || !loginLink || !logoutLink) {
+        console.error("viewer account elements missing");
+        return;
+      }
 
       if (data.authenticated && data.user) {
         renderViewerLoggedInState(data.user);
@@ -820,5 +823,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       renderViewerLoggedOutState();
     }
   }
-  document.addEventListener("DOMContentLoaded", initViewerAccountMenu);
+  document.addEventListener("DOMContentLoaded", function () {
+    initViewerAccountMenu();
+  });
 })(jQuery);
