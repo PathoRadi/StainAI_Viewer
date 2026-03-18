@@ -724,48 +724,100 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   // =========================
   // ===== Account Menu  =====
   // =========================
+  function renderViewerLoggedInState(user) {
+    const container = document.getElementById("viewer-account-container");
+    const nameEl = document.getElementById("viewer-account-name");
+    const loginLink = document.getElementById("viewer-login-link");
+    const logoutLink = document.getElementById("viewer-logout-link");
+    const menu = document.getElementById("viewer-account-menu");
+
+    if (!container || !nameEl || !loginLink || !logoutLink || !menu) return;
+
+    const fullName =
+      `${user.firstname || ""} ${user.lastname || ""}`.trim() || user.email;
+
+    nameEl.textContent = fullName;
+    loginLink.classList.add("viewer-hidden");
+    logoutLink.classList.remove("viewer-hidden");
+    menu.classList.add("viewer-hidden");
+    container.classList.remove("viewer-hidden");
+  }
+
+  function renderViewerLoggedOutState() {
+    const container = document.getElementById("viewer-account-container");
+    const nameEl = document.getElementById("viewer-account-name");
+    const loginLink = document.getElementById("viewer-login-link");
+    const logoutLink = document.getElementById("viewer-logout-link");
+    const menu = document.getElementById("viewer-account-menu");
+
+    if (!container || !nameEl || !loginLink || !logoutLink || !menu) return;
+
+    nameEl.textContent = "Log In";
+    loginLink.classList.remove("viewer-hidden");
+    logoutLink.classList.add("viewer-hidden");
+    menu.classList.add("viewer-hidden");
+    container.classList.remove("viewer-hidden");
+  }
+
   async function initViewerAccountMenu() {
     try {
       const res = await fetch("/api/current-user/");
       const data = await res.json();
 
-      if (!data.authenticated || !data.user) return;
-
       const container = document.getElementById("viewer-account-container");
       const btn = document.getElementById("viewer-account-btn");
       const menu = document.getElementById("viewer-account-menu");
-      const nameEl = document.getElementById("viewer-account-name");
+      const loginLink = document.getElementById("viewer-login-link");
       const logoutLink = document.getElementById("viewer-logout-link");
 
-      if (!container || !btn || !menu || !nameEl || !logoutLink) return;
+      if (!container || !btn || !menu || !loginLink || !logoutLink) return;
 
-      const fullName =
-        `${data.user.firstname || ""} ${data.user.lastname || ""}`.trim()
-        || data.user.email;
-
-      nameEl.textContent = fullName;
-      container.classList.remove("hidden");
+      if (data.authenticated && data.user) {
+        renderViewerLoggedInState(data.user);
+      } else {
+        renderViewerLoggedOutState();
+      }
 
       btn.addEventListener("click", function (e) {
         e.stopPropagation();
-        menu.classList.toggle("hidden");
+        menu.classList.toggle("viewer-hidden");
       });
 
       document.addEventListener("click", function () {
-        menu.classList.add("hidden");
+        menu.classList.add("viewer-hidden");
       });
 
       menu.addEventListener("click", function (e) {
         e.stopPropagation();
       });
 
-      logoutLink.addEventListener("click", function (e) {
+      logoutLink.addEventListener("click", async function (e) {
         e.preventDefault();
-        const returnTo = encodeURIComponent("https://imaging.howard.edu/stainai");
-        window.location.href = `/auth/logout-bridge/?return_to=${returnTo}`;
+
+        try {
+          await fetch("/auth/logout-silent/", {
+            method: "GET",
+            credentials: "same-origin",
+          });
+        } catch (err) {
+          console.error("Viewer logout failed:", err);
+        }
+
+        // 背景通知主站清 localStorage，不跳頁
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = "https://imaging.howard.edu/stainai/logout-sync";
+        document.body.appendChild(iframe);
+
+        setTimeout(() => {
+          iframe.remove();
+        }, 3000);
+
+        renderViewerLoggedOutState();
       });
     } catch (err) {
       console.error("Failed to init viewer account menu:", err);
+      renderViewerLoggedOutState();
     }
   }
   document.addEventListener("DOMContentLoaded", initViewerAccountMenu);

@@ -164,10 +164,6 @@ def current_viewer_user(request):
         "user": viewer_user,
     })
 
-
-# def viewer_logout(request):
-#     request.session.flush()
-#     return redirect("/")
 def viewer_logout_bridge(request):
     request.session.flush()
 
@@ -179,6 +175,10 @@ def viewer_logout_bridge(request):
     )
 
     return redirect(prbase_logout_url)
+
+def viewer_logout_silent(request):
+    request.session.flush()
+    return JsonResponse({"success": True})
 
 
 # ---------------------------

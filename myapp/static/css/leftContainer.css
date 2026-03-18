@@ -203,6 +203,9 @@
   object-fit: contain;
   flex-shrink: 0;
 }
+.viewer-hidden {
+  display: none !important;
+}
 .viewer-account-name {
   flex: 1;
   text-align: left;
