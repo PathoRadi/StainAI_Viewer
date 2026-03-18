@@ -44,7 +44,7 @@
     overflow-x: hidden;
     min-height: 177px;
 
-    padding-top: 133px;   /* logo + upload button 高度 */
+    padding-top: 200px;   /* logo + upload button 高度 */
     padding-bottom: 80px; /* bottom toggle 高度 */
 
     padding-right: 8px;
@@ -180,7 +180,6 @@
 .viewer-account-container {
   position: relative;
   margin: 14px 12px 0 12px;
-  z-index: 200;
 }
 .viewer-account-btn {
   width: 100%;
@@ -220,7 +219,7 @@
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  z-index: 50;
+  z-index: 5000;
   background: #1f1f1f;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 10px;
