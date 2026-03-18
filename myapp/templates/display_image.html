@@ -36,6 +36,22 @@
         <img class="app-logo logo-dark" src="{% static 'logo/konva_control/logo_dark.png' %}">
         <img class="app-logo logo-light" src="{% static 'logo/konva_control/logo_light.png' %}">
       </div>
+      <!-- Login info -->
+      <div id="viewer-account-container" class="viewer-account-container hidden">
+        <button id="viewer-account-btn" class="viewer-account-btn" type="button">
+          <img
+            src="{% static 'logo/account_icon_w.png' %}"
+            alt="account"
+            class="viewer-account-avatar"
+          />
+          <span id="viewer-account-name" class="viewer-account-name"></span>
+          <span class="viewer-account-caret">▾</span>
+        </button>
+
+        <div id="viewer-account-menu" class="viewer-account-menu hidden">
+          <a id="viewer-logout-link" href="#">Logout</a>
+        </div>
+      </div>
       <!-- Upload New Images -->
       <button id="upload-new-img-btn">+ MORE IMAGE</button>
     </div>

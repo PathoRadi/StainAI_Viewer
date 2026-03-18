@@ -176,6 +176,71 @@
 }
 
 
+/* -----Account----- */
+.viewer-account-container {
+  position: relative;
+  margin: 14px 12px 0 12px;
+}
+.viewer-account-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+.viewer-account-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.viewer-account-avatar {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.viewer-account-name {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.viewer-account-caret {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.viewer-account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+.viewer-account-menu a {
+  display: block;
+  padding: 10px 12px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 14px;
+}
+.viewer-account-menu a:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.hidden {
+  display: none !important;
+}
+
+
 
 
 

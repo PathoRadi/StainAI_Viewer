@@ -12,6 +12,7 @@ import tifffile as tiff
 import time
 import threading
 import jwt
+from urllib.parse import quote
 from json import JSONDecodeError
 from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
@@ -164,9 +165,20 @@ def current_viewer_user(request):
     })
 
 
-def viewer_logout(request):
+# def viewer_logout(request):
+#     request.session.flush()
+#     return redirect("/")
+def viewer_logout_bridge(request):
     request.session.flush()
-    return redirect("/")
+
+    return_to = request.GET.get("return_to", settings.PRBASE_HOME_URL)
+
+    prbase_logout_url = (
+        f"{settings.PRBASE_LOGOUT_BRIDGE_URL}"
+        f"?return_to={quote(return_to, safe='')}"
+    )
+
+    return redirect(prbase_logout_url)
 
 
 # ---------------------------

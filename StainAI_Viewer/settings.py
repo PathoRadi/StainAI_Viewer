@@ -21,6 +21,16 @@ ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.13
 # SSO
 SSO_SHARED_SECRET = os.getenv("SSO_SHARED_SECRET", "")
 
+# For SSO login/logout redirection
+PRBASE_HOME_URL = os.getenv(
+    "PRBASE_HOME_URL",
+    "https://imaging.howard.edu/stainai"
+)
+PRBASE_LOGOUT_BRIDGE_URL = os.getenv(
+    "PRBASE_LOGOUT_BRIDGE_URL",
+    "https://imaging.howard.edu/stainai/user/logout-bridge"
+)
+
 
 
 # Application definition

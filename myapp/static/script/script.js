@@ -720,4 +720,53 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       if (e.key === 'Escape') closeShield();
     });
   })();
+
+  // =========================
+  // ===== Account Menu  =====
+  // =========================
+  async function initViewerAccountMenu() {
+    try {
+      const res = await fetch("/api/current-user/");
+      const data = await res.json();
+
+      if (!data.authenticated || !data.user) return;
+
+      const container = document.getElementById("viewer-account-container");
+      const btn = document.getElementById("viewer-account-btn");
+      const menu = document.getElementById("viewer-account-menu");
+      const nameEl = document.getElementById("viewer-account-name");
+      const logoutLink = document.getElementById("viewer-logout-link");
+
+      if (!container || !btn || !menu || !nameEl || !logoutLink) return;
+
+      const fullName =
+        `${data.user.firstname || ""} ${data.user.lastname || ""}`.trim()
+        || data.user.email;
+
+      nameEl.textContent = fullName;
+      container.classList.remove("hidden");
+
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        menu.classList.toggle("hidden");
+      });
+
+      document.addEventListener("click", function () {
+        menu.classList.add("hidden");
+      });
+
+      menu.addEventListener("click", function (e) {
+        e.stopPropagation();
+      });
+
+      logoutLink.addEventListener("click", function (e) {
+        e.preventDefault();
+        const returnTo = encodeURIComponent("https://imaging.howard.edu/stainai");
+        window.location.href = `/auth/logout-bridge/?return_to=${returnTo}`;
+      });
+    } catch (err) {
+      console.error("Failed to init viewer account menu:", err);
+    }
+  }
+  document.addEventListener("DOMContentLoaded", initViewerAccountMenu);
 })(jQuery);
