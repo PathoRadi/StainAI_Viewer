@@ -11,12 +11,13 @@ import numpy as np
 import tifffile as tiff
 import time
 import threading
+import jwt
 from json import JSONDecodeError
 from typing import List, Optional, Tuple, Literal, Union
 from io import BytesIO
 from PIL import Image
 from django.conf import settings
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import (
     JsonResponse, FileResponse, HttpResponseNotFound,
     HttpResponseBadRequest, HttpResponseServerError, HttpResponseNotAllowed
@@ -115,6 +116,57 @@ def display_image(request):
     Just render the HTML page; image will be loaded via JS
     """
     return render(request, 'display_image.html')
+
+
+def viewer_login_bridge(request):
+    token = request.GET.get("token")
+    if not token:
+        return HttpResponseBadRequest("Missing token")
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SSO_SHARED_SECRET,
+            algorithms=["HS256"]
+        )
+    except jwt.ExpiredSignatureError:
+        return HttpResponseBadRequest("Token expired")
+    except jwt.InvalidTokenError:
+        return HttpResponseBadRequest("Invalid token")
+
+    if payload.get("purpose") != "viewer-bridge":
+        return HttpResponseBadRequest("Invalid token purpose")
+
+    request.session["viewer_user"] = {
+        "userid": payload.get("userid"),
+        "email": payload.get("email"),
+        "firstname": payload.get("firstname", ""),
+        "lastname": payload.get("lastname", ""),
+    }
+
+    # 驗證成功後進 viewer 首頁
+    return redirect("/")
+
+
+@require_GET
+def current_viewer_user(request):
+    viewer_user = request.session.get("viewer_user")
+
+    if not viewer_user:
+        return JsonResponse({
+            "authenticated": False,
+            "user": None,
+        })
+
+    return JsonResponse({
+        "authenticated": True,
+        "user": viewer_user,
+    })
+
+
+def viewer_logout(request):
+    request.session.flush()
+    return redirect("/")
 
 
 # ---------------------------
@@ -757,7 +809,7 @@ def detect_image(request):
     # Prefer explicit image_name from frontend
     if not image_name:
         image_name = extract_image_name_from_media_url(original_image_path)
-        
+
     if not image_name:
         logger.error("Invalid image_path received: %s", original_image_path)
         return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")

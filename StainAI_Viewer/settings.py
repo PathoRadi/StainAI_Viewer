@@ -18,6 +18,9 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.azurewebsites.net']
 
 ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.130.4']
 
+# SSO
+SSO_SHARED_SECRET = os.getenv("SSO_SHARED_SECRET", "")
+
 
 
 # Application definition
