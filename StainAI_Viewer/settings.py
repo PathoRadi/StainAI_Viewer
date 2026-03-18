@@ -142,7 +142,7 @@ else:
         }
     }
 
-
+# C:\Users\User1\anaconda3\Scripts\activate && conda activate stainai
 
 # ===== Media =====
 # For deploy
@@ -154,7 +154,6 @@ MEDIA_ROOT = str(Path(os.environ.get("MEDIA_ROOT", DEFAULT_MEDIA_ROOT)))
 # MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 os.makedirs(MEDIA_ROOT, exist_ok=True)
-
 
 # ===== Logging =====
 LOGGING = {

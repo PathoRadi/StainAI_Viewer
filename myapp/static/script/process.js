@@ -148,10 +148,11 @@ export function addBarChart(barChartWrappers) {
 
 
 function getImageDirFromPath(path){
-  const parts = path.split('/');
+  if (!path) return null;
+  const parts = String(path).split('/');
   const idx = parts.indexOf('images');
-  if(idx >= 0 && parts.length > idx+1){
-      return parts[idx+1];
+  if (idx >= 0 && parts.length > idx + 1) {
+    return parts[idx + 1];
   }
   return null;
 }
@@ -775,7 +776,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   if (settingsCloseBtn) {
     settingsCloseBtn.addEventListener('click', () => {
       // 若已 detection 完（在 history）不能刪，只關 modal
-      const imageDir = pendingImageDir || ((window.imgPath || '').split('/')[3] || null);
+      const imageDir = pendingImageDir || getImageDirFromPath(window.imgPath);
 
       const histIdx = historyStack.findIndex(item => item.dir === imageDir);
       if (histIdx !== -1) {
@@ -1026,7 +1027,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.displayUrl = d.display_url || '';   
         window.previewUrl  = d.preview_url  || '';
 
-        pendingImageDir = getImageDirFromPath(window.imgPath);
+        pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
 
         pendingParams = defaultParams();
         openSettingsModal(file?.name || '');
@@ -1222,6 +1223,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       },
       body: JSON.stringify({
         image_path: window.imgPath,
+        image_name: imageDir,
         params: pendingParams
       })
     })

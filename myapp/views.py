@@ -223,7 +223,10 @@ def upload_image(request):
         print(f"Image successfully uploaded: {img.name}")
         print(f"Uploaded image saved to {original_path}")
 
-        return JsonResponse({'image_url': _to_media_url(original_path)})            # Return original image URL
+        return JsonResponse({
+            'image_url': _to_media_url(original_path),
+            'image_name': image_name
+        })                                                                          # Return original image URL and image name
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)                    # Return error if not POST or no file
 
@@ -688,6 +691,26 @@ def _run_detection_job(image_name: str, params: dict):
         logger.exception("Detection job failed (project=%s)", image_name)
         _set_progress_stage(image_name, "error")
 
+def extract_image_name_from_media_url(path: str):
+    """
+    Extract image_name from media url like:
+    /media/images/<image_name>/original/<filename>
+    images/<image_name>/original/<filename>
+    """
+    if not path:
+        return None
+
+    parts = [p for p in str(path).split('/') if p]
+    try:
+        idx = parts.index("images")
+    except ValueError:
+        return None
+
+    if len(parts) <= idx + 1:
+        return None
+
+    return parts[idx + 1]
+
 @csrf_exempt
 def detect_image(request):
     """
@@ -702,26 +725,42 @@ def detect_image(request):
     except json.JSONDecodeError:
         return HttpResponseBadRequest("invalid json")
 
-    original_image_path = body.get("image_path")
-    if not original_image_path:
-        return HttpResponseBadRequest("image_path required")
+    # original_image_path = body.get("image_path")
+    # if not original_image_path:
+    #     return HttpResponseBadRequest("image_path required")
     
+    # params = body.get("params") or {}
+
+    # # 'media/<project>/original/xxx.png' -> project_name
+    # parts = original_image_path.strip('/').split('/')
+
+    # # expected:
+    # # /images/<image_name>/original/<filename>
+    # if (
+    #     len(parts) < 4 or
+    #     parts[0] != "images" or
+    #     parts[2] != "original"
+    # ):
+    #     logger.error("Invalid image_path received: %s", original_image_path)
+    #     return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")
+
+    # image_name = parts[1]
+
+    original_image_path = body.get("image_path")
+    image_name = (body.get("image_name") or "").strip()
+
+    if not image_name and not original_image_path:
+        return HttpResponseBadRequest("image_path or image_name required")
+
     params = body.get("params") or {}
 
-        # 'media/<project>/original/xxx.png' -> project_name
-    parts = original_image_path.strip('/').split('/')
-
-    # expected:
-    # /images/<image_name>/original/<filename>
-    if (
-        len(parts) < 4 or
-        parts[0] != "images" or
-        parts[2] != "original"
-    ):
+    # Prefer explicit image_name from frontend
+    if not image_name:
+        image_name = extract_image_name_from_media_url(original_image_path)
+        
+    if not image_name:
         logger.error("Invalid image_path received: %s", original_image_path)
         return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")
-
-    image_name = parts[1]
 
     # Clear old status and previous results
     image_dir = _image_dir(image_name)
