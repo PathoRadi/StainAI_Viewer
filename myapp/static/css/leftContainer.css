@@ -180,6 +180,7 @@
 .viewer-account-container {
   position: relative;
   margin: 14px 12px 0 12px;
+  z-index: 200;
 }
 .viewer-account-btn {
   width: 100%;
