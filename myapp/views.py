@@ -164,17 +164,17 @@ def current_viewer_user(request):
         "user": viewer_user,
     })
 
-def viewer_logout_bridge(request):
-    request.session.flush()
+# def viewer_logout_bridge(request):
+#     request.session.flush()
 
-    return_to = request.GET.get("return_to", settings.PRBASE_HOME_URL)
+#     return_to = request.GET.get("return_to", settings.PRBASE_HOME_URL)
 
-    prbase_logout_url = (
-        f"{settings.PRBASE_LOGOUT_BRIDGE_URL}"
-        f"?return_to={quote(return_to, safe='')}"
-    )
+#     prbase_logout_url = (
+#         f"{settings.PRBASE_LOGOUT_BRIDGE_URL}"
+#         f"?return_to={quote(return_to, safe='')}"
+#     )
 
-    return redirect(prbase_logout_url)
+#     return redirect(prbase_logout_url)
 
 def viewer_logout_silent(request):
     request.session.flush()

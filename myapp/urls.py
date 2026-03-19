@@ -6,7 +6,6 @@ urlpatterns = [
     path('',              views.display_image, name='display_image'),
     path("auth/login-bridge/", views.viewer_login_bridge, name="viewer_login_bridge"),
     path("api/current-user/", views.current_viewer_user, name="current_viewer_user"),
-    path("auth/logout-bridge/", views.viewer_logout_bridge, name="viewer_logout_bridge"),
     path("auth/logout-silent/", views.viewer_logout_silent, name="viewer_logout_silent"),
     path('upload_image/', views.upload_image,    name='upload_image'),
     path('detect_image/', views.detect_image,    name='detect_image'),

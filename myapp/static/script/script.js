@@ -724,106 +724,39 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   // =========================
   // ===== Account Menu  =====
   // =========================
-  function renderViewerLoggedInState(user) {
+  function renderViewerUserCard(user) {
     const container = document.getElementById("viewer-account-container");
     const nameEl = document.getElementById("viewer-account-name");
-    const loginLink = document.getElementById("viewer-login-link");
-    const logoutLink = document.getElementById("viewer-logout-link");
-    const menu = document.getElementById("viewer-account-menu");
 
-    if (!container || !nameEl || !loginLink || !logoutLink || !menu) return;
+    if (!container || !nameEl) return;
 
     const fullName =
       `${user.firstname || ""} ${user.lastname || ""}`.trim() || user.email;
 
     nameEl.textContent = fullName;
-    loginLink.classList.add("viewer-hidden");
-    logoutLink.classList.remove("viewer-hidden");
-    menu.classList.add("viewer-hidden");
     container.classList.remove("viewer-hidden");
   }
 
-  function renderViewerLoggedOutState() {
+  function hideViewerUserCard() {
     const container = document.getElementById("viewer-account-container");
-    const nameEl = document.getElementById("viewer-account-name");
-    const loginLink = document.getElementById("viewer-login-link");
-    const logoutLink = document.getElementById("viewer-logout-link");
-    const menu = document.getElementById("viewer-account-menu");
-
-    if (!container || !nameEl || !loginLink || !logoutLink || !menu) return;
-
-    nameEl.textContent = "Log In";
-    loginLink.classList.remove("viewer-hidden");
-    logoutLink.classList.add("viewer-hidden");
-    menu.classList.add("viewer-hidden");
-    container.classList.remove("viewer-hidden");
+    if (!container) return;
+    container.classList.add("viewer-hidden");
   }
 
-  async function initViewerAccountMenu() {
+  async function initViewerUserCard() {
     try {
       const res = await fetch("/api/current-user/");
       const data = await res.json();
 
-      const container = document.getElementById("viewer-account-container");
-      const btn = document.getElementById("viewer-account-btn");
-      const menu = document.getElementById("viewer-account-menu");
-      const loginLink = document.getElementById("viewer-login-link");
-      const logoutLink = document.getElementById("viewer-logout-link");
-
-      if (!container || !btn || !menu || !loginLink || !logoutLink) {
-        console.error("viewer account elements missing");
-        return;
-      }
-
       if (data.authenticated && data.user) {
-        renderViewerLoggedInState(data.user);
+        renderViewerUserCard(data.user);
       } else {
-        renderViewerLoggedOutState();
+        hideViewerUserCard();
       }
-
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        menu.classList.toggle("viewer-hidden");
-      });
-
-      document.addEventListener("click", function () {
-        menu.classList.add("viewer-hidden");
-      });
-
-      menu.addEventListener("click", function (e) {
-        e.stopPropagation();
-      });
-
-      logoutLink.addEventListener("click", async function (e) {
-        e.preventDefault();
-
-        try {
-          await fetch("/auth/logout-silent/", {
-            method: "GET",
-            credentials: "same-origin",
-          });
-        } catch (err) {
-          console.error("Viewer logout failed:", err);
-        }
-
-        // 背景通知主站清 localStorage，不跳頁
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = "https://imaging.howard.edu/stainai/logout-sync";
-        document.body.appendChild(iframe);
-
-        setTimeout(() => {
-          iframe.remove();
-        }, 3000);
-
-        renderViewerLoggedOutState();
-      });
     } catch (err) {
-      console.error("Failed to init viewer account menu:", err);
-      renderViewerLoggedOutState();
+      console.error("Failed to init viewer user card:", err);
+      hideViewerUserCard();
     }
   }
-  document.addEventListener("DOMContentLoaded", function () {
-    initViewerAccountMenu();
-  });
+  document.addEventListener("DOMContentLoaded", initViewerUserCard);
 })(jQuery);
