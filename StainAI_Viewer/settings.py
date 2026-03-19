@@ -31,6 +31,12 @@ PRBASE_LOGOUT_BRIDGE_URL = os.getenv(
     "https://imaging.howard.edu/stainai/user/logout-bridge"
 )
 
+# Allow embedding in iframe (for SSO login flow)
+SESSION_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SECURE = True
+
 
 
 # Application definition
