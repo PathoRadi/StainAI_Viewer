@@ -1056,6 +1056,11 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         try:
             upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, result_path)
         except Exception:
+            logger.exception("Failed to upload detection outputs for image=%s", image_name)
+
+        try:
+            state_add_image(user_id, image_name, "images")
+        except Exception:
             logger.exception("Failed to update viewer state after detection for image=%s", image_name)
 
         _set_progress_stage(image_dir, "done")  # enter stage 5) done
@@ -1226,35 +1231,137 @@ def _to_media_url(abs_path: str) -> str:
 # ---------------------------
 # Reset
 # ---------------------------
+# @csrf_exempt
+# def reset_media(request):
+#     try:
+#         _require_viewer_user(request)
+#     except PermissionError:
+#         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
+#     if request.method != 'POST':
+#         return HttpResponseNotAllowed(['POST'])
+    
+#     root = _user_root(request)
+
+#     # extra safety: never allow wiping the global MEDIA_ROOT
+#     if not root or os.path.abspath(root) == os.path.abspath(settings.MEDIA_ROOT):
+#         return JsonResponse({"success": False, "message": "Invalid user root"}, status=400)
+    
+#     if not os.path.isdir(root):
+#         return JsonResponse({'ok': True})
+    
+#     for child in os.listdir(root):
+#         path = os.path.join(root, child)
+#         try:
+#             if os.path.isdir(path):
+#                 shutil.rmtree(path, ignore_errors=True)
+#             else:
+#                 os.remove(path)
+#         except Exception:
+#             logger.warning("failed to remove %s", path, exc_info=True)
+#     return JsonResponse({'ok': True})
+
 @csrf_exempt
 def reset_media(request):
     try:
         _require_viewer_user(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
-    
+
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
-    
+
     root = _user_root(request)
 
     # extra safety: never allow wiping the global MEDIA_ROOT
     if not root or os.path.abspath(root) == os.path.abspath(settings.MEDIA_ROOT):
         return JsonResponse({"success": False, "message": "Invalid user root"}, status=400)
-    
+
     if not os.path.isdir(root):
-        return JsonResponse({'ok': True})
-    
-    for child in os.listdir(root):
-        path = os.path.join(root, child)
+        return JsonResponse({'ok': True, 'removed': []})
+
+    removed = []
+
+    def _safe_remove(path: str):
         try:
             if os.path.isdir(path):
                 shutil.rmtree(path, ignore_errors=True)
-            else:
+            elif os.path.exists(path):
                 os.remove(path)
+            removed.append(path)
         except Exception:
             logger.warning("failed to remove %s", path, exc_info=True)
-    return JsonResponse({'ok': True})
+
+    def _is_completed_image_dir(image_dir: str) -> bool:
+        result_json = os.path.join(image_dir, "_detect_result.json")
+        if os.path.exists(result_json):
+            return True
+
+        progress_file = os.path.join(image_dir, "_progress.txt")
+        if os.path.exists(progress_file):
+            try:
+                with open(progress_file, "r", encoding="utf-8") as f:
+                    stage = f.read().strip().lower()
+                if stage == "done":
+                    return True
+            except Exception:
+                pass
+
+        return False
+
+    def _cleanup_image_dir(image_dir: str):
+        """
+        Keep completed image folders.
+        Remove incomplete image folders.
+        For completed folders, optionally remove transient working dirs/files.
+        """
+        if not os.path.isdir(image_dir):
+            return
+
+        if not _is_completed_image_dir(image_dir):
+            _safe_remove(image_dir)
+            return
+
+        # Completed image: keep final outputs, only prune temp/intermediate files
+        transient_dirs = [
+            os.path.join(image_dir, "gray"),
+            os.path.join(image_dir, "patches"),
+        ]
+        transient_files = [
+            os.path.join(image_dir, "_progress.txt"),
+        ]
+
+        for p in transient_dirs:
+            _safe_remove(p)
+
+        for p in transient_files:
+            _safe_remove(p)
+
+    # walk user root
+    for child in os.listdir(root):
+        path = os.path.join(root, child)
+
+        # images root
+        if child == "images" and os.path.isdir(path):
+            for image_name in os.listdir(path):
+                image_dir = os.path.join(path, image_name)
+                if os.path.isdir(image_dir):
+                    _cleanup_image_dir(image_dir)
+            continue
+
+        # project roots
+        if os.path.isdir(path):
+            # path = /media/<user_id>/<project_name>
+            for image_name in os.listdir(path):
+                image_dir = os.path.join(path, image_name)
+                if os.path.isdir(image_dir):
+                    _cleanup_image_dir(image_dir)
+            continue
+
+    return JsonResponse({
+        'ok': True,
+        'removed': removed,
+    })
 
 
 

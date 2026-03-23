@@ -5,6 +5,37 @@ import { csrftoken } from './cookie.js';
 import { addBarChart } from './process.js';
 import { getMoveToProjectMenuHtml, moveImageToImages, updateProjectsUI } from './project.js';
 
+
+function handleAuthExpired(message = 'Session expired. Please sign in again.') {
+  alert(message);
+  window.location.href = '/';
+}
+
+async function fetchJson(url, options = {}) {
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+  });
+
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (err) {
+    data = {};
+  }
+
+  if (res.status === 401) {
+    handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+    throw new Error(data?.message || 'Not authenticated');
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || `Request failed (${res.status})`);
+  }
+
+  return data;
+}
+
 export function updateHistoryUI(historyStack) {
   const container = $('#history-container');
   container.empty();
@@ -35,11 +66,11 @@ export function initHistoryHandlers(historyStack) {
   // Hard reset to homepage (no history items)
   function hardResetToHomepage() {
     // 0) call backend reset (clear media/session)
-    try {
-      if (window.RESET_MEDIA_URL) navigator.sendBeacon(window.RESET_MEDIA_URL);
-    } catch (e) {
-      console.warn('reset_media beacon failed:', e);
-    }
+    // try {
+    //   if (window.RESET_MEDIA_URL) navigator.sendBeacon(window.RESET_MEDIA_URL);
+    // } catch (e) {
+    //   console.warn('reset_media beacon failed:', e);
+    // }
 
     // 1) UI: show homepage, hide viewer
     $('.main-container').prop('hidden', true);
@@ -122,7 +153,8 @@ export function initHistoryHandlers(historyStack) {
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide();
 
-      window.bboxData = item.boxes.slice();
+      // window.bboxData = item.boxes.slice();
+      window.bboxData = Array.isArray(item.boxes) ? item.boxes.slice() : [];
 
       clearBoxes();
       drawBbox(window.bboxData);
@@ -410,26 +442,44 @@ export function initHistoryHandlers(historyStack) {
       }
 
       try {
-        const res = await fetch(RENAME_IMAGE_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken
-          },
-          body: JSON.stringify({
-            old_image_name: oldDir,
-            new_image_name: newName,
-            project_name: item.projectName || ''
-          })
-        });
+        // const res = await fetch(RENAME_IMAGE_URL, {
+        //   method: 'POST',
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     'X-CSRFToken': csrftoken
+        //   },
+        //   body: JSON.stringify({
+        //     old_image_name: oldDir,
+        //     new_image_name: newName,
+        //     project_name: item.projectName || ''
+        //   })
+        // });
 
-        const data = await res.json();
+        // const data = await res.json();
 
-        if (!res.ok || !data.success) {
-          alert('Rename failed: ' + (data.message || ''));
-          $textSpan.text(oldText);
-          return;
-        }
+        // if (!res.ok || !data.success) {
+        //   alert('Rename failed: ' + (data.message || ''));
+        //   $textSpan.text(oldText);
+        //   return;
+        // }
+        const data = await fetchJson(RENAME_IMAGE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({
+          old_image_name: oldDir,
+          new_image_name: newName,
+          project_name: item.projectName || ''
+        })
+      });
+
+      if (!data.success) {
+        alert('Rename failed: ' + (data.message || ''));
+        $textSpan.text(oldText);
+        return;
+      }
 
         item.name = data.image_name;
         item.dir = data.image_name;
@@ -449,6 +499,9 @@ export function initHistoryHandlers(historyStack) {
         }
 
         $textSpan.text(data.image_name);
+        
+        updateHistoryUI(historyStack);
+        await updateProjectsUI(historyStack);
 
       } catch (err) {
         console.error(err);
@@ -504,39 +557,43 @@ export function initHistoryHandlers(historyStack) {
     $('.history-action-menu').hide();
   });
 
-  $('#modal-delete').on('click', () => {
+  $('#modal-delete').on('click', async () => {
     const item = historyStack[pendingDeleteIdx];
-    fetch(DELETE_IMAGE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrftoken
-      },
-      body: JSON.stringify({ 
-        image_name: item.dir, project_name: item.projectName || '' 
-      })
-    })
-    .then(r => r.json())
-    .then(res => {
-      if (res.success) {
+    if (!item) return;
+
+    try {
+      const data = await fetchJson(DELETE_IMAGE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({
+          image_name: item.dir,
+          project_name: item.projectName || ''
+        })
+      });
+
+      if (data.success) {
         historyStack.splice(pendingDeleteIdx, 1);
         updateHistoryUI(historyStack);
+        await updateProjectsUI(historyStack);
 
         if (historyStack.length === 0) {
           hardResetToHomepage();
         }
       } else {
-        alert('Delete failed: ' + (res.message || ''));
+        alert('Delete failed: ' + (data.message || ''));
       }
-    })
-    .catch(err => console.error(err))
-    .finally(() => {
+    } catch (err) {
+      console.error(err);
+      alert('Delete failed');
+    } finally {
       pendingDeleteIdx = null;
       $('#delete-modal-overlay').hide();
-      // ✅ Also clean up
       $('.menu-click-shield').remove();
       $('.history-action-menu').hide();
-    });
+    }
   });
 
   $(document).on('click', '.history-download-btn', async function(e){

@@ -32,7 +32,10 @@ function handleAuthExpired(message = 'Session expired. Please sign in again.') {
 
 /** fetch JSON with error handling */
 async function fetchJson(url, options = {}) {
-  const res = await fetch(url, options);
+  const res = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+  });
 
   let data = {};
   try {
@@ -55,17 +58,63 @@ async function fetchJson(url, options = {}) {
 }
 
 /** get project list from backend */
-async function loadProjectsFromServer() {
-  const data = await fetchJson(LIST_PROJECTS_URL, {
-    method: 'GET',
-    cache: 'no-store',
-  });
-  return Array.isArray(data.projects) ? data.projects : [];
-}
+// async function loadProjectsFromServer() {
+//   const data = await fetchJson(LIST_PROJECTS_URL, {
+//     method: 'GET',
+//     cache: 'no-store',
+//   });
+//   return Array.isArray(data.projects) ? data.projects : [];
+// }
 
 /** collect project images from current historyStack */
 function getImagesForProject(historyStack, projectName) {
   return historyStack.filter(item => (item.projectName || '') === projectName);
+}
+
+/** derive project information from history stack */
+function deriveProjectsFromHistory(historyStack) {
+  const map = new Map();
+
+  // 1) seed from persistent viewer projects (can include empty projects)
+  const persistedProjects = Array.isArray(window.viewerProjects) ? window.viewerProjects : [];
+  persistedProjects.forEach(proj => {
+    const projectName = normalizeProjectName(proj.project_name || proj.name || '');
+    if (!projectName) return;
+
+    if (!map.has(projectName)) {
+      map.set(projectName, {
+        project_name: projectName,
+        image_count: 0,
+        images: [],
+      });
+    }
+  });
+
+  // 2) merge actual images from historyStack
+  historyStack.forEach(item => {
+    const projectName = normalizeProjectName(item.projectName || '');
+    if (!projectName) return;
+
+    if (!map.has(projectName)) {
+      map.set(projectName, {
+        project_name: projectName,
+        image_count: 0,
+        images: [],
+      });
+    }
+
+    const proj = map.get(projectName);
+
+    const imageName = item.dir || item.name;
+    if (imageName && !proj.images.includes(imageName)) {
+      proj.images.push(imageName);
+      proj.image_count += 1;
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) =>
+    a.project_name.localeCompare(b.project_name)
+  );
 }
 
 /** remove selected class from all sidebar image items */
@@ -194,33 +243,17 @@ export async function updateProjectsUI(historyStack) {
   const container = $('#projects-container');
   if (!container.length) return;
 
-  let projects = [];
-  try {
-    projects = await loadProjectsFromServer();
-  } catch (err) {
-    console.error('loadProjectsFromServer failed:', err);
-
-    container.empty();
-    container.append(`
-      <div class="new-project-row">
-        <button id="new-project-btn" class="new-project-btn" type="button">+ New Project</button>
-      </div>
-      <div class="project-empty-state">Failed to load projects</div>
-    `);
-    return;
-  }
+  const projects = deriveProjectsFromHistory(historyStack);
 
   const normalizedNames = projects.map(p => normalizeProjectName(p.project_name));
   const validProjectNames = new Set(normalizedNames);
 
-  // 清掉已不存在的 project expansion state
   _expandedProjects.forEach(name => {
     if (!validProjectNames.has(name)) {
       _expandedProjects.delete(name);
     }
   });
 
-  // 如果現在只有 1 個 project，預設展開
   if (normalizedNames.length === 1) {
     _expandedProjects.add(normalizedNames[0]);
   }
@@ -307,18 +340,7 @@ export async function moveImageToImages(imageName, sourceProjectName = '') {
 async function populateMoveSubmenu($submenu, idx, historyStack) {
   $submenu.empty();
 
-  let projects = [];
-  try {
-    projects = await loadProjectsFromServer();
-  } catch (err) {
-    console.error('populateMoveSubmenu failed:', err);
-    $submenu.append(`
-      <button class="move-project-empty" type="button" disabled>
-        Load failed
-      </button>
-    `);
-    return;
-  }
+  const projects = deriveProjectsFromHistory(historyStack);
 
   const currentItem = historyStack[idx];
   const currentProjectName = currentItem?.projectName || '';
@@ -373,23 +395,14 @@ export function getMoveToProjectMenuHtml(idx) {
 async function populateProjectMoveSubmenu($submenu, idx, historyStack) {
   $submenu.empty();
 
-  let projects = [];
-  try {
-    projects = await loadProjectsFromServer();
-  } catch (err) {
-    console.error('populateProjectMoveSubmenu failed:', err);
-    $submenu.append(`
-      <button class="project-move-empty" type="button" disabled>
-        Load failed
-      </button>
-    `);
-    return;
-  }
+  const projects = deriveProjectsFromHistory(historyStack);
 
   const currentItem = historyStack[idx];
   const currentProjectName = currentItem?.projectName || '';
 
-  const filtered = projects.filter(p => normalizeProjectName(p.project_name) !== currentProjectName);
+  const filtered = projects.filter(
+    p => normalizeProjectName(p.project_name) !== currentProjectName
+  );
 
   if (!filtered.length) {
     $submenu.append(`
@@ -471,8 +484,27 @@ export function initProjectHandlers(historyStack) {
 
     $btn.prop('disabled', true);
 
+
+    
+
     try {
-      await createProject(projectName);
+      const data = await createProject(projectName);
+
+      if (!Array.isArray(window.viewerProjects)) {
+        window.viewerProjects = [];
+      }
+
+      const exists = window.viewerProjects.some(
+        p => normalizeProjectName(p.project_name) === normalizeProjectName(data.project_name || projectName)
+      );
+
+      if (!exists) {
+        window.viewerProjects.push({
+          project_name: data.project_name || projectName,
+          images: [],
+        });
+      }
+
       closeProjectModal();
       await updateProjectsUI(historyStack);
     } catch (err) {
@@ -482,6 +514,10 @@ export function initProjectHandlers(historyStack) {
       $btn.prop('disabled', false);
     }
   });
+
+
+
+
 
   // expand / collapse one project
   // $(document).on('click', '.project-item', function (e) {
@@ -929,6 +965,18 @@ export function initProjectHandlers(historyStack) {
           }
         });
 
+        if (Array.isArray(window.viewerProjects)) {
+          window.viewerProjects = window.viewerProjects.map(p => {
+            if (normalizeProjectName(p.project_name) === oldProjectName) {
+              return {
+                ...p,
+                project_name: data.project_name,
+              };
+            }
+            return p;
+          });
+        }
+
         updateHistoryUI(historyStack);
         await updateProjectsUI(historyStack);
 
@@ -993,6 +1041,12 @@ export function initProjectHandlers(historyStack) {
         if ((historyStack[i].projectName || '') === projectName) {
           historyStack.splice(i, 1);
         }
+      }
+
+      if (Array.isArray(window.viewerProjects)) {
+        window.viewerProjects = window.viewerProjects.filter(
+          p => normalizeProjectName(p.project_name) !== projectName
+        );
       }
 
       updateHistoryUI(historyStack);

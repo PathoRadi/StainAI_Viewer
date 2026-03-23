@@ -31,6 +31,26 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       return { authenticated: false, user: null };
     }
   }
+
+  async function getViewerState() {
+    try {
+      const res = await fetch("/api/viewer-state/", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data?.message || "Failed to load viewer state");
+      }
+
+      return data;
+    } catch (err) {
+      console.error("Failed to fetch viewer state:", err);
+      return { success: false, history: [], projects: [] };
+    }
+  }
   $(document).ready(async function(){
     // ──────── Check Viewer Authentication ────────
     const auth = await getCurrentViewerUser();
@@ -70,6 +90,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     window.bboxData     = [];
     window.barChart     = null;
     window.imgPath      = '';
+    window.viewerProjects = [];
     const historyStack  = [];
 
     // ──────── Viewer ────────
@@ -116,6 +137,26 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
     // ──────── Initialize ROI Stack ────────
     initROI();
+
+    // ──────── Fetch Viewer State ────────
+    const state = await getViewerState();
+
+    window.viewerProjects = Array.isArray(state.projects) ? state.projects : [];
+
+    if (state.success && Array.isArray(state.history)) {
+      historyStack.push(
+        ...state.history.map(item => ({
+          dir: item.image_name,
+          name: item.image_name,
+          projectName: item.location === "images" ? "" : item.location,
+          displayUrl: item.display_url || "",
+          boxes: Array.isArray(item.boxes) ? item.boxes : [],
+          origSize: item.orig_size || [],
+          dispSize: item.display_size || [],
+          demo: false,
+        }))
+      );
+    }
 
     // ──────── Initialize sub‐modules ────────
     initProcess(window.bboxData, historyStack, { get value(){ return window.barChart; }, set value(v){ window.barChart = v; } });
