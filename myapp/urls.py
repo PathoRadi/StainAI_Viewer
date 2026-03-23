@@ -22,4 +22,5 @@ urlpatterns = [
     path('get_project_images/', views.get_project_images, name='get_project_images'),
     path('rename_project/', views.rename_project, name='rename_project'),
     path('delete_project/', views.delete_project, name='delete_project'),
+    path("api/viewer-state/", views.viewer_state, name="viewer_state"),
 ]
