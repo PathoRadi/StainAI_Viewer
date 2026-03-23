@@ -311,6 +311,191 @@ def upload_detection_outputs_to_blob(
     logger.info("Blob upload complete for image=%s (user=%s)", image_name, user_id)
 
 
+""" 
+Blob State helper functions: save/load viewer state (images/projects) to/from Azure Blob Storage.
+"""
+def _blob_state_name(user_id: str) -> str:
+    return f"{user_id}/index/state.json"
+
+def _default_viewer_state() -> dict:
+    return {
+        "images": [],     # [{image_name, location}]
+        "projects": []    # [{project_name, images:[...]}]
+    }
+
+def load_viewer_state_from_blob(user_id: str) -> dict:
+    client = _blob_service_client()
+    if client is None:
+        return _default_viewer_state()
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob_name = _blob_state_name(user_id)
+    blob = client.get_blob_client(container=container, blob=blob_name)
+
+    try:
+        raw = blob.download_blob().readall()
+        data = json.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict):
+            return _default_viewer_state()
+        data.setdefault("images", [])
+        data.setdefault("projects", [])
+        return data
+    except Exception:
+        return _default_viewer_state()
+
+
+def save_viewer_state_to_blob(user_id: str, state: dict):
+    client = _blob_service_client()
+    if client is None:
+        logger.warning("Blob disabled (no connection string)")
+        return
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob_name = _blob_state_name(user_id)
+    blob = client.get_blob_client(container=container, blob=blob_name)
+
+    payload = json.dumps(state, ensure_ascii=False).encode("utf-8")
+    blob.upload_blob(payload, overwrite=True)
+
+def _find_image_entry(state: dict, image_name: str):
+    for item in state.get("images", []):
+        if item.get("image_name") == image_name:
+            return item
+    return None
+
+def _find_project_entry(state: dict, project_name: str):
+    for proj in state.get("projects", []):
+        if proj.get("project_name") == project_name:
+            return proj
+    return None
+
+def _ensure_project_entry(state: dict, project_name: str):
+    proj = _find_project_entry(state, project_name)
+    if proj is None:
+        proj = {"project_name": project_name, "images": []}
+        state.setdefault("projects", []).append(proj)
+    return proj
+
+def state_add_image(user_id: str, image_name: str, location: str = "images"):
+    state = load_viewer_state_from_blob(user_id)
+
+    item = _find_image_entry(state, image_name)
+    if item is None:
+        state["images"].append({
+            "image_name": image_name,
+            "location": location,
+        })
+    else:
+        item["location"] = location
+
+    if location != "images":
+        proj = _ensure_project_entry(state, location)
+        if image_name not in proj["images"]:
+            proj["images"].append(image_name)
+
+    save_viewer_state_to_blob(user_id, state)
+
+def state_create_project(user_id: str, project_name: str):
+    state = load_viewer_state_from_blob(user_id)
+    _ensure_project_entry(state, project_name)
+    save_viewer_state_to_blob(user_id, state)
+
+def state_move_image(user_id: str, image_name: str, new_location: str):
+    state = load_viewer_state_from_blob(user_id)
+
+    item = _find_image_entry(state, image_name)
+    if item is None:
+        item = {"image_name": image_name, "location": new_location}
+        state["images"].append(item)
+    else:
+        old_location = item.get("location", "images")
+        if old_location != "images":
+            old_proj = _find_project_entry(state, old_location)
+            if old_proj and image_name in old_proj.get("images", []):
+                old_proj["images"].remove(image_name)
+
+        item["location"] = new_location
+
+    if new_location != "images":
+        proj = _ensure_project_entry(state, new_location)
+        if image_name not in proj["images"]:
+            proj["images"].append(image_name)
+
+    save_viewer_state_to_blob(user_id, state)
+
+def state_delete_image(user_id: str, image_name: str):
+    state = load_viewer_state_from_blob(user_id)
+
+    state["images"] = [
+        item for item in state.get("images", [])
+        if item.get("image_name") != image_name
+    ]
+
+    for proj in state.get("projects", []):
+        proj["images"] = [
+            name for name in proj.get("images", [])
+            if name != image_name
+        ]
+
+    save_viewer_state_to_blob(user_id, state)
+
+def state_rename_image(user_id: str, old_image_name: str, new_image_name: str):
+    state = load_viewer_state_from_blob(user_id)
+
+    item = _find_image_entry(state, old_image_name)
+    if item:
+        item["image_name"] = new_image_name
+
+    for proj in state.get("projects", []):
+        proj["images"] = [
+            new_image_name if name == old_image_name else name
+            for name in proj.get("images", [])
+        ]
+
+    save_viewer_state_to_blob(user_id, state)
+
+def state_rename_project(user_id: str, old_project_name: str, new_project_name: str):
+    state = load_viewer_state_from_blob(user_id)
+
+    proj = _find_project_entry(state, old_project_name)
+    if proj:
+        proj["project_name"] = new_project_name
+
+    for item in state.get("images", []):
+        if item.get("location") == old_project_name:
+            item["location"] = new_project_name
+
+    save_viewer_state_to_blob(user_id, state)
+
+def state_delete_project(user_id: str, project_name: str):
+    state = load_viewer_state_from_blob(user_id)
+
+    for item in state.get("images", []):
+        if item.get("location") == project_name:
+            item["location"] = "images"
+
+    state["projects"] = [
+        proj for proj in state.get("projects", [])
+        if proj.get("project_name") != project_name
+    ]
+
+    save_viewer_state_to_blob(user_id, state)
+
+@require_GET
+def viewer_state(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    state = load_viewer_state_from_blob(user_id)
+    return JsonResponse({
+        "success": True,
+        "history": state.get("images", []),
+        "projects": state.get("projects", []),
+    })
+
+
 # ---------------------------
 # Views
 # ---------------------------
@@ -414,6 +599,9 @@ def create_project(request):
             return JsonResponse({"success": False, "message": "Project already exists"}, status=409)
 
         os.makedirs(project_dir, exist_ok=False)
+        user_id = _viewer_user_id(request)
+        state_create_project(user_id, project_name)
+
         return JsonResponse({"success": True, "project_name": project_name})
     except Exception:
         logger.exception("create_project failed")
@@ -529,6 +717,9 @@ def move_image_to_project(request):
             except Exception:
                 logger.exception("Failed to rewrite detect_result after move")
 
+        user_id = _viewer_user_id(request)
+        state_move_image(user_id, image_name, project_name)
+
         print("MOVE DEBUG")
         print("image_name =", image_name)
         print("source_project_name =", source_project_name)
@@ -608,6 +799,9 @@ def move_image_to_images(request):
                     json.dump(data, f)
             except Exception:
                 logger.exception("Failed to rewrite detect_result after move to images")
+
+        user_id = _viewer_user_id(request)
+        state_move_image(user_id, image_name, "images")
 
         return JsonResponse({
             "success": True,
@@ -862,7 +1056,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         try:
             upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, result_path)
         except Exception:
-            logger.exception("Blob upload failed for image=%s", image_name)
+            logger.exception("Failed to update viewer state after detection for image=%s", image_name)
 
         _set_progress_stage(image_dir, "done")  # enter stage 5) done
 
@@ -1043,12 +1237,15 @@ def reset_media(request):
         return HttpResponseNotAllowed(['POST'])
     
     root = _user_root(request)
+
+    # extra safety: never allow wiping the global MEDIA_ROOT
     if not root or os.path.abspath(root) == os.path.abspath(settings.MEDIA_ROOT):
         return JsonResponse({"success": False, "message": "Invalid user root"}, status=400)
     
+    if not os.path.isdir(root):
+        return JsonResponse({'ok': True})
+    
     for child in os.listdir(root):
-        if not os.path.isdir(root):
-            return JsonResponse({'ok': True})
         path = os.path.join(root, child)
         try:
             if os.path.isdir(path):
@@ -1087,6 +1284,9 @@ def delete_image(request):
 
         if os.path.isdir(image_dir):
             shutil.rmtree(image_dir, ignore_errors=True)
+            user_id = _viewer_user_id(request)
+            state_delete_image(user_id, image_name)
+
             return JsonResponse({'success': True})
 
         return JsonResponse({'error': 'Not found'}, status=404)
@@ -1181,6 +1381,9 @@ def rename_image(request):
             except Exception:
                 logger.exception("Failed to update _detect_result.json after rename")
 
+        user_id = _viewer_user_id(request)
+        state_rename_image(user_id, old_image_name, new_image_name)
+
         return JsonResponse({
             "success": True,
             "image_name": new_image_name,
@@ -1252,6 +1455,9 @@ def rename_project(request):
             except Exception:
                 logger.exception("Failed to update detect_result during project rename")
 
+        user_id = _viewer_user_id(request)
+        state_rename_project(user_id, old_project_name, new_project_name)
+
         return JsonResponse({"success": True, "project_name": new_project_name})
 
     except Exception:
@@ -1278,6 +1484,10 @@ def delete_project(request):
             return JsonResponse({"success": False, "message": "Project folder not found"}, status=404)
 
         shutil.rmtree(project_dir, ignore_errors=True)
+
+        user_id = _viewer_user_id(request)
+        state_delete_project(user_id, project_name)
+
         return JsonResponse({"success": True})
 
     except Exception:
