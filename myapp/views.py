@@ -481,6 +481,44 @@ def state_delete_project(user_id: str, project_name: str):
 
     save_viewer_state_to_blob(user_id, state)
 
+def _load_local_detect_result_for_state(user_id: str, image_name: str, location: str) -> dict:
+    """
+    Read local _detect_result.json for one image and return frontend-ready fields.
+    location: "images" or project name
+    """
+    if location == "images":
+        image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), "images", image_name)
+    else:
+        image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), location, image_name)
+
+    result_path = os.path.join(image_dir, "_detect_result.json")
+    if not os.path.exists(result_path):
+        return {
+            "display_url": "",
+            "boxes": [],
+            "orig_size": [],
+            "display_size": [],
+        }
+
+    try:
+        with open(result_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        return {
+            "display_url": data.get("display_url", ""),
+            "boxes": data.get("boxes", []),
+            "orig_size": data.get("orig_size", []),
+            "display_size": data.get("display_size", []),
+        }
+    except Exception:
+        logger.exception("Failed to load _detect_result.json for state image=%s", image_name)
+        return {
+            "display_url": "",
+            "boxes": [],
+            "orig_size": [],
+            "display_size": [],
+        }
+
 @require_GET
 def viewer_state(request):
     try:
@@ -489,9 +527,29 @@ def viewer_state(request):
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
     state = load_viewer_state_from_blob(user_id)
+
+    hydrated_history = []
+    for item in state.get("images", []):
+        image_name = item.get("image_name")
+        location = item.get("location", "images")
+
+        if not image_name:
+            continue
+
+        result_data = _load_local_detect_result_for_state(user_id, image_name, location)
+
+        hydrated_history.append({
+            "image_name": image_name,
+            "location": location,
+            "display_url": result_data.get("display_url", ""),
+            "boxes": result_data.get("boxes", []),
+            "orig_size": result_data.get("orig_size", []),
+            "display_size": result_data.get("display_size", []),
+        })
+
     return JsonResponse({
         "success": True,
-        "history": state.get("images", []),
+        "history": hydrated_history,
         "projects": state.get("projects", []),
     })
 
