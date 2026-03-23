@@ -31,6 +31,12 @@ PRBASE_LOGOUT_BRIDGE_URL = os.getenv(
     "https://imaging.howard.edu/stainai/user/logout-bridge"
 )
 
+
+# Azure Blob Storage (for media files) settings
+AZURE_BLOB_CONNECTION_STRING = os.getenv("AZURE_BLOB_CONNECTION_STRING", "")
+AZURE_BLOB_CONTAINER_NAME = os.getenv("AZURE_BLOB_CONTAINER_NAME", "stainai")
+AZURE_BLOB_ENABLED = bool(AZURE_BLOB_CONNECTION_STRING and AZURE_BLOB_CONTAINER_NAME)
+
 # Allow embedding in iframe (for SSO login flow)
 SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
@@ -162,6 +168,7 @@ else:
     }
 
 # C:\Users\User1\anaconda3\Scripts\activate && conda activate stainai
+# https://stainaiviewer.azurewebsites.net/api/current-user/
 
 # ===== Media =====
 # For deploy

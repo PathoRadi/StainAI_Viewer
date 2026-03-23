@@ -25,6 +25,7 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
+from azure.storage.blob import BlobServiceClient
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
@@ -51,14 +52,12 @@ except Exception:
     class ConnectionInterrupted(Exception):
         pass
 
-def _set_progress_stage(image, stage):
+def _set_progress_stage(image_dir: str, stage: str):
     """
-    Create text file to track current stage of the detection pipeline; 
-    frontend polls this to update the progress bar.
+    Write current pipeline stage into <image_dir>/_progress.txt
     """
-    image_dir = _image_dir(image)                                          # Full path of the user uploaded image folder, e.g. /home/site/wwwroot/media/{sample or sample_1}/
-    os.makedirs(image_dir, exist_ok=True)                                  # Ensure the image directory exists before writing progress
-    with open(os.path.join(image_dir, "_progress.txt"), "w") as f:         # Write current stage to _progress.txt, e.g. "gray", "cut", "yolo", "proc", "done", or "error"
+    os.makedirs(image_dir, exist_ok=True)
+    with open(os.path.join(image_dir, "_progress.txt"), "w", encoding="utf-8") as f:
         f.write(stage)
 
 @require_GET
@@ -66,8 +65,13 @@ def progress(request):
     """
     Frontend calls this every 1.5s to get current stage for progress bar update.
     """
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
     image_name = request.GET.get("image") or ""                                              # Get image name from query parameter, e.g. "sample" or "sample_1"
-    progress_file_path = os.path.join(_image_dir(image_name), "_progress.txt")               # Full path of the progress file, e.g. /home/site/wwwroot/media/{sample or sample_1}/_progress.txt
+    progress_file_path = os.path.join(_image_dir(request, image_name), "_progress.txt")               # Full path of the progress file, e.g. /home/site/wwwroot/media/{sample or sample_1}/_progress.txt
 
     # Read the stage from the progress file; if any error occurs (e.g. file not found), return "idle" as default stage
     try:
@@ -82,43 +86,9 @@ def progress(request):
 
 
 
-
-
 # ---------------------------
-# Lazy loader for YOLO
+# Login / Logout
 # ---------------------------
-_YOLO_MODEL = None
-def get_yolo_model():
-    """Lazily load YOLO weights and cache them (avoid 500 error if loading fails at startup)."""
-    global _YOLO_MODEL
-    if _YOLO_MODEL is None:
-        try:
-            from ultralytics import YOLO
-            import torch, os
-            # Limit threads to avoid oversubscription
-            torch.set_num_threads(min(4, os.cpu_count() or 1))
-            weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
-            # weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.onnx')
-            _YOLO_MODEL = YOLO(weight_path)
-        except Exception:
-            logger.exception("Failed to load YOLO model")
-            raise
-    return _YOLO_MODEL
-
-
-
-
-
-# ---------------------------
-# Views
-# ---------------------------
-def display_image(request):
-    """
-    Just render the HTML page; image will be loaded via JS
-    """
-    return render(request, 'display_image.html')
-
-
 def viewer_login_bridge(request):
     token = request.GET.get("token")
     if not token:
@@ -148,7 +118,6 @@ def viewer_login_bridge(request):
     # 驗證成功後進 viewer 首頁
     return redirect("/")
 
-
 @require_GET
 def current_viewer_user(request):
     viewer_user = request.session.get("viewer_user")
@@ -169,6 +138,30 @@ def viewer_logout_silent(request):
     return JsonResponse({"success": True})
 
 
+
+# ---------------------------
+# Lazy loader for YOLO
+# ---------------------------
+_YOLO_MODEL = None
+def get_yolo_model():
+    """Lazily load YOLO weights and cache them (avoid 500 error if loading fails at startup)."""
+    global _YOLO_MODEL
+    if _YOLO_MODEL is None:
+        try:
+            from ultralytics import YOLO
+            import torch, os
+            # Limit threads to avoid oversubscription
+            torch.set_num_threads(min(4, os.cpu_count() or 1))
+            weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.pt')
+            # weight_path = os.path.join(settings.BASE_DIR, 'model', 'MY12@640nFR.onnx')
+            _YOLO_MODEL = YOLO(weight_path)
+        except Exception:
+            logger.exception("Failed to load YOLO model")
+            raise
+    return _YOLO_MODEL
+
+
+
 # ---------------------------
 # Necessary paths
 # ---------------------------
@@ -178,30 +171,39 @@ def _media_root():
     """
     return settings.MEDIA_ROOT
 
-def _images_root():
-    """
-    Root folder to store all images (each image has its own subfolder), 
-    e.g. /home/site/wwwroot/media/images/
-    """
-    return os.path.join(_media_root(), "images")
+def _images_root(request):
+    return os.path.join(_user_root(request), "images")
 
-def _image_dir(image_name: str):
-    """
-    Get the folder path for a given image, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
-    """
-    return os.path.join(_images_root(), image_name)
+def _image_dir(request, image_name):
+    return os.path.join(_images_root(request), image_name)
 
-def _project_dir(project_name: str):
-    return os.path.join(_media_root(), project_name)
+def _viewer_user(request):
+    return request.session.get("viewer_user") or {}
 
-def _project_image_dir(project_name: str, image_name: str):
-    return os.path.join(_project_dir(project_name), image_name)
+def _viewer_user_id(request):
+    user = _viewer_user(request)
+    return str(user.get("userid") or "").strip()
+
+def _user_root(request):
+    user_id = _viewer_user_id(request)
+    if not user_id:
+        return None
+    return os.path.join(settings.MEDIA_ROOT, user_id)
+
+def _project_dir(request, project_name):
+    return os.path.join(_user_root(request), project_name)
+
+def _project_image_dir(request, project_name, image_name):
+    return os.path.join(_project_dir(request, project_name), image_name)
 
 def _is_reserved_root_name(name: str) -> bool:
     return name in {"images"}
 
-def _list_project_names():
-    root = _media_root()
+def _image_dir_by_userid(user_id: str, image_name: str):
+    return os.path.join(settings.MEDIA_ROOT, str(user_id), "images", image_name)
+
+def _list_project_names(request):
+    root = _user_root(request)
     if not os.path.isdir(root):
         return []
 
@@ -215,6 +217,109 @@ def _list_project_names():
         out.append(name)
     return sorted(out, key=str.lower)
 
+def _require_viewer_user(request):
+    user_id = _viewer_user_id(request)
+    if not user_id:
+        raise PermissionError("viewer login required")
+    return user_id
+
+
+
+# ---------------------------
+# Azure Blob Storage Helper
+# ---------------------------
+def _blob_service_client():
+    conn = getattr(settings, "AZURE_BLOB_CONNECTION_STRING", "")
+    if not conn:
+        return None
+    return BlobServiceClient.from_connection_string(conn)
+
+def _blob_prefix_for_image(user_id: str, image_name: str):
+    return f"{user_id}/images/{image_name}"
+
+def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
+    client = _blob_service_client()
+    if client is None:
+        return None
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob = client.get_blob_client(container=container, blob=blob_name)
+
+    logger.info("Uploading to blob: container=%s blob=%s", container, blob_name)
+
+    with open(local_path, "rb") as f:
+        blob.upload_blob(f, overwrite=True)
+
+    return blob.url
+
+def upload_detection_outputs_to_blob(
+    user_id: str,
+    image_name: str,
+    image_dir: str,
+    orig_path: str,
+    result_json_path: str,
+):
+    """
+    Upload final detection outputs to Azure Blob Storage.
+    Only upload final deliverables (NOT intermediate files).
+    """
+
+    client = _blob_service_client()
+    if client is None:
+        logger.warning("Blob disabled (no connection string)")
+        return
+
+    prefix = _blob_prefix_for_image(user_id, image_name)
+
+    # ---------------------------
+    # 1. Upload original image
+    # ---------------------------
+    original_filename = os.path.basename(orig_path)
+    blob_name = f"{prefix}/original/{original_filename}"
+    _upload_file_to_blob(orig_path, blob_name)
+
+    # ---------------------------
+    # 2. Upload mmap.tif
+    # ---------------------------
+    result_dir = os.path.join(image_dir, "result")
+    mmap_path = os.path.join(result_dir, f"{image_name}_mmap.tif")
+
+    if os.path.exists(mmap_path):
+        blob_name = f"{prefix}/result/{image_name}_mmap.tif"
+        _upload_file_to_blob(mmap_path, blob_name)
+    else:
+        logger.warning("mmap.tif not found: %s", mmap_path)
+
+    # ---------------------------
+    # 3. Upload result JSON
+    # (_detect_result.json → rename to *_results.json)
+    # ---------------------------
+    if os.path.exists(result_json_path):
+        blob_name = f"{prefix}/result/{image_name}_results.json"
+        _upload_file_to_blob(result_json_path, blob_name)
+    else:
+        logger.warning("result json not found: %s", result_json_path)
+
+    # ---------------------------
+    # 4. Upload full_chart.png (optional)
+    # ---------------------------
+    chart_path = os.path.join(result_dir, "full_chart.png")
+    if os.path.exists(chart_path):
+        blob_name = f"{prefix}/result/full_chart.png"
+        _upload_file_to_blob(chart_path, blob_name)
+
+    logger.info("Blob upload complete for image=%s (user=%s)", image_name, user_id)
+
+
+# ---------------------------
+# Views
+# ---------------------------
+def display_image(request):
+    """
+    Just render the HTML page; image will be loaded via JS
+    """
+    return render(request, 'display_image.html')
+
 
 
 # ---------------------------
@@ -222,8 +327,7 @@ def _list_project_names():
 # ---------------------------
 # Media Root:　/home/site/wwwroot/media
 # project dir: /home/site/wwwroot/media/<project_name>/
-
-def get_unique_image_name(image_name):
+def get_unique_image_name(request,image_name):
     """
     If image folder already exists, append _1, _2, _3 ...
     eg: if "sample.png" is uploaded and "media/sample/original/sample.png" 
@@ -232,7 +336,7 @@ def get_unique_image_name(image_name):
     candidate = image_name
     counter = 1
 
-    while os.path.exists(_image_dir(candidate)):
+    while os.path.exists(_image_dir(request, candidate)):
         candidate = f"{image_name}_{counter}"
         counter += 1
 
@@ -244,12 +348,17 @@ def upload_image(request):
     Receive upload, save to media/<image_name>/original/,
     If any side >20000, do half resize; return MEDIA URL for direct display.
     """
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     # check request method is POST and file is in request.FILES
     if request.method == 'POST' and request.FILES.get('image'):
         # ----------------------------------------------------------------------
         #      Step 1: Read User Uploaded Image and Create Image Folder
         # ----------------------------------------------------------------------
-        images_dir = _images_root()                                                 # Full path of the folder to store all images, e.g. /home/site/wwwroot/media/images/
+        images_dir = _images_root(request)                                          # Full path of the folder to store all images, e.g. /home/site/wwwroot/media/images/
         os.makedirs(images_dir, exist_ok=True)                                      # Create folder to store all images, e.g. /home/site/wwwroot/media/images/
 
         # User uploaded image
@@ -257,8 +366,8 @@ def upload_image(request):
         upload_name = os.path.splitext(img.name)[0]                                 # Get user uploaded image name without extension, e.g. "sample" from "sample.png"
 
         # Create folder for the uploaded image
-        image_name = get_unique_image_name(upload_name)                             # Get unique folder name for the user uploaded image, e.g. "sample_1" if "sample" already exists, otherwise "sample"
-        image_dir = _image_dir(image_name)                                          # Full path of the user uploaded image folder, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
+        image_name = get_unique_image_name(request, upload_name)                    # Get unique folder name for the user uploaded image, e.g. "sample_1" if "sample" already exists, otherwise "sample"
+        image_dir = _image_dir(request, image_name)                                 # Full path of the user uploaded image folder, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
         os.makedirs(image_dir, exist_ok=True)                                       # Create folder for the user uploaded image, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
 
         
@@ -286,6 +395,11 @@ def upload_image(request):
 @require_POST
 def create_project(request):
     try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
+    try:
         body = json.loads(request.body or "{}")
         project_name = safe_filename((body.get("project_name") or "").strip())
 
@@ -295,7 +409,7 @@ def create_project(request):
         if _is_reserved_root_name(project_name):
             return JsonResponse({"success": False, "message": "Reserved name"}, status=400)
 
-        project_dir = _project_dir(project_name)
+        project_dir = _project_dir(request, project_name)
         if os.path.exists(project_dir):
             return JsonResponse({"success": False, "message": "Project already exists"}, status=409)
 
@@ -307,10 +421,15 @@ def create_project(request):
     
 @require_GET
 def list_projects(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     projects = []
-    for project_name in _list_project_names():
+    for project_name in _list_project_names(request):
         image_names = []
-        project_dir = _project_dir(project_name)
+        project_dir = _project_dir(request, project_name)
         for child in os.listdir(project_dir):
             child_path = os.path.join(project_dir, child)
             if os.path.isdir(child_path):
@@ -327,6 +446,11 @@ def list_projects(request):
 @csrf_exempt
 @require_POST
 def move_image_to_project(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
     try:
         body = json.loads(request.body or "{}")
         image_name = (body.get("image_name") or "").strip()
@@ -347,9 +471,9 @@ def move_image_to_project(request):
         # 1) from Your Images  -> media/images/<image_name>
         # 2) from Project A    -> media/<source_project_name>/<image_name>
         if source_project_name:
-            src_dir = _project_image_dir(source_project_name, image_name)
+            src_dir = _project_image_dir(request, source_project_name, image_name)
         else:
-            src_dir = _image_dir(image_name)
+            src_dir = _image_dir(request, image_name)
 
         if not os.path.isdir(src_dir):
             return JsonResponse(
@@ -358,7 +482,7 @@ def move_image_to_project(request):
             )
 
         # target project folder must exist
-        project_dir = _project_dir(project_name)
+        project_dir = _project_dir(request, project_name)
         if not os.path.isdir(project_dir):
             return JsonResponse(
                 {"success": False, "message": "Project folder not found"},
@@ -366,7 +490,7 @@ def move_image_to_project(request):
             )
 
         # target image folder path
-        dst_dir = _project_image_dir(project_name, image_name)
+        dst_dir = _project_image_dir(request, project_name, image_name)
         if os.path.exists(dst_dir):
             return JsonResponse(
                 {"success": False, "message": "Same image name already exists in project"},
@@ -430,6 +554,11 @@ def move_image_to_project(request):
 @require_POST
 def move_image_to_images(request):
     try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
         body = json.loads(request.body or "{}")
         image_name = (body.get("image_name") or "").strip()
         source_project_name = (
@@ -444,17 +573,17 @@ def move_image_to_images(request):
                 status=400
             )
 
-        src_dir = _project_image_dir(source_project_name, image_name)
+        src_dir = _project_image_dir(request, source_project_name, image_name)
         if not os.path.isdir(src_dir):
             return JsonResponse(
                 {"success": False, "message": "Image folder not found"},
                 status=404
             )
 
-        images_root = _images_root()
+        images_root = _images_root(request)
         os.makedirs(images_root, exist_ok=True)
 
-        dst_dir = _image_dir(image_name)
+        dst_dir = _image_dir(request, image_name)
         if os.path.exists(dst_dir):
             return JsonResponse(
                 {"success": False, "message": "Same image name already exists in images"},
@@ -492,11 +621,16 @@ def move_image_to_images(request):
 
 @require_GET
 def get_project_images(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     project_name = (request.GET.get("project_name") or "").strip()
     if not project_name:
         return JsonResponse({"success": False, "message": "project_name required"}, status=400)
 
-    project_dir = _project_dir(project_name)
+    project_dir = _project_dir(request, project_name)
     if not os.path.isdir(project_dir):
         return JsonResponse({"success": False, "message": "Project not found"}, status=404)
 
@@ -535,30 +669,31 @@ def get_project_images(request):
 # images root: /home/site/wwwroot/media/images/
 # image dir: /home/site/wwwroot/media/images/<image_name>/
 # Original dir: /home/site/wwwroot/media/images/<image_name>/original
-def _run_detection_job(image_name: str, params: dict):
+def _run_detection_job(user_id: str, image_name: str, params: dict):
     start = time.perf_counter()
+    image_dir = _image_dir_by_userid(user_id, image_name)
 
     try:
         # ---------------------------
         # 0) Initialization
         # ---------------------------
-        image_dir = _image_dir(image_name)
+        # image_dir = _image_dir_by_userid(user_id, image_name)
         if not os.path.isdir(image_dir):
             logger.error("Image dir not found: %s", image_dir)
-            _set_progress_stage(image_name, "error")
+            _set_progress_stage(image_dir, "error")
             return
 
         orig_dir = os.path.join(image_dir, "original")
         if not os.path.isdir(orig_dir):
             logger.error("Original dir not found: %s", orig_dir)
-            _set_progress_stage(image_name, "error")
+            _set_progress_stage(image_dir, "error")
             return
 
         # Get the original image path; assume there's only one image in the original dir
         orig_files = [f for f in os.listdir(orig_dir) if not f.startswith(".")]
         if not orig_files:
             logger.error("No source image (non-resized) in %s", orig_dir)
-            _set_progress_stage(image_name, "error")
+            _set_progress_stage(image_dir, "error")
             return
 
         orig_name = orig_files[0]
@@ -585,7 +720,7 @@ def _run_detection_job(image_name: str, params: dict):
         ow, oh = _image_size_wh(orig_path)
 
         # Decide which image to show in the viewer (if any side > 20000, create a half-size display image)
-        _set_progress_stage(image_name, "gray")  # enter stage 1) gray
+        _set_progress_stage(image_dir, "gray")  # enter stage 1) gray
         if oh > 20000 or ow > 20000:
             disp_path = DisplayImageGenerator(orig_path, image_dir).generate_display_image()
             logger.info("Resized display image created: %s", disp_path)
@@ -632,13 +767,13 @@ def _run_detection_job(image_name: str, params: dict):
         # 2) Cut patches
         # ---------------------------
         cut_stage_start = time.perf_counter()
-        _set_progress_stage(image_name, "cut")   # enter stage 2) cut
+        _set_progress_stage(image_dir, "cut")   # enter stage 2) cut
 
         gray_dir = os.path.join(image_dir, "gray")
         gray_files = [f for f in os.listdir(gray_dir) if not f.startswith(".")]
         if not gray_files:
             logger.error("No grayscale image in %s", gray_dir)
-            _set_progress_stage(image_name, "error")
+            _set_progress_stage(image_dir, "error")
             return
 
         gray_files.sort(key=lambda fn: os.path.getmtime(os.path.join(gray_dir, fn)), reverse=True)
@@ -655,7 +790,7 @@ def _run_detection_job(image_name: str, params: dict):
         # 3) YOLO Inference
         # ---------------------------
         yolo_stage_start = time.perf_counter()
-        _set_progress_stage(image_name, "yolo")  # enter stage 3) yolo
+        _set_progress_stage(image_dir, "yolo")  # enter stage 3) yolo
 
         model = get_yolo_model()
         patches_dir = os.path.join(image_dir, "patches")
@@ -672,13 +807,13 @@ def _run_detection_job(image_name: str, params: dict):
         # 4) Processing Result
         # ---------------------------
         proc_stage_start = time.perf_counter()
-        _set_progress_stage(image_name, "proc")  # enter stage 4) proc
+        _set_progress_stage(image_dir, "proc")  # enter stage 4) proc
 
         dw, dh = _image_size_wh(disp_path)  # display image (w, h)
 
         # Create Original_Mmap.tiff
-        original_mmap_dir = os.path.join(image_dir, "original_mmap")
-        os.makedirs(original_mmap_dir, exist_ok=True)
+        result_dir = os.path.join(image_dir, "result")
+        os.makedirs(result_dir, exist_ok=True)
 
         original_mmap_inputs = [
             orig_path, annotated_img_path_orig, 
@@ -687,7 +822,7 @@ def _run_detection_job(image_name: str, params: dict):
 
         try:
             combine_rgb_tiff_from_paths(
-                output_dir=original_mmap_dir,
+                output_dir=result_dir,
                 img_paths=original_mmap_inputs,
                 filename=f"{image_name}_mmap.tif",
                 size_mode="pad",       # pad to the maximum width/height
@@ -720,7 +855,16 @@ def _run_detection_job(image_name: str, params: dict):
         with open(result_path, "w", encoding="utf-8") as f:
             json.dump(result, f)
 
-        _set_progress_stage(image_name, "done")  # enter stage 5) done
+
+        # ---------------------------
+        # 6) Save to Azure Blob Storage
+        # ---------------------------
+        try:
+            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, result_path)
+        except Exception:
+            logger.exception("Blob upload failed for image=%s", image_name)
+
+        _set_progress_stage(image_dir, "done")  # enter stage 5) done
 
         end = time.perf_counter()
         logger.info("Detection job finished: result saved to %s", result_path)
@@ -741,7 +885,7 @@ def _run_detection_job(image_name: str, params: dict):
 
     except Exception:
         logger.exception("Detection job failed (project=%s)", image_name)
-        _set_progress_stage(image_name, "error")
+        _set_progress_stage(image_dir, "error")
 
 def extract_image_name_from_media_url(path: str):
     """
@@ -769,6 +913,11 @@ def detect_image(request):
     Only responsible for starting a background detection job so the HTTP request
     returns immediately and does not time out.
     """
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     if request.method != "POST":
         return JsonResponse({"error": "Invalid detect"}, status=400)
 
@@ -776,27 +925,6 @@ def detect_image(request):
         body = json.loads(request.body or "{}")
     except json.JSONDecodeError:
         return HttpResponseBadRequest("invalid json")
-
-    # original_image_path = body.get("image_path")
-    # if not original_image_path:
-    #     return HttpResponseBadRequest("image_path required")
-    
-    # params = body.get("params") or {}
-
-    # # 'media/<project>/original/xxx.png' -> project_name
-    # parts = original_image_path.strip('/').split('/')
-
-    # # expected:
-    # # /images/<image_name>/original/<filename>
-    # if (
-    #     len(parts) < 4 or
-    #     parts[0] != "images" or
-    #     parts[2] != "original"
-    # ):
-    #     logger.error("Invalid image_path received: %s", original_image_path)
-    #     return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")
-
-    # image_name = parts[1]
 
     original_image_path = body.get("image_path")
     image_name = (body.get("image_name") or "").strip()
@@ -815,16 +943,20 @@ def detect_image(request):
         return HttpResponseBadRequest(f"invalid image_path: {original_image_path}")
 
     # Clear old status and previous results
-    image_dir = _image_dir(image_name)
+    image_dir = _image_dir(request, image_name)
     try:
         os.remove(os.path.join(image_dir, "_detect_result.json"))
     except FileNotFoundError:
         pass
+    
+    user_id = _viewer_user_id(request)
+    if not user_id:
+        return JsonResponse({"error": "Not authenticated"}, status=401)
 
     # Start background thread
     th = threading.Thread(
         target=_run_detection_job,
-        args=(image_name, params),
+        args=(user_id, image_name, params),
         daemon=True
     )
     th.start()
@@ -837,18 +969,23 @@ def detect_result(request):
     """
     Frontend calls this to fetch detection results when progress shows stage='done'.
     """
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
     image_name = request.GET.get("image") or ""
     if not image_name:
         return HttpResponseBadRequest("image required")
 
-    image_dir = _image_dir(image_name)
+    image_dir = _image_dir(request, image_name)
     result_path = os.path.join(image_dir, "_detect_result.json")
     if not os.path.exists(result_path):
         # still running / or not written yet
         return JsonResponse({"status": "pending"}, status=202)
 
-    with open(result_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    # with open(result_path, "r", encoding="utf-8") as f:
+    #     data = json.load(f)
 
     for _ in range(3):   # Try up to three times
         try:
@@ -897,10 +1034,21 @@ def _to_media_url(abs_path: str) -> str:
 # ---------------------------
 @csrf_exempt
 def reset_media(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
-    root = _media_root()
+    
+    root = _user_root(request)
+    if not root or os.path.abspath(root) == os.path.abspath(settings.MEDIA_ROOT):
+        return JsonResponse({"success": False, "message": "Invalid user root"}, status=400)
+    
     for child in os.listdir(root):
+        if not os.path.isdir(root):
+            return JsonResponse({'ok': True})
         path = os.path.join(root, child)
         try:
             if os.path.isdir(path):
@@ -919,6 +1067,11 @@ def reset_media(request):
 # ---------------------------
 @csrf_exempt
 def delete_image(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
     if request.method != 'POST':
         return JsonResponse({'error': 'Invalid request'}, status=400)
 
@@ -930,7 +1083,7 @@ def delete_image(request):
         if not image_name:
             return JsonResponse({'error': 'image_name required'}, status=400)
 
-        image_dir = _project_image_dir(project_name, image_name) if project_name else _image_dir(image_name)
+        image_dir = _project_image_dir(request, project_name, image_name) if project_name else _image_dir(request, image_name)
 
         if os.path.isdir(image_dir):
             shutil.rmtree(image_dir, ignore_errors=True)
@@ -948,6 +1101,11 @@ def delete_image(request):
 @csrf_exempt
 @require_POST
 def rename_image(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
     try:
         body = json.loads(request.body or "{}")
 
@@ -972,11 +1130,11 @@ def rename_image(request):
 
         # source / target dir
         if project_name:
-            old_dir = _project_image_dir(project_name, old_image_name)
-            new_dir = _project_image_dir(project_name, new_image_name)
+            old_dir = _project_image_dir(request, project_name, old_image_name)
+            new_dir = _project_image_dir(request, project_name, new_image_name)
         else:
-            old_dir = _image_dir(old_image_name)
-            new_dir = _image_dir(new_image_name)
+            old_dir = _image_dir(request, old_image_name)
+            new_dir = _image_dir(request, new_image_name)
 
         if not os.path.isdir(old_dir):
             return JsonResponse({
@@ -1040,6 +1198,11 @@ def rename_image(request):
 @require_POST
 def rename_project(request):
     try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
+    try:
         body = json.loads(request.body or "{}")
         old_project_name = safe_filename((body.get("old_project_name") or "").strip())
         new_project_name = safe_filename((body.get("new_project_name") or "").strip())
@@ -1050,8 +1213,8 @@ def rename_project(request):
         if _is_reserved_root_name(new_project_name):
             return JsonResponse({"success": False, "message": "Reserved name"}, status=400)
 
-        old_dir = _project_dir(old_project_name)
-        new_dir = _project_dir(new_project_name)
+        old_dir = _project_dir(request, old_project_name)
+        new_dir = _project_dir(request, new_project_name)
 
         if not os.path.isdir(old_dir):
             return JsonResponse({"success": False, "message": "Project folder not found"}, status=404)
@@ -1099,13 +1262,18 @@ def rename_project(request):
 @require_POST
 def delete_project(request):
     try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
+    try:
         body = json.loads(request.body or "{}")
         project_name = safe_filename((body.get("project_name") or "").strip())
 
         if not project_name:
             return JsonResponse({"success": False, "message": "project_name required"}, status=400)
 
-        project_dir = _project_dir(project_name)
+        project_dir = _project_dir(request, project_name)
         if not os.path.isdir(project_dir):
             return JsonResponse({"success": False, "message": "Project folder not found"}, status=404)
 
@@ -1280,15 +1448,11 @@ def combine_rgb_tiff_from_paths(
 @csrf_exempt
 @require_POST
 def download_project_with_rois(request):
-    """
-    Generate <image_name>.zip, including:
-      - original_mmap / result files
-      - rois.zip (multiple ROI polygons zipped inside)
-    Support both:
-      1) media/images/<image_name>
-      2) media/<project_name>/<image_name>
-    """
-    # Parse payload (support JSON and form)
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+    
     if request.content_type and request.content_type.startswith("application/json"):
         payload = json.loads(request.body or "{}")
         image_name = (payload.get("image_name") or "").strip()
@@ -1306,36 +1470,42 @@ def download_project_with_rois(request):
     if not image_name:
         return HttpResponseBadRequest("image_name required")
 
-    # Resolve image directory
     if project_name:
-        image_dir = _project_image_dir(project_name, image_name)
+        image_dir = _project_image_dir(request, project_name, image_name)
     else:
-        image_dir = _image_dir(image_name)
+        image_dir = _image_dir(request, image_name)
 
     if not os.path.isdir(image_dir):
         return HttpResponseNotFound("Image not found")
 
+    # logger.info("DOWNLOAD DEBUG image_name=%s project_name=%s", image_name, project_name)
+    # logger.info("DOWNLOAD DEBUG image_dir=%s", image_dir)
+
     tmpf = tempfile.TemporaryFile()
 
     def _compress_type_for(fn: str):
-        return zipfile.ZIP_STORED if fn.lower().endswith(('.tif', '.tiff', '.nii', '.zip')) \
-                                   else zipfile.ZIP_DEFLATED
+        return zipfile.ZIP_STORED if fn.lower().endswith((".tif", ".tiff", ".nii", ".zip")) else zipfile.ZIP_DEFLATED
 
     with zipfile.ZipFile(tmpf, "w") as main_zip:
-        for sub in ("original_mmap", "result"):
-            folder = os.path.join(image_dir, sub)
-            if os.path.isdir(folder):
-                for root, _, files in os.walk(folder):
-                    for fn in files:
-                        src = os.path.join(root, fn)
-                        arc = os.path.join(image_name, fn)
-                        ctype = _compress_type_for(fn)
-                        main_zip.write(
-                            src,
-                            arcname=arc,
-                            compress_type=ctype,
-                            compresslevel=0 if ctype == zipfile.ZIP_DEFLATED else None
-                        )
+        folder = os.path.join(image_dir, "result")
+        # logger.info("DOWNLOAD DEBUG result_dir=%s exists=%s", folder, os.path.isdir(folder))
+
+        if os.path.isdir(folder):
+            for root, _, files in os.walk(folder):
+                # logger.info("DOWNLOAD DEBUG walking root=%s files=%s", root, files)
+
+                for fn in files:
+                    src = os.path.join(root, fn)
+                    rel = os.path.relpath(src, image_dir)   # result/xxx
+                    arc = os.path.join(image_name, rel)     # image_name/result/xxx
+                    ctype = _compress_type_for(fn)
+
+                    # logger.info("DOWNLOAD DEBUG add src=%s arc=%s", src, arc)
+
+                    if ctype == zipfile.ZIP_DEFLATED:
+                        main_zip.write(src, arcname=arc, compress_type=ctype, compresslevel=0)
+                    else:
+                        main_zip.write(src, arcname=arc, compress_type=ctype)
 
         if rois:
             roi_buf = BytesIO()
@@ -1349,6 +1519,8 @@ def download_project_with_rois(request):
                 os.path.join(image_name, f"{image_name}_rois.zip"),
                 roi_buf.getvalue()
             )
+
+        # logger.info("DOWNLOAD DEBUG zip namelist=%s", main_zip.namelist())
 
     tmpf.seek(0)
     filename = f"{image_name}.zip"

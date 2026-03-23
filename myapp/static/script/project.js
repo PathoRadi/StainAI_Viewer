@@ -24,6 +24,12 @@ function normalizeProjectName(name) {
   return String(name ?? '').trim();
 }
 
+/** Handle authentication expiration */
+function handleAuthExpired(message = 'Session expired. Please sign in again.') {
+  alert(message);
+  window.location.href = '/';
+}
+
 /** fetch JSON with error handling */
 async function fetchJson(url, options = {}) {
   const res = await fetch(url, options);
@@ -33,6 +39,11 @@ async function fetchJson(url, options = {}) {
     data = await res.json();
   } catch (err) {
     data = {};
+  }
+
+  if (res.status === 401) {
+    handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+    throw new Error(data?.message || 'Not authenticated');
   }
 
   if (!res.ok) {
@@ -895,6 +906,11 @@ export function initProjectHandlers(historyStack) {
 
         const data = await res.json();
 
+        if (res.status === 401) {
+          handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+          return;
+        }
+
         if (!res.ok || !data.success) {
           alert('Rename failed: ' + (data.message || ''));
           $textSpan.text(oldText);
@@ -962,6 +978,11 @@ export function initProjectHandlers(historyStack) {
       });
 
       const data = await res.json();
+
+      if (res.status === 401) {
+        handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+        return;
+      }
 
       if (!res.ok || !data.success) {
         alert('Delete failed: ' + (data.message || ''));
@@ -1072,6 +1093,11 @@ export function initProjectHandlers(historyStack) {
         });
 
         const data = await res.json();
+
+        if (res.status === 401) {
+          handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+          return;
+        }
 
         if (!res.ok || !data.success) {
           alert('Rename failed: ' + (data.message || ''));
@@ -1187,41 +1213,49 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Delete
-  $(document).on('click', '.project-delete-btn', function (e) {
+  $(document).on('click', '.project-delete-btn', async function (e) {
     e.stopPropagation();
 
     const idx = $(this).data('idx');
     const item = historyStack[idx];
     if (!item) return;
 
-    fetch(DELETE_IMAGE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrftoken
-      },
-      body: JSON.stringify({
-        image_name: item.dir,
-        project_name: item.projectName || ''
-      })
-    })
-    .then(r => r.json())
-    .then(async res => {
-      if (!res.success) {
-        alert('Delete failed: ' + (res.message || ''));
+    try {
+      const res = await fetch(DELETE_IMAGE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrftoken
+        },
+        body: JSON.stringify({
+          image_name: item.dir,
+          project_name: item.projectName || ''
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        alert('Delete failed: ' + (data.message || ''));
         return;
       }
 
       historyStack.splice(idx, 1);
       updateHistoryUI(historyStack);
       await updateProjectsUI(historyStack);
-    })
-    .catch(err => console.error(err))
-    .finally(() => {
+    } catch (err) {
+      console.error(err);
+      alert('Delete failed');
+    } finally {
       $('.project-history-action-menu').hide();
       $('.menu-click-shield').remove();
       restoreProjectMenusToOrigin();
-    });
+    }
   });
 
   $(document).on('click', '.project-move-option', async function (e) {
@@ -1262,7 +1296,7 @@ export function initProjectHandlers(historyStack) {
  * Optional helper: external refresh
  * ========================================================= */
 
-export async function refreshProjectsUI() {
-  if (!_historyStackRef) return;
-  await updateProjectsUI(_historyStackRef);
-}
+// export async function refreshProjectsUI() {
+//   if (!_historyStackRef) return;
+//   await updateProjectsUI(_historyStackRef);
+// }

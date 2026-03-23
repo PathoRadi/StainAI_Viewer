@@ -10,7 +10,62 @@ import { updateProjectsUI, initProjectHandlers } from './project.js';
 import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 (function($){
-  $(document).ready(function(){
+  async function getCurrentViewerUser() {
+    try {
+      const res = await fetch("/api/current-user/", {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        return { authenticated: false, user: null };
+      }
+
+      const data = await res.json();
+      return {
+        authenticated: !!data.authenticated,
+        user: data.user || null,
+      };
+    } catch (err) {
+      console.error("Failed to fetch current viewer user:", err);
+      return { authenticated: false, user: null };
+    }
+  }
+  $(document).ready(async function(){
+    // ──────── Check Viewer Authentication ────────
+    const auth = await getCurrentViewerUser();
+
+    if (!auth.authenticated) {
+      const dropZone = document.getElementById('drop-zone');
+      const mainContainer = document.querySelector('.main-container');
+      const accountContainer = document.getElementById('viewer-account-container');
+
+      if (dropZone) {
+        dropZone.innerHTML = `
+          <div style="text-align:center; color:white;">
+            <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
+              Please sign in from the main site first
+            </div>
+            <div style="font-size:14px; opacity:0.85;">
+              Viewer access requires an active signed-in session.
+            </div>
+          </div>
+        `;
+        dropZone.style.display = 'flex';
+      }
+
+      if (mainContainer) {
+        mainContainer.hidden = true;
+      }
+
+      if (accountContainer) {
+        accountContainer.classList.add("viewer-hidden");
+      }
+
+      return;
+    }
+    initViewerUserCard(auth.user);
+
     // ──────── Globals ────────
     window.bboxData     = [];
     window.barChart     = null;
@@ -608,8 +663,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 
 
-  
-
   // ==================
   // ===== ReadMe =====
   // ==================
@@ -671,7 +724,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 
 
-
   // =========================
   // ===== Color Picker  =====
   // =========================
@@ -721,6 +773,8 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
   })();
 
+
+
   // =========================
   // ===== Account Menu  =====
   // =========================
@@ -743,20 +797,11 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     container.classList.add("viewer-hidden");
   }
 
-  async function initViewerUserCard() {
-    try {
-      const res = await fetch("/api/current-user/");
-      const data = await res.json();
-
-      if (data.authenticated && data.user) {
-        renderViewerUserCard(data.user);
-      } else {
-        hideViewerUserCard();
-      }
-    } catch (err) {
-      console.error("Failed to init viewer user card:", err);
+  function initViewerUserCard(user) {
+    if (user) {
+      renderViewerUserCard(user);
+    } else {
       hideViewerUserCard();
     }
   }
-  document.addEventListener("DOMContentLoaded", initViewerUserCard);
 })(jQuery);

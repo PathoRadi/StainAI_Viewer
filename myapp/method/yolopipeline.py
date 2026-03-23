@@ -937,6 +937,7 @@ class YOLOPipeline:
         detections format: [{"coords":[x1,y1,x2,y2], "type": "R"}, ...]
         """
         out_name = os.path.basename(in_path)
+        out_name = os.path.splitext(out_name)[0]
 
         if not _HAS_MPL:
             self.log.warning("matplotlib not available, skip saving full image bar chart.")
@@ -986,7 +987,7 @@ class YOLOPipeline:
 
         fig.tight_layout()
 
-        out_path = os.path.join(self.result_dir, out_name)
+        out_path = os.path.join(self.result_dir, f"{out_name}" + "_chart.png")
         fig.savefig(out_path)  # transparent works well on dark UI backgrounds
         plt.close(fig)
 
