@@ -157,6 +157,16 @@ export function initHistoryHandlers(historyStack) {
       window.bboxData = Array.isArray(item.boxes) ? item.boxes.slice() : [];
 
       clearBoxes();
+
+      try {
+        if (window.layerManagerApi?.getLayers?.().length) {
+          window.layerManagerApi.getLayers().forEach(layer => {
+            window.layerManagerApi.removeLayer(layer.id);
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to clear ROI layers before loading history item:', e);
+      }
       drawBbox(window.bboxData);
 
       if (window.chartRefs && window.chartRefs.length) {
@@ -182,8 +192,20 @@ export function initHistoryHandlers(historyStack) {
         if (typeof window.renderROIList === 'function') window.renderROIList();
       } else {
         window.chartRefs = [];
-        const c1 = addBarChart();
+
+        const c1 = addBarChart('barChartWrappers');
         window.chartRefs.push(c1);
+
+        initCheckboxes(window.bboxData, c1);
+        $('#checkbox_All').prop('checked', true);
+        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+          .prop('checked', true);
+        showAllBoxes();
+        updateChart(window.bboxData, c1);
+
+        if (typeof window.renderROIList === 'function') {
+          window.renderROIList();
+        }
       }
     });
   }
@@ -499,7 +521,7 @@ export function initHistoryHandlers(historyStack) {
         }
 
         $textSpan.text(data.image_name);
-        
+
         updateHistoryUI(historyStack);
         await updateProjectsUI(historyStack);
 
