@@ -1296,7 +1296,7 @@ export function initProjectHandlers(historyStack) {
  * Optional helper: external refresh
  * ========================================================= */
 
-// export async function refreshProjectsUI() {
-//   if (!_historyStackRef) return;
-//   await updateProjectsUI(_historyStackRef);
-// }
+export async function refreshProjectsUI() {
+  if (!_historyStackRef) return;
+  await updateProjectsUI(_historyStackRef);
+}
