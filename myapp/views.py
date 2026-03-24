@@ -251,8 +251,9 @@ def _blob_service_client():
         return None
     return BlobServiceClient.from_connection_string(conn)
 
-def _blob_prefix_for_image(user_id: str, image_name: str):
-    return f"{user_id}/images/{image_name}"
+def _blob_prefix_for_image(user_id: str, image_name: str, location: str = "images"):
+    location = (location or "images").strip()
+    return f"{user_id}/{location}/{image_name}"
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
     client = _blob_service_client()
@@ -653,6 +654,78 @@ def viewer_state(request):
         "history": hydrated_history,
         "projects": state.get("projects", []),
     })
+def ensure_blob_project_placeholder(user_id: str, project_name: str):
+    client = _blob_service_client()
+    if client is None:
+        return
+
+    container = _blob_container_name()
+    blob_name = f"{user_id}/{project_name}/.keep"
+    blob = client.get_blob_client(container=container, blob=blob_name)
+    blob.upload_blob(b"", overwrite=True)
+
+def _blob_container_name() -> str:
+    return settings.AZURE_BLOB_CONTAINER_NAME
+
+
+def _copy_blob(client, src_blob_name: str, dst_blob_name: str):
+    container = _blob_container_name()
+    src_blob = client.get_blob_client(container=container, blob=src_blob_name)
+    dst_blob = client.get_blob_client(container=container, blob=dst_blob_name)
+
+    src_url = src_blob.url
+    dst_blob.start_copy_from_url(src_url)
+
+    # simple polling
+    props = dst_blob.get_blob_properties()
+    for _ in range(40):
+        props = dst_blob.get_blob_properties()
+        status = props.copy.status
+        if status == "success":
+            return
+        if status == "failed":
+            raise RuntimeError(f"Blob copy failed: {src_blob_name} -> {dst_blob_name}")
+        time.sleep(0.25)
+
+    raise TimeoutError(f"Blob copy timed out: {src_blob_name} -> {dst_blob_name}")
+
+
+def _delete_blob_if_exists(client, blob_name: str):
+    container = _blob_container_name()
+    blob = client.get_blob_client(container=container, blob=blob_name)
+    try:
+        blob.delete_blob()
+    except ResourceNotFoundError:
+        pass
+
+
+def move_blob_prefix(user_id: str, image_name: str, old_location: str, new_location: str):
+    client = _blob_service_client()
+    if client is None:
+        logger.warning("Blob disabled (no connection string)")
+        return
+
+    container = _blob_container_name()
+    old_prefix = _blob_prefix_for_image(user_id, image_name, old_location).rstrip("/") + "/"
+    new_prefix = _blob_prefix_for_image(user_id, image_name, new_location).rstrip("/") + "/"
+
+    blobs = list(client.get_container_client(container).list_blobs(name_starts_with=old_prefix))
+    if not blobs:
+        logger.warning("No blobs found under prefix: %s", old_prefix)
+        return
+
+    # copy all
+    copied = []
+    for b in blobs:
+        src_name = b.name
+        suffix = src_name[len(old_prefix):]
+        dst_name = new_prefix + suffix
+        _copy_blob(client, src_name, dst_name)
+        copied.append((src_name, dst_name))
+
+    # delete old after all copies succeed
+    for src_name, _ in copied:
+        _delete_blob_if_exists(client, src_name)
 
 
 # ---------------------------
@@ -760,6 +833,7 @@ def create_project(request):
         os.makedirs(project_dir, exist_ok=False)
         user_id = _viewer_user_id(request)
         state_create_project(user_id, project_name)
+        ensure_blob_project_placeholder(user_id, project_name)
 
         return JsonResponse({"success": True, "project_name": project_name})
     except Exception:
