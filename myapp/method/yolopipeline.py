@@ -80,7 +80,8 @@ class YOLOPipeline:
         annotated_img_path_gray = self.annotate_large_image(self.gray_image_path, bbox, labels)
 
         # 3. Save full image bar chart
-        self.save_full_image_barchart(detections, self.large_img_path)
+        chart_path = self.save_full_image_barchart(detections, self.large_img_path)
+        self.log.info("Chart path returned: %s", chart_path)
 
         self.log.info(f"Generating annotated image done")
         gc.collect()
@@ -927,68 +928,64 @@ class YOLOPipeline:
         tiff.imwrite(out_path, out, photometric="rgb", compression="lzw")
         return out_path
     
-    def save_full_image_barchart(
-        self,
-        detections,
-        in_path
-    ):
-        """
-        Save a 'Full Image' bar chart PNG into self.result_dir.
-        detections format: [{"coords":[x1,y1,x2,y2], "type": "R"}, ...]
-        """
+    def save_full_image_barchart(self, detections, in_path):
         out_name = os.path.basename(in_path)
         out_name = os.path.splitext(out_name)[0]
+
+        self.log.info("Entering save_full_image_barchart, _HAS_MPL=%s", _HAS_MPL)
 
         if not _HAS_MPL:
             self.log.warning("matplotlib not available, skip saving full image bar chart.")
             return None
 
-        # fixed order (match your UI)
-        order = ["R", "H", "B", "A", "RD", "HR"]
-        counts = {k: 0 for k in order}
+        try:
+            order = ["R", "H", "B", "A", "RD", "HR"]
+            counts = {k: 0 for k in order}
 
-        # detections['type'] is already class name in your pipeline output
-        # see det_list creation: {"type": cls} where cls is self.class_mapping[int(i)][0]
-        for d in (detections or []):
-            t = d.get("type", None)
-            if t in counts:
-                counts[t] += 1
+            for d in (detections or []):
+                t = d.get("type", None)
+                if t in counts:
+                    counts[t] += 1
 
-        values = [counts[k] for k in order]
+            values = [counts[k] for k in order]
 
-        # Colors: your class_mapping stores BGR, convert to RGB for matplotlib
-        name_to_rgb = {}
-        for _, (name, bgr) in self.class_mapping.items():
-            b, g, r = bgr
-            name_to_rgb[name] = (r / 255.0, g / 255.0, b / 255.0)
+            name_to_rgb = {}
+            for _, (name, bgr) in self.class_mapping.items():
+                b, g, r = bgr
+                name_to_rgb[name] = (r / 255.0, g / 255.0, b / 255.0)
 
-        bar_colors = [name_to_rgb.get(k, (1, 1, 1)) for k in order]
+            bar_colors = [name_to_rgb.get(k, (1, 1, 1)) for k in order]
 
-        # Figure
-        fig = plt.figure(figsize=(6.2, 3.2), dpi=220)
-        ax = fig.add_subplot(111)
+            fig = plt.figure(figsize=(6.2, 3.2), dpi=220)
+            ax = fig.add_subplot(111)
 
-        bars = ax.bar(order, values, color=bar_colors)
+            bars = ax.bar(order, values, color=bar_colors)
 
-        title = os.path.splitext(os.path.basename(in_path))[0]
-        ax.set_title(f"{title} Full Image Counts")
-        ax.set_ylabel("Count")
+            title = os.path.splitext(os.path.basename(in_path))[0]
+            ax.set_title(f"{title} Full Image Counts")
+            ax.set_ylabel("Count")
 
-        # show numbers on bars (like your UI)
-        for rect, v in zip(bars, values):
-            ax.text(
-                rect.get_x() + rect.get_width() / 2.0,
-                v,
-                f"{v}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )
+            for rect, v in zip(bars, values):
+                ax.text(
+                    rect.get_x() + rect.get_width() / 2.0,
+                    v,
+                    f"{v}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                )
 
-        fig.tight_layout()
+            fig.tight_layout()
 
-        out_path = os.path.join(self.result_dir, f"{out_name}" + "_chart.png")
-        fig.savefig(out_path)  # transparent works well on dark UI backgrounds
-        plt.close(fig)
+            out_path = os.path.join(self.result_dir, f"{out_name}_chart.png")
+            self.log.info("Saving chart to: %s", out_path)
 
-        return out_path
+            fig.savefig(out_path)
+            plt.close(fig)
+
+            self.log.info("Chart saved successfully. exists=%s", os.path.exists(out_path))
+            return out_path
+
+        except Exception:
+            self.log.exception("Failed in save_full_image_barchart")
+            return None
