@@ -26,6 +26,8 @@ from django.http import (
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
 from azure.storage.blob import BlobServiceClient
+from mimetypes import guess_type
+from azure.core.exceptions import ResourceNotFoundError
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
@@ -133,7 +135,22 @@ def current_viewer_user(request):
         "user": viewer_user,
     })
 
+def _purge_user_media_by_id(user_id: str):
+    if not user_id:
+        return
+    root = os.path.join(settings.MEDIA_ROOT, str(user_id))
+    if os.path.isdir(root):
+        shutil.rmtree(root, ignore_errors=True)
+
 def viewer_logout_silent(request):
+    viewer_user = request.session.get("viewer_user") or {}
+    user_id = str(viewer_user.get("userid") or "").strip()
+
+    try:
+        _purge_user_media_by_id(user_id)
+    except Exception:
+        logger.exception("Failed to purge local media on logout for user=%s", user_id)
+
     request.session.flush()
     return JsonResponse({"success": True})
 
@@ -252,16 +269,27 @@ def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
 
     return blob.url
 
+def _blob_result_name(user_id: str, image_name: str) -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name)}/result/{image_name}_results.json"
+
+def _blob_display_name(user_id: str, image_name: str, filename: str) -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name)}/display/{filename}"
+
 def upload_detection_outputs_to_blob(
     user_id: str,
     image_name: str,
     image_dir: str,
     orig_path: str,
-    result_json_path: str,
+    disp_path: str,
+    detections: list,
+    orig_size: list,
+    display_size: list,
 ):
     """
     Upload final detection outputs to Azure Blob Storage.
-    Only upload final deliverables (NOT intermediate files).
+    This version is for method 1:
+    - blob stores the display image too
+    - blob result json is viewer-consumable after local purge
     """
 
     client = _blob_service_client()
@@ -271,42 +299,52 @@ def upload_detection_outputs_to_blob(
 
     prefix = _blob_prefix_for_image(user_id, image_name)
 
-    # ---------------------------
-    # 1. Upload original image
-    # ---------------------------
+    # 1) original
     original_filename = os.path.basename(orig_path)
-    blob_name = f"{prefix}/original/{original_filename}"
-    _upload_file_to_blob(orig_path, blob_name)
+    original_blob_name = f"{prefix}/original/{original_filename}"
+    _upload_file_to_blob(orig_path, original_blob_name)
 
-    # ---------------------------
-    # 2. Upload mmap.tif
-    # ---------------------------
+    # 2) display image
+    display_filename = os.path.basename(disp_path)
+    display_blob_name = _blob_display_name(user_id, image_name, display_filename)
+    _upload_file_to_blob(disp_path, display_blob_name)
+
+    # 3) mmap
     result_dir = os.path.join(image_dir, "result")
     mmap_path = os.path.join(result_dir, f"{image_name}_mmap.tif")
-
+    mmap_blob_name = f"{prefix}/result/{image_name}_mmap.tif"
     if os.path.exists(mmap_path):
-        blob_name = f"{prefix}/result/{image_name}_mmap.tif"
-        _upload_file_to_blob(mmap_path, blob_name)
+        _upload_file_to_blob(mmap_path, mmap_blob_name)
     else:
         logger.warning("mmap.tif not found: %s", mmap_path)
+        mmap_blob_name = ""
 
-    # ---------------------------
-    # 3. Upload result JSON
-    # (_detect_result.json → rename to *_results.json)
-    # ---------------------------
-    if os.path.exists(result_json_path):
-        blob_name = f"{prefix}/result/{image_name}_results.json"
-        _upload_file_to_blob(result_json_path, blob_name)
-    else:
-        logger.warning("result json not found: %s", result_json_path)
-
-    # ---------------------------
-    # 4. Upload full_chart.png (optional)
-    # ---------------------------
+    # 4) chart
     chart_path = os.path.join(result_dir, "full_chart.png")
+    chart_blob_name = f"{prefix}/result/full_chart.png"
     if os.path.exists(chart_path):
-        blob_name = f"{prefix}/result/full_chart.png"
-        _upload_file_to_blob(chart_path, blob_name)
+        _upload_file_to_blob(chart_path, chart_blob_name)
+    else:
+        chart_blob_name = ""
+
+    # 5) blob result json (IMPORTANT: do not store local /media display_url here)
+    blob_result_payload = {
+        "boxes": detections,
+        "orig_size": orig_size,
+        "display_size": display_size,
+        "display_blob_name": display_blob_name,
+        "original_blob_name": original_blob_name,
+        "mmap_blob_name": mmap_blob_name,
+        "chart_blob_name": chart_blob_name,
+    }
+
+    client = _blob_service_client()
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob = client.get_blob_client(container=container, blob=_blob_result_name(user_id, image_name))
+    blob.upload_blob(
+        json.dumps(blob_result_payload, ensure_ascii=False).encode("utf-8"),
+        overwrite=True
+    )
 
     logger.info("Blob upload complete for image=%s (user=%s)", image_name, user_id)
 
@@ -481,43 +519,106 @@ def state_delete_project(user_id: str, project_name: str):
 
     save_viewer_state_to_blob(user_id, state)
 
-def _load_local_detect_result_for_state(user_id: str, image_name: str, location: str) -> dict:
-    """
-    Read local _detect_result.json for one image and return frontend-ready fields.
-    location: "images" or project name
-    """
-    if location == "images":
-        image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), "images", image_name)
-    else:
-        image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), location, image_name)
+# def _load_local_detect_result_for_state(user_id: str, image_name: str, location: str) -> dict:
+#     """
+#     Read local _detect_result.json for one image and return frontend-ready fields.
+#     location: "images" or project name
+#     """
+#     if location == "images":
+#         image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), "images", image_name)
+#     else:
+#         image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), location, image_name)
 
-    result_path = os.path.join(image_dir, "_detect_result.json")
-    if not os.path.exists(result_path):
+#     result_path = os.path.join(image_dir, "_detect_result.json")
+#     if not os.path.exists(result_path):
+#         return {
+#             "display_url": "",
+#             "boxes": [],
+#             "orig_size": [],
+#             "display_size": [],
+#         }
+
+#     try:
+#         with open(result_path, "r", encoding="utf-8") as f:
+#             data = json.load(f)
+
+#         return {
+#             "display_url": data.get("display_url", ""),
+#             "boxes": data.get("boxes", []),
+#             "orig_size": data.get("orig_size", []),
+#             "display_size": data.get("display_size", []),
+#         }
+#     except Exception:
+#         logger.exception("Failed to load _detect_result.json for state image=%s", image_name)
+#         return {
+#             "display_url": "",
+#             "boxes": [],
+#             "orig_size": [],
+#             "display_size": [],
+#         }
+
+def _load_blob_detect_result_for_state(user_id: str, image_name: str) -> dict:
+    client = _blob_service_client()
+    if client is None:
         return {
-            "display_url": "",
+            "display_blob_name": "",
             "boxes": [],
             "orig_size": [],
             "display_size": [],
         }
 
-    try:
-        with open(result_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob_name = _blob_result_name(user_id, image_name)
+    blob = client.get_blob_client(container=container, blob=blob_name)
 
+    try:
+        raw = blob.download_blob().readall()
+        data = json.loads(raw.decode("utf-8"))
         return {
-            "display_url": data.get("display_url", ""),
+            "display_blob_name": data.get("display_blob_name", ""),
             "boxes": data.get("boxes", []),
             "orig_size": data.get("orig_size", []),
             "display_size": data.get("display_size", []),
         }
+    except ResourceNotFoundError:
+        logger.warning("Blob result json not found for image=%s", image_name)
     except Exception:
-        logger.exception("Failed to load _detect_result.json for state image=%s", image_name)
-        return {
-            "display_url": "",
-            "boxes": [],
-            "orig_size": [],
-            "display_size": [],
-        }
+        logger.exception("Failed to load blob result for image=%s", image_name)
+
+    return {
+        "display_blob_name": "",
+        "boxes": [],
+        "orig_size": [],
+        "display_size": [],
+    }
+
+@require_GET
+def blob_display_image(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    image_name = (request.GET.get("image_name") or "").strip()
+    if not image_name:
+        return HttpResponseBadRequest("image_name required")
+
+    result_data = _load_blob_detect_result_for_state(user_id, image_name)
+    blob_name = result_data.get("display_blob_name") or ""
+    if not blob_name:
+        return HttpResponseNotFound("display blob not found")
+
+    client = _blob_service_client()
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    blob = client.get_blob_client(container=container, blob=blob_name)
+
+    try:
+        data = blob.download_blob().readall()
+    except ResourceNotFoundError:
+        return HttpResponseNotFound("display blob not found")
+
+    content_type = guess_type(blob_name)[0] or "application/octet-stream"
+    return FileResponse(BytesIO(data), content_type=content_type)
 
 @require_GET
 def viewer_state(request):
@@ -536,12 +637,12 @@ def viewer_state(request):
         if not image_name:
             continue
 
-        result_data = _load_local_detect_result_for_state(user_id, image_name, location)
+        result_data = _load_blob_detect_result_for_state(user_id, image_name)
 
         hydrated_history.append({
             "image_name": image_name,
             "location": location,
-            "display_url": result_data.get("display_url", ""),
+            "display_url": f"/api/blob-display-image/?image_name={quote(image_name)}",
             "boxes": result_data.get("boxes", []),
             "orig_size": result_data.get("orig_size", []),
             "display_size": result_data.get("display_size", []),
@@ -1112,7 +1213,16 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # 6) Save to Azure Blob Storage
         # ---------------------------
         try:
-            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, result_path)
+            upload_detection_outputs_to_blob(
+                user_id=user_id,
+                image_name=image_name,
+                image_dir=image_dir,
+                orig_path=orig_path,
+                disp_path=disp_path,
+                detections=detections,
+                orig_size=[oh, ow],
+                display_size=[dh, dw],
+            )
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
 
