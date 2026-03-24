@@ -191,17 +191,30 @@ export function initHistoryHandlers(historyStack) {
 
         if (typeof window.renderROIList === 'function') window.renderROIList();
       } else {
+        // 先清掉舊 wrapper，避免殘留
+        document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
         window.chartRefs = [];
 
-        const c1 = addBarChart('barChartWrappers');
+        // 1) Full Image chart
+        const c1 = addBarChart('barChart-wrappers');
         window.chartRefs.push(c1);
 
+        // 2) Empty ROI chart
+        const c2 = addBarChart('barChart-wrappers1');
+        window.chartRefs.push(c2);
+
+        // 初始化 checkbox / box / full-image chart
         initCheckboxes(window.bboxData, c1);
         $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
+
         showAllBoxes();
         updateChart(window.bboxData, c1);
+
+        // 第二張 chart 先清空
+        c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
+        c2.update();
 
         if (typeof window.renderROIList === 'function') {
           window.renderROIList();
