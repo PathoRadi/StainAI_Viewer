@@ -270,11 +270,11 @@ def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
 
     return blob.url
 
-def _blob_result_name(user_id: str, image_name: str) -> str:
-    return f"{_blob_prefix_for_image(user_id, image_name)}/result/{image_name}_results.json"
+def _blob_result_name(user_id: str, image_name: str, location: str = "images") -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name, location)}/result/{image_name}_results.json"
 
-def _blob_display_name(user_id: str, image_name: str, filename: str) -> str:
-    return f"{_blob_prefix_for_image(user_id, image_name)}/display/{filename}"
+def _blob_display_name(user_id: str, image_name: str, filename: str, location: str = "images") -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name, location)}/display/{filename}"
 
 def upload_detection_outputs_to_blob(
     user_id: str,
@@ -293,12 +293,14 @@ def upload_detection_outputs_to_blob(
     - blob result json is viewer-consumable after local purge
     """
 
+    
     client = _blob_service_client()
     if client is None:
         logger.warning("Blob disabled (no connection string)")
         return
 
-    prefix = _blob_prefix_for_image(user_id, image_name)
+    location = "images"
+    prefix = _blob_prefix_for_image(user_id, image_name, location)
 
     # 1) original
     original_filename = os.path.basename(orig_path)
@@ -307,7 +309,7 @@ def upload_detection_outputs_to_blob(
 
     # 2) display image
     display_filename = os.path.basename(disp_path)
-    display_blob_name = _blob_display_name(user_id, image_name, display_filename)
+    display_blob_name = _blob_display_name(user_id, image_name, display_filename, location)
     _upload_file_to_blob(disp_path, display_blob_name)
 
     # 3) mmap
@@ -341,7 +343,10 @@ def upload_detection_outputs_to_blob(
 
     client = _blob_service_client()
     container = settings.AZURE_BLOB_CONTAINER_NAME
-    blob = client.get_blob_client(container=container, blob=_blob_result_name(user_id, image_name))
+    blob = client.get_blob_client(
+        container=container,
+        blob=_blob_result_name(user_id, image_name, location)
+    )
     blob.upload_blob(
         json.dumps(blob_result_payload, ensure_ascii=False).encode("utf-8"),
         overwrite=True
@@ -520,45 +525,7 @@ def state_delete_project(user_id: str, project_name: str):
 
     save_viewer_state_to_blob(user_id, state)
 
-# def _load_local_detect_result_for_state(user_id: str, image_name: str, location: str) -> dict:
-#     """
-#     Read local _detect_result.json for one image and return frontend-ready fields.
-#     location: "images" or project name
-#     """
-#     if location == "images":
-#         image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), "images", image_name)
-#     else:
-#         image_dir = os.path.join(settings.MEDIA_ROOT, str(user_id), location, image_name)
-
-#     result_path = os.path.join(image_dir, "_detect_result.json")
-#     if not os.path.exists(result_path):
-#         return {
-#             "display_url": "",
-#             "boxes": [],
-#             "orig_size": [],
-#             "display_size": [],
-#         }
-
-#     try:
-#         with open(result_path, "r", encoding="utf-8") as f:
-#             data = json.load(f)
-
-#         return {
-#             "display_url": data.get("display_url", ""),
-#             "boxes": data.get("boxes", []),
-#             "orig_size": data.get("orig_size", []),
-#             "display_size": data.get("display_size", []),
-#         }
-#     except Exception:
-#         logger.exception("Failed to load _detect_result.json for state image=%s", image_name)
-#         return {
-#             "display_url": "",
-#             "boxes": [],
-#             "orig_size": [],
-#             "display_size": [],
-#         }
-
-def _load_blob_detect_result_for_state(user_id: str, image_name: str) -> dict:
+def _load_blob_detect_result_for_state(user_id: str, image_name: str, location: str = "images") -> dict:
     client = _blob_service_client()
     if client is None:
         return {
@@ -569,7 +536,7 @@ def _load_blob_detect_result_for_state(user_id: str, image_name: str) -> dict:
         }
 
     container = settings.AZURE_BLOB_CONTAINER_NAME
-    blob_name = _blob_result_name(user_id, image_name)
+    blob_name = _blob_result_name(user_id, image_name, location)
     blob = client.get_blob_client(container=container, blob=blob_name)
 
     try:
@@ -582,9 +549,9 @@ def _load_blob_detect_result_for_state(user_id: str, image_name: str) -> dict:
             "display_size": data.get("display_size", []),
         }
     except ResourceNotFoundError:
-        logger.warning("Blob result json not found for image=%s", image_name)
+        logger.warning("Blob result json not found for image=%s location=%s", image_name, location)
     except Exception:
-        logger.exception("Failed to load blob result for image=%s", image_name)
+        logger.exception("Failed to load blob result for image=%s location=%s", image_name, location)
 
     return {
         "display_blob_name": "",
@@ -601,10 +568,12 @@ def blob_display_image(request):
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
     image_name = (request.GET.get("image_name") or "").strip()
+    location = (request.GET.get("location") or "images").strip()
+
     if not image_name:
         return HttpResponseBadRequest("image_name required")
 
-    result_data = _load_blob_detect_result_for_state(user_id, image_name)
+    result_data = _load_blob_detect_result_for_state(user_id, image_name, location)
     blob_name = result_data.get("display_blob_name") or ""
     if not blob_name:
         return HttpResponseNotFound("display blob not found")
@@ -638,12 +607,12 @@ def viewer_state(request):
         if not image_name:
             continue
 
-        result_data = _load_blob_detect_result_for_state(user_id, image_name)
+        result_data = _load_blob_detect_result_for_state(user_id, image_name, location)
 
         hydrated_history.append({
             "image_name": image_name,
             "location": location,
-            "display_url": f"/api/blob-display-image/?image_name={quote(image_name)}",
+            "display_url": f"/api/blob-display-image/?image_name={quote(image_name)}&location={quote(location)}",
             "boxes": result_data.get("boxes", []),
             "orig_size": result_data.get("orig_size", []),
             "display_size": result_data.get("display_size", []),
@@ -654,6 +623,7 @@ def viewer_state(request):
         "history": hydrated_history,
         "projects": state.get("projects", []),
     })
+
 def ensure_blob_project_placeholder(user_id: str, project_name: str):
     client = _blob_service_client()
     if client is None:
@@ -670,24 +640,20 @@ def _blob_container_name() -> str:
 
 def _copy_blob(client, src_blob_name: str, dst_blob_name: str):
     container = _blob_container_name()
+
     src_blob = client.get_blob_client(container=container, blob=src_blob_name)
     dst_blob = client.get_blob_client(container=container, blob=dst_blob_name)
 
-    src_url = src_blob.url
-    dst_blob.start_copy_from_url(src_url)
+    try:
+        # ✅ 用 download + upload（最穩）
+        data = src_blob.download_blob().readall()
+        dst_blob.upload_blob(data, overwrite=True)
 
-    # simple polling
-    props = dst_blob.get_blob_properties()
-    for _ in range(40):
-        props = dst_blob.get_blob_properties()
-        status = props.copy.status
-        if status == "success":
-            return
-        if status == "failed":
-            raise RuntimeError(f"Blob copy failed: {src_blob_name} -> {dst_blob_name}")
-        time.sleep(0.25)
+        logger.info("Blob copied: %s -> %s", src_blob_name, dst_blob_name)
 
-    raise TimeoutError(f"Blob copy timed out: {src_blob_name} -> {dst_blob_name}")
+    except Exception:
+        logger.exception("Blob copy failed: %s -> %s", src_blob_name, dst_blob_name)
+        raise
 
 
 def _delete_blob_if_exists(client, blob_name: str):
@@ -951,6 +917,15 @@ def move_image_to_project(request):
                 logger.exception("Failed to rewrite detect_result after move")
 
         user_id = _viewer_user_id(request)
+
+        old_location = source_project_name if source_project_name else "images"
+        new_location = project_name
+
+        try:
+            move_blob_prefix(user_id, image_name, old_location, new_location)
+        except Exception:
+            logger.exception("Blob move failed: %s -> %s for image=%s", old_location, new_location, image_name)
+
         state_move_image(user_id, image_name, project_name)
 
         print("MOVE DEBUG")
@@ -1034,6 +1009,15 @@ def move_image_to_images(request):
                 logger.exception("Failed to rewrite detect_result after move to images")
 
         user_id = _viewer_user_id(request)
+
+        old_location = source_project_name
+        new_location = "images"
+
+        try:
+            move_blob_prefix(user_id, image_name, old_location, new_location)
+        except Exception:
+            logger.exception("Blob move failed: %s -> %s for image=%s", old_location, new_location, image_name)
+
         state_move_image(user_id, image_name, "images")
 
         return JsonResponse({
@@ -1611,6 +1595,17 @@ def reset_media(request):
 # ---------------------------
 # Delete image
 # ---------------------------
+def delete_blob_prefix(prefix: str):
+    client = _blob_service_client()
+    if client is None:
+        return
+
+    container = _blob_container_name()
+    cc = client.get_container_client(container)
+    blobs = list(cc.list_blobs(name_starts_with=prefix.rstrip("/") + "/"))
+    for b in blobs:
+        _delete_blob_if_exists(client, b.name)
+
 @csrf_exempt
 def delete_image(request):
     try:
@@ -1634,6 +1629,13 @@ def delete_image(request):
         if os.path.isdir(image_dir):
             shutil.rmtree(image_dir, ignore_errors=True)
             user_id = _viewer_user_id(request)
+            location = project_name if project_name else "images"
+
+            try:
+                delete_blob_prefix(_blob_prefix_for_image(user_id, image_name, location))
+            except Exception:
+                logger.exception("Blob delete failed for image=%s", image_name)
+
             state_delete_image(user_id, image_name)
 
             return JsonResponse({'success': True})
@@ -1643,6 +1645,28 @@ def delete_image(request):
     except Exception:
         logger.exception("delete_image failed")
         return HttpResponseServerError("delete failed; see logs")
+    
+def rename_blob_image_prefix(user_id: str, location: str, old_image_name: str, new_image_name: str):
+    client = _blob_service_client()
+    if client is None:
+        return
+
+    container = _blob_container_name()
+    old_prefix = _blob_prefix_for_image(user_id, old_image_name, location).rstrip("/") + "/"
+    new_prefix = _blob_prefix_for_image(user_id, new_image_name, location).rstrip("/") + "/"
+
+    blobs = list(client.get_container_client(container).list_blobs(name_starts_with=old_prefix))
+    copied = []
+
+    for b in blobs:
+        src_name = b.name
+        suffix = src_name[len(old_prefix):]
+        dst_name = new_prefix + suffix
+        _copy_blob(client, src_name, dst_name)
+        copied.append((src_name, dst_name))
+
+    for src_name, _ in copied:
+        _delete_blob_if_exists(client, src_name)
 
 # ---------------------------
 # Rename image
@@ -1731,6 +1755,13 @@ def rename_image(request):
                 logger.exception("Failed to update _detect_result.json after rename")
 
         user_id = _viewer_user_id(request)
+        location = project_name if project_name else "images"
+
+        try:
+            rename_blob_image_prefix(user_id, location, old_image_name, new_image_name)
+        except Exception:
+            logger.exception("Blob image rename failed: %s -> %s", old_image_name, new_image_name)
+
         state_rename_image(user_id, old_image_name, new_image_name)
 
         return JsonResponse({
@@ -1745,6 +1776,28 @@ def rename_image(request):
             "success": False,
             "message": "rename failed"
         }, status=500)
+
+def move_blob_project_prefix(user_id: str, old_project_name: str, new_project_name: str):
+    client = _blob_service_client()
+    if client is None:
+        return
+
+    container = _blob_container_name()
+    old_prefix = f"{user_id}/{old_project_name}/"
+    new_prefix = f"{user_id}/{new_project_name}/"
+
+    blobs = list(client.get_container_client(container).list_blobs(name_starts_with=old_prefix))
+    copied = []
+
+    for b in blobs:
+        src_name = b.name
+        suffix = src_name[len(old_prefix):]
+        dst_name = new_prefix + suffix
+        _copy_blob(client, src_name, dst_name)
+        copied.append((src_name, dst_name))
+
+    for src_name, _ in copied:
+        _delete_blob_if_exists(client, src_name)
     
 @csrf_exempt
 @require_POST
@@ -1805,6 +1858,12 @@ def rename_project(request):
                 logger.exception("Failed to update detect_result during project rename")
 
         user_id = _viewer_user_id(request)
+
+        try:
+            move_blob_project_prefix(user_id, old_project_name, new_project_name)
+        except Exception:
+            logger.exception("Blob project rename failed: %s -> %s", old_project_name, new_project_name)
+
         state_rename_project(user_id, old_project_name, new_project_name)
 
         return JsonResponse({"success": True, "project_name": new_project_name})
@@ -1812,7 +1871,10 @@ def rename_project(request):
     except Exception:
         logger.exception("rename_project failed")
         return JsonResponse({"success": False, "message": "rename failed"}, status=500)
-    
+
+def delete_blob_project_prefix(user_id: str, project_name: str):
+    delete_blob_prefix(f"{user_id}/{project_name}")
+
 @csrf_exempt
 @require_POST
 def delete_project(request):
@@ -1835,6 +1897,12 @@ def delete_project(request):
         shutil.rmtree(project_dir, ignore_errors=True)
 
         user_id = _viewer_user_id(request)
+
+        try:
+            delete_blob_project_prefix(user_id, project_name)
+        except Exception:
+            logger.exception("Blob project delete failed: %s", project_name)
+
         state_delete_project(user_id, project_name)
 
         return JsonResponse({"success": True})
