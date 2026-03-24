@@ -303,10 +303,12 @@ def upload_detection_outputs_to_blob(
     # ---------------------------
     # 4. Upload full_chart.png (optional)
     # ---------------------------
-    chart_path = os.path.join(result_dir, "full_chart.png")
+    chart_path = os.path.join(result_dir, f"{image_name}_chart.png")
     if os.path.exists(chart_path):
-        blob_name = f"{prefix}/result/full_chart.png"
+        blob_name = f"{prefix}/result/{image_name}_chart.png"
         _upload_file_to_blob(chart_path, blob_name)
+    else:
+        logger.warning("chart png not found: %s", chart_path)
 
     logger.info("Blob upload complete for image=%s (user=%s)", image_name, user_id)
 
