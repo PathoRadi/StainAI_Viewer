@@ -622,18 +622,26 @@ export function initProjectHandlers(historyStack) {
     if (!item || !projectName) return;
 
     try {
-      await moveImageToProject(item.dir, projectName, item.projectName || '');
+      // await moveImageToProject(item.dir, projectName, item.projectName || '');
 
-      // update local state
-      const oldImageDir = item.dir;
-      const oldPrefix = `/media/images/${oldImageDir}/`;
-      const newPrefix = `/media/${projectName}/${oldImageDir}/`;
+      // // update local state
+      // const oldImageDir = item.dir;
+      // const oldPrefix = `/media/images/${oldImageDir}/`;
+      // const newPrefix = `/media/${projectName}/${oldImageDir}/`;
 
-      // update local state
-      item.projectName = projectName;
+      // // update local state
+      // item.projectName = projectName;
 
-      if (item.displayUrl) {
-        item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // if (item.displayUrl) {
+      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // }
+      const data = await moveImageToProject(item.dir, projectName, item.projectName || '');
+
+      item.projectName = data.project_name || projectName;
+      item.location = data.project_name || projectName;
+
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       // hide menus
@@ -704,16 +712,24 @@ export function initProjectHandlers(historyStack) {
     try {
       await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
 
-      const oldPrefix = sourceProjectName
-        ? `/media/${sourceProjectName}/${item.dir}/`
-        : `/media/images/${item.dir}/`;
+      // const oldPrefix = sourceProjectName
+      //   ? `/media/${sourceProjectName}/${item.dir}/`
+      //   : `/media/images/${item.dir}/`;
 
-      const newPrefix = `/media/${targetProjectName}/${item.dir}/`;
+      // const newPrefix = `/media/${targetProjectName}/${item.dir}/`;
 
-      item.projectName = targetProjectName;
+      // item.projectName = targetProjectName;
 
-      if (item.displayUrl) {
-        item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // if (item.displayUrl) {
+      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // }
+      const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
+
+      item.projectName = data.project_name || targetProjectName;
+      item.location = data.project_name || targetProjectName;
+
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       _expandedProjects.add(targetProjectName);
@@ -953,15 +969,21 @@ export function initProjectHandlers(historyStack) {
           return;
         }
 
+        // historyStack.forEach(item => {
+        //   if ((item.projectName || '') === oldProjectName) {
+        //     item.projectName = data.project_name;
+        //     if (item.displayUrl) {
+        //       item.displayUrl = item.displayUrl.replace(
+        //         `/media/${oldProjectName}/${item.dir}/`,
+        //         `/media/${data.project_name}/${item.dir}/`
+        //       );
+        //     }
+        //   }
+        // });
         historyStack.forEach(item => {
           if ((item.projectName || '') === oldProjectName) {
             item.projectName = data.project_name;
-            if (item.displayUrl) {
-              item.displayUrl = item.displayUrl.replace(
-                `/media/${oldProjectName}/${item.dir}/`,
-                `/media/${data.project_name}/${item.dir}/`
-              );
-            }
+            item.location = data.project_name;
           }
         });
 
@@ -1011,7 +1033,12 @@ export function initProjectHandlers(historyStack) {
     const projectName = normalizeProjectName($(this).data('project'));
     if (!projectName) return;
 
-    if (!confirm(`Delete project "${projectName}" and all images inside?`)) return;
+    // if (!confirm(`Delete project "${projectName}" and all images inside?`)) return;
+    for (let i = historyStack.length - 1; i >= 0; i--) {
+      if ((historyStack[i].projectName || '') === projectName) {
+        historyStack.splice(i, 1);
+      }
+    }
 
     try {
       const res = await fetch(DELETE_PROJECT_URL, {
@@ -1159,21 +1186,28 @@ export function initProjectHandlers(historyStack) {
           return;
         }
 
+        // item.name = data.image_name;
+        // item.dir = data.image_name;
+
+        // if (data.display_url) {
+        //   item.displayUrl = data.display_url;
+        // } else if (item.displayUrl) {
+        //   const oldPrefix = item.projectName
+        //     ? `/media/${item.projectName}/${oldDir}/`
+        //     : `/media/images/${oldDir}/`;
+
+        //   const newPrefix = item.projectName
+        //     ? `/media/${item.projectName}/${data.image_name}/`
+        //     : `/media/images/${data.image_name}/`;
+
+        //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+        // }
         item.name = data.image_name;
         item.dir = data.image_name;
+        item.imageName = data.image_name;
 
         if (data.display_url) {
           item.displayUrl = data.display_url;
-        } else if (item.displayUrl) {
-          const oldPrefix = item.projectName
-            ? `/media/${item.projectName}/${oldDir}/`
-            : `/media/images/${oldDir}/`;
-
-          const newPrefix = item.projectName
-            ? `/media/${item.projectName}/${data.image_name}/`
-            : `/media/images/${data.image_name}/`;
-
-          item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
         }
 
         $textSpan.text(data.image_name);
@@ -1321,16 +1355,24 @@ export function initProjectHandlers(historyStack) {
     if (!item || !projectName) return;
 
     try {
-      await moveImageToProject(item.dir, projectName, item.projectName || '');
+      // await moveImageToProject(item.dir, projectName, item.projectName || '');
 
-      const oldProject = item.projectName || '';
-      const oldPrefix = `/media/${oldProject}/${item.dir}/`;
-      const newPrefix = `/media/${projectName}/${item.dir}/`;
+      // const oldProject = item.projectName || '';
+      // const oldPrefix = `/media/${oldProject}/${item.dir}/`;
+      // const newPrefix = `/media/${projectName}/${item.dir}/`;
 
-      item.projectName = projectName;
+      // item.projectName = projectName;
 
-      if (item.displayUrl) {
-        item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // if (item.displayUrl) {
+      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // }
+      const data = await moveImageToProject(item.dir, projectName, item.projectName || '');
+
+      item.projectName = data.project_name || projectName;
+      item.location = data.project_name || projectName;
+
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       $('.project-history-action-menu').hide();

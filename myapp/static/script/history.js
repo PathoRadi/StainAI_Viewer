@@ -313,13 +313,21 @@ export function initHistoryHandlers(historyStack) {
     try {
       await moveImageToImages(item.dir, sourceProjectName);
 
-      const oldPrefix = `/media/${sourceProjectName}/${item.dir}/`;
-      const newPrefix = `/media/images/${item.dir}/`;
+      // const oldPrefix = `/media/${sourceProjectName}/${item.dir}/`;
+      // const newPrefix = `/media/images/${item.dir}/`;
 
-      item.projectName = null;
+      // item.projectName = null;
 
-      if (item.displayUrl) {
-        item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // if (item.displayUrl) {
+      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+      // }
+      const data = await moveImageToImages(item.dir, sourceProjectName);
+
+      item.projectName = '';
+      item.location = 'images';
+
+      if (data?.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       updateHistoryUI(historyStack);
@@ -516,21 +524,28 @@ export function initHistoryHandlers(historyStack) {
         return;
       }
 
+        // item.name = data.image_name;
+        // item.dir = data.image_name;
+
+        // if (data.display_url) {
+        //   item.displayUrl = data.display_url;
+        // } else if (item.displayUrl) {
+        //   const oldPrefix = item.projectName
+        //     ? `/media/${item.projectName}/${oldDir}/`
+        //     : `/media/images/${oldDir}/`;
+
+        //   const newPrefix = item.projectName
+        //     ? `/media/${item.projectName}/${data.image_name}/`
+        //     : `/media/images/${data.image_name}/`;
+
+        //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
+        // }
         item.name = data.image_name;
         item.dir = data.image_name;
+        item.imageName = data.image_name;
 
         if (data.display_url) {
           item.displayUrl = data.display_url;
-        } else if (item.displayUrl) {
-          const oldPrefix = item.projectName
-            ? `/media/${item.projectName}/${oldDir}/`
-            : `/media/images/${oldDir}/`;
-
-          const newPrefix = item.projectName
-            ? `/media/${item.projectName}/${data.image_name}/`
-            : `/media/images/${data.image_name}/`;
-
-          item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
         }
 
         $textSpan.text(data.image_name);

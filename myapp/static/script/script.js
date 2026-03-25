@@ -139,24 +139,56 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     initROI();
 
     // ──────── Fetch Viewer State ────────
-    const state = await getViewerState();
+    // const state = await getViewerState();
 
-    window.viewerProjects = Array.isArray(state.projects) ? state.projects : [];
+    // window.viewerProjects = Array.isArray(state.projects) ? state.projects : [];
 
-    if (state.success && Array.isArray(state.history)) {
-      historyStack.push(
-        ...state.history.map(item => ({
-          dir: item.image_name,
-          name: item.image_name,
-          projectName: item.location === "images" ? "" : item.location,
-          displayUrl: item.display_url || "",
-          boxes: Array.isArray(item.boxes) ? item.boxes : [],
-          origSize: item.orig_size || [],
-          dispSize: item.display_size || [],
-          demo: false,
-        }))
-      );
+    // if (state.success && Array.isArray(state.history)) {
+    //   historyStack.push(
+    //     ...state.history.map(item => ({
+    //       dir: item.image_name,
+    //       name: item.image_name,
+    //       projectName: item.location === "images" ? "" : item.location,
+    //       displayUrl: item.display_url || "",
+    //       boxes: Array.isArray(item.boxes) ? item.boxes : [],
+    //       origSize: item.orig_size || [],
+    //       dispSize: item.display_size || [],
+    //       demo: false,
+    //     }))
+    //   );
+    // }
+    function applyViewerState(state) {
+      historyStack.length = 0;
+
+      window.viewerProjects = Array.isArray(state.projects) ? state.projects : [];
+
+      if (state.success && Array.isArray(state.history)) {
+        historyStack.push(
+          ...state.history.map(item => ({
+            dir: item.image_name,
+            name: item.image_name,
+            imageName: item.image_name,
+            location: item.location || "images",
+            projectName: item.location === "images" ? "" : item.location,
+            displayUrl: item.display_url || "",
+            boxes: Array.isArray(item.boxes) ? item.boxes : [],
+            origSize: item.orig_size || [],
+            dispSize: item.display_size || [],
+            demo: false,
+          }))
+        );
+      }
     }
+
+    const state = await getViewerState();
+    applyViewerState(state);
+
+    window.refreshViewerState = async function () {
+      const freshState = await getViewerState();
+      applyViewerState(freshState);
+      updateHistoryUI(historyStack);
+      updateProjectsUI(historyStack);
+    };
 
     // ──────── Initialize sub‐modules ────────
     initProcess(window.bboxData, historyStack, { get value(){ return window.barChart; }, set value(v){ window.barChart = v; } });

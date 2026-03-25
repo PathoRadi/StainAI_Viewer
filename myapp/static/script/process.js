@@ -1130,19 +1130,32 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     window.chartRefs.push(c2);
 
     // Add to history
-    const parts = (window.imgPath || d.display_url || '').split('/');
-    // Use the filename as the display name and remove trailing '_resized'
-    const fileName = parts.length ? parts[parts.length - 1] : imageDir;
+    // const parts = (window.imgPath || d.display_url || '').split('/');
+    // // Use the filename as the display name and remove trailing '_resized'
+    // const fileName = parts.length ? parts[parts.length - 1] : imageDir;
+    const fileName = d.file_name || d.image_name || imageDir;
 
+    // historyStack.push({
+    //   dir:        imageDir,                    // used later for reusing detection
+    //   name:       fileName.replace('_resized',''),
+    //   projectName: null,
+    //   displayUrl: d.display_url,
+    //   boxes:      window.bboxData.slice(),       // store a snapshot of bbox
+    //   origSize:   d.orig_size,
+    //   dispSize:   d.display_size,
+    //   demo:       !!window.isDemoUpload
+    // });
     historyStack.push({
-      dir:        imageDir,                    // used later for reusing detection
-      name:       fileName.replace('_resized',''),
-      projectName: null,
+      dir: imageDir,
+      name: fileName,
+      imageName: d.image_name || imageDir,
+      location: d.location || 'images',
+      projectName: (d.location && d.location !== 'images') ? d.location : '',
       displayUrl: d.display_url,
-      boxes:      window.bboxData.slice(),       // store a snapshot of bbox
-      origSize:   d.orig_size,
-      dispSize:   d.display_size,
-      demo:       !!window.isDemoUpload
+      boxes: window.bboxData.slice(),
+      origSize: d.orig_size,
+      dispSize: d.display_size,
+      demo: !!window.isDemoUpload
     });
     window.isDemoUpload = false;
 
@@ -1173,8 +1186,11 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }
 
     // 如果在 history，沿用舊結果（跟你原本邏輯一樣）
+    // const histIdx = historyStack.findIndex(item =>
+    //   item.dir === imageDir && (item.projectName || '') === ''
+    // );
     const histIdx = historyStack.findIndex(item =>
-      item.dir === imageDir && (item.projectName || '') === ''
+      (item.imageName || item.dir) === imageDir
     );
     if (histIdx !== -1) {
       closeSettingsModal();
