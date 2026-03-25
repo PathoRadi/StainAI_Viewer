@@ -62,6 +62,51 @@ export function updateHistoryUI(historyStack) {
   });
 }
 
+function stabilizeViewerAndRender(bboxData, afterRender) {
+  const viewer = window.viewer;
+  if (!viewer || !viewer.viewport) return;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!viewer || !viewer.viewport) return;
+
+      try {
+        const container = viewer.container;
+        if (container) {
+          viewer.viewport.resize(
+            new OpenSeadragon.Point(
+              container.clientWidth,
+              container.clientHeight
+            ),
+            true
+          );
+        }
+      } catch (e) {
+        console.warn('viewer resize failed:', e);
+      }
+
+      try {
+        viewer.forceRedraw();
+        viewer.viewport.goHome(true);
+        viewer.viewport.applyConstraints();
+        viewer.forceRedraw();
+      } catch (e) {
+        console.warn('viewer stabilize failed:', e);
+      }
+
+      window.zoomFloor = viewer.viewport.getHomeZoom();
+
+      clearBoxes();
+      drawBbox(Array.isArray(bboxData) ? bboxData : []);
+      showAllBoxes();
+
+      if (typeof afterRender === 'function') {
+        afterRender();
+      }
+    });
+  });
+}
+
 export function initHistoryHandlers(historyStack) {
   // Hard reset to homepage (no history items)
   function hardResetToHomepage() {
@@ -150,13 +195,81 @@ export function initHistoryHandlers(historyStack) {
       alert('Failed to load image result.');
     });
 
+    // window.viewer.addOnceHandler('open', () => {
+    //   $('#progress-overlay1').hide();
+
+    //   // window.bboxData = item.boxes.slice();
+    //   window.bboxData = Array.isArray(item.boxes) ? item.boxes.slice() : [];
+
+    //   clearBoxes();
+
+    //   try {
+    //     if (window.layerManagerApi?.getLayers?.().length) {
+    //       window.layerManagerApi.getLayers().forEach(layer => {
+    //         window.layerManagerApi.removeLayer(layer.id);
+    //       });
+    //     }
+    //   } catch (e) {
+    //     console.warn('Failed to clear ROI layers before loading history item:', e);
+    //   }
+    //   drawBbox(window.bboxData);
+
+    //   if (window.chartRefs && window.chartRefs.length) {
+    //     window.chartRefs.forEach((chart, i) => {
+    //       initCheckboxes(window.bboxData, chart);
+    //       $('#checkbox_All').prop('checked', true);
+    //       $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
+    //       showAllBoxes();
+
+    //       if (i === 0) {
+    //         updateChart(window.bboxData, chart);
+    //       } else {
+    //         chart.data.datasets[0].data = [0,0,0,0,0,0];
+    //         chart.update();
+
+    //         const panel = document.getElementById(`roi-container${i+1}`);
+    //         if (panel) {
+    //           $(panel).find('.roi-checkbox').prop('checked', false);
+    //         }
+    //       }
+    //     });
+
+    //     if (typeof window.renderROIList === 'function') window.renderROIList();
+    //   } else {
+    //     // 先清掉舊 wrapper，避免殘留
+    //     document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
+    //     window.chartRefs = [];
+
+    //     // 1) Full Image chart
+    //     const c1 = addBarChart('barChart-wrappers');
+    //     window.chartRefs.push(c1);
+
+    //     // 2) Empty ROI chart
+    //     const c2 = addBarChart('barChart-wrappers1');
+    //     window.chartRefs.push(c2);
+
+    //     // 初始化 checkbox / box / full-image chart
+    //     initCheckboxes(window.bboxData, c1);
+    //     $('#checkbox_All').prop('checked', true);
+    //     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+    //       .prop('checked', true);
+
+    //     showAllBoxes();
+    //     updateChart(window.bboxData, c1);
+
+    //     // 第二張 chart 先清空
+    //     c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
+    //     c2.update();
+
+    //     if (typeof window.renderROIList === 'function') {
+    //       window.renderROIList();
+    //     }
+    //   }
+    // });
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide();
 
-      // window.bboxData = item.boxes.slice();
       window.bboxData = Array.isArray(item.boxes) ? item.boxes.slice() : [];
-
-      clearBoxes();
 
       try {
         if (window.layerManagerApi?.getLayers?.().length) {
@@ -167,59 +280,56 @@ export function initHistoryHandlers(historyStack) {
       } catch (e) {
         console.warn('Failed to clear ROI layers before loading history item:', e);
       }
-      drawBbox(window.bboxData);
 
-      if (window.chartRefs && window.chartRefs.length) {
-        window.chartRefs.forEach((chart, i) => {
-          initCheckboxes(window.bboxData, chart);
-          $('#checkbox_All').prop('checked', true);
-          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR').prop('checked', true);
-          showAllBoxes();
+      stabilizeViewerAndRender(window.bboxData, () => {
+        if (window.chartRefs && window.chartRefs.length) {
+          window.chartRefs.forEach((chart, i) => {
+            initCheckboxes(window.bboxData, chart);
+            $('#checkbox_All').prop('checked', true);
+            $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+              .prop('checked', true);
 
-          if (i === 0) {
-            updateChart(window.bboxData, chart);
-          } else {
-            chart.data.datasets[0].data = [0,0,0,0,0,0];
-            chart.update();
+            if (i === 0) {
+              updateChart(window.bboxData, chart);
+            } else {
+              chart.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
+              chart.update();
 
-            const panel = document.getElementById(`roi-container${i+1}`);
-            if (panel) {
-              $(panel).find('.roi-checkbox').prop('checked', false);
+              const panel = document.getElementById(`roi-container${i+1}`);
+              if (panel) {
+                $(panel).find('.roi-checkbox').prop('checked', false);
+              }
             }
+          });
+
+          if (typeof window.renderROIList === 'function') {
+            window.renderROIList();
           }
-        });
+        } else {
+          document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
+          window.chartRefs = [];
 
-        if (typeof window.renderROIList === 'function') window.renderROIList();
-      } else {
-        // 先清掉舊 wrapper，避免殘留
-        document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
-        window.chartRefs = [];
+          const c1 = addBarChart('barChart-wrappers');
+          window.chartRefs.push(c1);
 
-        // 1) Full Image chart
-        const c1 = addBarChart('barChart-wrappers');
-        window.chartRefs.push(c1);
+          const c2 = addBarChart('barChart-wrappers1');
+          window.chartRefs.push(c2);
 
-        // 2) Empty ROI chart
-        const c2 = addBarChart('barChart-wrappers1');
-        window.chartRefs.push(c2);
+          initCheckboxes(window.bboxData, c1);
+          $('#checkbox_All').prop('checked', true);
+          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+            .prop('checked', true);
 
-        // 初始化 checkbox / box / full-image chart
-        initCheckboxes(window.bboxData, c1);
-        $('#checkbox_All').prop('checked', true);
-        $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-          .prop('checked', true);
+          updateChart(window.bboxData, c1);
 
-        showAllBoxes();
-        updateChart(window.bboxData, c1);
+          c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
+          c2.update();
 
-        // 第二張 chart 先清空
-        c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
-        c2.update();
-
-        if (typeof window.renderROIList === 'function') {
-          window.renderROIList();
+          if (typeof window.renderROIList === 'function') {
+            window.renderROIList();
+          }
         }
-      }
+      });
     });
   }
 
