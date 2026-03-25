@@ -57,15 +57,6 @@ async function fetchJson(url, options = {}) {
   return data;
 }
 
-/** get project list from backend */
-// async function loadProjectsFromServer() {
-//   const data = await fetchJson(LIST_PROJECTS_URL, {
-//     method: 'GET',
-//     cache: 'no-store',
-//   });
-//   return Array.isArray(data.projects) ? data.projects : [];
-// }
-
 /** collect project images from current historyStack */
 function getImagesForProject(historyStack, projectName) {
   return historyStack.filter(item => (item.projectName || '') === projectName);
@@ -520,15 +511,6 @@ export function initProjectHandlers(historyStack) {
 
 
   // expand / collapse one project
-  // $(document).on('click', '.project-item', function (e) {
-  //   e.stopPropagation();
-
-  //   const projectName = $(this).data('project');
-  //   const $list = $(`.project-images-list[data-project="${projectName}"]`);
-
-  //   $list.toggleClass('collapsed');
-  //   $(this).toggleClass('expanded');
-  // });
   $(document).on('click', '.project-item', function (e) {
     e.stopPropagation();
 
@@ -622,19 +604,6 @@ export function initProjectHandlers(historyStack) {
     if (!item || !projectName) return;
 
     try {
-      // await moveImageToProject(item.dir, projectName, item.projectName || '');
-
-      // // update local state
-      // const oldImageDir = item.dir;
-      // const oldPrefix = `/media/images/${oldImageDir}/`;
-      // const newPrefix = `/media/${projectName}/${oldImageDir}/`;
-
-      // // update local state
-      // item.projectName = projectName;
-
-      // if (item.displayUrl) {
-      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-      // }
       const data = await moveImageToProject(item.dir, projectName, item.projectName || '');
 
       item.projectName = data.project_name || projectName;
@@ -712,17 +681,6 @@ export function initProjectHandlers(historyStack) {
     try {
       await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
 
-      // const oldPrefix = sourceProjectName
-      //   ? `/media/${sourceProjectName}/${item.dir}/`
-      //   : `/media/images/${item.dir}/`;
-
-      // const newPrefix = `/media/${targetProjectName}/${item.dir}/`;
-
-      // item.projectName = targetProjectName;
-
-      // if (item.displayUrl) {
-      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-      // }
       const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
 
       item.projectName = data.project_name || targetProjectName;
@@ -969,17 +927,6 @@ export function initProjectHandlers(historyStack) {
           return;
         }
 
-        // historyStack.forEach(item => {
-        //   if ((item.projectName || '') === oldProjectName) {
-        //     item.projectName = data.project_name;
-        //     if (item.displayUrl) {
-        //       item.displayUrl = item.displayUrl.replace(
-        //         `/media/${oldProjectName}/${item.dir}/`,
-        //         `/media/${data.project_name}/${item.dir}/`
-        //       );
-        //     }
-        //   }
-        // });
         historyStack.forEach(item => {
           if ((item.projectName || '') === oldProjectName) {
             item.projectName = data.project_name;
@@ -1186,22 +1133,6 @@ export function initProjectHandlers(historyStack) {
           return;
         }
 
-        // item.name = data.image_name;
-        // item.dir = data.image_name;
-
-        // if (data.display_url) {
-        //   item.displayUrl = data.display_url;
-        // } else if (item.displayUrl) {
-        //   const oldPrefix = item.projectName
-        //     ? `/media/${item.projectName}/${oldDir}/`
-        //     : `/media/images/${oldDir}/`;
-
-        //   const newPrefix = item.projectName
-        //     ? `/media/${item.projectName}/${data.image_name}/`
-        //     : `/media/images/${data.image_name}/`;
-
-        //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-        // }
         item.name = data.image_name;
         item.dir = data.image_name;
         item.imageName = data.image_name;
@@ -1355,17 +1286,6 @@ export function initProjectHandlers(historyStack) {
     if (!item || !projectName) return;
 
     try {
-      // await moveImageToProject(item.dir, projectName, item.projectName || '');
-
-      // const oldProject = item.projectName || '';
-      // const oldPrefix = `/media/${oldProject}/${item.dir}/`;
-      // const newPrefix = `/media/${projectName}/${item.dir}/`;
-
-      // item.projectName = projectName;
-
-      // if (item.displayUrl) {
-      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-      // }
       const data = await moveImageToProject(item.dir, projectName, item.projectName || '');
 
       item.projectName = data.project_name || projectName;

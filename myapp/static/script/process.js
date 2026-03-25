@@ -1130,21 +1130,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     window.chartRefs.push(c2);
 
     // Add to history
-    // const parts = (window.imgPath || d.display_url || '').split('/');
-    // // Use the filename as the display name and remove trailing '_resized'
-    // const fileName = parts.length ? parts[parts.length - 1] : imageDir;
     const fileName = d.file_name || d.image_name || imageDir;
 
-    // historyStack.push({
-    //   dir:        imageDir,                    // used later for reusing detection
-    //   name:       fileName.replace('_resized',''),
-    //   projectName: null,
-    //   displayUrl: d.display_url,
-    //   boxes:      window.bboxData.slice(),       // store a snapshot of bbox
-    //   origSize:   d.orig_size,
-    //   dispSize:   d.display_size,
-    //   demo:       !!window.isDemoUpload
-    // });
     historyStack.push({
       dir: imageDir,
       name: fileName,

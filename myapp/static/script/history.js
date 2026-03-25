@@ -313,14 +313,6 @@ export function initHistoryHandlers(historyStack) {
     try {
       await moveImageToImages(item.dir, sourceProjectName);
 
-      // const oldPrefix = `/media/${sourceProjectName}/${item.dir}/`;
-      // const newPrefix = `/media/images/${item.dir}/`;
-
-      // item.projectName = null;
-
-      // if (item.displayUrl) {
-      //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-      // }
       const data = await moveImageToImages(item.dir, sourceProjectName);
 
       item.projectName = '';
@@ -485,26 +477,6 @@ export function initHistoryHandlers(historyStack) {
       }
 
       try {
-        // const res = await fetch(RENAME_IMAGE_URL, {
-        //   method: 'POST',
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     'X-CSRFToken': csrftoken
-        //   },
-        //   body: JSON.stringify({
-        //     old_image_name: oldDir,
-        //     new_image_name: newName,
-        //     project_name: item.projectName || ''
-        //   })
-        // });
-
-        // const data = await res.json();
-
-        // if (!res.ok || !data.success) {
-        //   alert('Rename failed: ' + (data.message || ''));
-        //   $textSpan.text(oldText);
-        //   return;
-        // }
         const data = await fetchJson(RENAME_IMAGE_URL, {
         method: 'POST',
         headers: {
@@ -523,23 +495,6 @@ export function initHistoryHandlers(historyStack) {
         $textSpan.text(oldText);
         return;
       }
-
-        // item.name = data.image_name;
-        // item.dir = data.image_name;
-
-        // if (data.display_url) {
-        //   item.displayUrl = data.display_url;
-        // } else if (item.displayUrl) {
-        //   const oldPrefix = item.projectName
-        //     ? `/media/${item.projectName}/${oldDir}/`
-        //     : `/media/images/${oldDir}/`;
-
-        //   const newPrefix = item.projectName
-        //     ? `/media/${item.projectName}/${data.image_name}/`
-        //     : `/media/images/${data.image_name}/`;
-
-        //   item.displayUrl = item.displayUrl.replace(oldPrefix, newPrefix);
-        // }
         item.name = data.image_name;
         item.dir = data.image_name;
         item.imageName = data.image_name;
