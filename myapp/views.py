@@ -3412,6 +3412,10 @@ def delete_project(request):
     except Exception:
         logger.exception("delete_project failed")
         return JsonResponse({"success": False, "message": "delete failed"}, status=500)
+    
+SizeMode = Literal["error", "resize", "pad", "allow_mixed"]
+PadAlign = Literal["topleft", "center"]
+RGBVal = Union[int, Tuple[int, int, int]]
 
 def combine_rgb_tiff_from_paths(
     output_dir: str,
