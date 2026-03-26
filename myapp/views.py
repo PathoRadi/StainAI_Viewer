@@ -285,40 +285,36 @@ def _delete_blob_prefix(prefix: str):
 def _copy_blob(src_blob_name: str, dst_blob_name: str):
     client = _blob_service_client()
     if client is None:
-        return
+        raise RuntimeError("Blob storage is not configured")
 
     container = settings.AZURE_BLOB_CONTAINER_NAME
     src = client.get_blob_client(container=container, blob=src_blob_name)
     dst = client.get_blob_client(container=container, blob=dst_blob_name)
-    dst.start_copy_from_url(src.url)
 
-    deadline = time.time() + 60
-    while time.time() < deadline:
-        props = dst.get_blob_properties()
-        status = getattr(props.copy, 'status', None)
-        if status == 'success':
-            return
-        if status == 'failed':
-            raise RuntimeError(f'Blob copy failed: {src_blob_name} -> {dst_blob_name}')
-        time.sleep(0.5)
+    data = src.download_blob().readall()
+    dst.upload_blob(data, overwrite=True)
 
-    raise TimeoutError(f'Blob copy timeout: {src_blob_name} -> {dst_blob_name}')
-
-def _copy_blob_prefix(src_prefix: str, dst_prefix: str):
+def _delete_blob_prefix(prefix: str):
     client = _blob_service_client()
     if client is None:
-        raise RuntimeError("Blob storage is not configured")
+        return
 
     container = settings.AZURE_BLOB_CONTAINER_NAME
     container_client = client.get_container_client(container)
 
-    blobs = list(container_client.list_blobs(name_starts_with=src_prefix))
+    blobs = list(container_client.list_blobs(name_starts_with=prefix))
     if not blobs:
-        raise FileNotFoundError(f"No blobs found under prefix: {src_prefix}")
+        return
 
-    for item in blobs:
-        suffix = item.name[len(src_prefix):]
-        _copy_blob(item.name, f"{dst_prefix}{suffix}")
+    # 先刪最深層，避免階層 placeholder / directory 類型衝突
+    blob_names = sorted((b.name for b in blobs), key=lambda x: x.count('/'), reverse=True)
+
+    for name in blob_names:
+        try:
+            container_client.delete_blob(name)
+        except Exception as e:
+            logger.exception("Failed to delete blob: %s", name)
+            raise
 
 def _blob_container_client():
     client = _blob_service_client()

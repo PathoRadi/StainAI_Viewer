@@ -1162,7 +1162,7 @@ export function initProjectHandlers(historyStack) {
 
       } catch (err) {
         console.error(err);
-        alert('Rename failed');
+        alert('Rename failed: ' + (err.message || 'Unknown error'));
         $textSpan.text(oldText);
       }
     };
