@@ -283,15 +283,21 @@ def _delete_blob_prefix(prefix: str):
     if not blobs:
         return
 
-    # 先刪最深層，避免階層 placeholder / directory 類型衝突
     blob_names = sorted((b.name for b in blobs), key=lambda x: x.count('/'), reverse=True)
 
     for name in blob_names:
         try:
             container_client.delete_blob(name)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to delete blob: %s", name)
             raise
+
+    # 額外清一次 root marker（若存在）
+    root_name = prefix.rstrip("/")
+    try:
+        container_client.delete_blob(root_name)
+    except Exception:
+        pass
 
 def _copy_blob(src_blob_name: str, dst_blob_name: str):
     client = _blob_service_client()
@@ -305,21 +311,43 @@ def _copy_blob(src_blob_name: str, dst_blob_name: str):
     data = src.download_blob().readall()
     dst.upload_blob(data, overwrite=True)
 
+def _blob_dir_prefix_for_image(user_id: str, image_name: str):
+    return f"{user_id}/images/{image_name}/"
+
+def _list_real_blob_names(prefix: str) -> list[str]:
+    container_client = _blob_container_client()
+    if container_client is None:
+        return []
+
+    root_no_slash = prefix.rstrip("/")
+    out = []
+
+    for b in container_client.list_blobs(name_starts_with=prefix):
+        name = b.name.rstrip("/")
+
+        # 跳過 root marker / placeholder
+        if name == root_no_slash:
+            continue
+
+        out.append(b.name)
+
+    return out
+
 def _copy_blob_prefix(src_prefix: str, dst_prefix: str):
     client = _blob_service_client()
     if client is None:
         raise RuntimeError("Blob storage is not configured")
 
-    container = settings.AZURE_BLOB_CONTAINER_NAME
-    container_client = client.get_container_client(container)
+    # container = settings.AZURE_BLOB_CONTAINER_NAME
+    # container_client = client.get_container_client(container)
 
-    blobs = list(container_client.list_blobs(name_starts_with=src_prefix))
-    if not blobs:
+    blob_names = _list_real_blob_names(src_prefix)
+    if not blob_names:
         raise FileNotFoundError(f"No blobs found under prefix: {src_prefix}")
 
-    for item in blobs:
-        suffix = item.name[len(src_prefix):]
-        _copy_blob(item.name, f"{dst_prefix}{suffix}")
+    for name in blob_names:
+        suffix = name[len(src_prefix):]
+        _copy_blob(name, f"{dst_prefix}{suffix}")
 
 def _blob_container_client():
     client = _blob_service_client()
@@ -1418,6 +1446,9 @@ def rename_image(request):
                 {"success": False, "message": "A folder with this name already exists"},
                 status=409
             )
+        
+        src_root = _blob_prefix_for_image(user_id, old_image_name)
+        dst_root = _blob_prefix_for_image(user_id, new_image_name)
 
         src_prefix = _blob_prefix_for_image(user_id, old_image_name)
         dst_prefix = _blob_prefix_for_image(user_id, new_image_name)
@@ -1429,11 +1460,21 @@ def rename_image(request):
                 status=404
             )
 
-        if _list_blob_names(dst_prefix):
+        if _list_blob_names(dst_root):
             return JsonResponse(
                 {"success": False, "message": "Destination image folder already exists in blob"},
                 status=409
             )
+
+        try:
+            _copy_blob_prefix(src_prefix, dst_prefix)
+        except Exception:
+            # rename 失敗時，把半成品刪掉
+            try:
+                _delete_blob_prefix(dst_root)
+            except Exception:
+                logger.exception("Failed to rollback destination prefix: %s", dst_root)
+            raise
 
         _copy_blob_prefix(src_prefix, dst_prefix)
 
