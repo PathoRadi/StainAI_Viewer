@@ -169,6 +169,7 @@ else:
     }
 
 # C:\Users\User1\anaconda3\Scripts\activate && conda activate stainai
+# C:\Users\1kobe\anaconda3\Scripts\activate && conda activate stainai
 # https://stainaiviewer.azurewebsites.net/api/current-user/
 
 # ===== Media =====

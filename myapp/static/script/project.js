@@ -951,7 +951,7 @@ export function initProjectHandlers(historyStack) {
 
       } catch (err) {
         console.error(err);
-        alert('Rename failed');
+        alert('Rename failed: ' + (err.message || 'Unknown error'));
         $textSpan.text(oldText);
       }
     };
@@ -1028,7 +1028,7 @@ export function initProjectHandlers(historyStack) {
 
     } catch (err) {
       console.error(err);
-      alert('Delete failed');
+      alert('Delete failed: ' + (err.message || 'Unknown error'));
     } finally {
       $('.project-action-menu').hide();
       $('.menu-click-shield').remove();
@@ -1076,6 +1076,8 @@ export function initProjectHandlers(historyStack) {
     const item = historyStack[idx];
     if (!item) return;
 
+
+
     const $entry = $(`.project-history-item[data-idx="${idx}"]`);
     if (!$entry.length) return;
 
@@ -1107,7 +1109,32 @@ export function initProjectHandlers(historyStack) {
       }
 
       try {
-        const res = await fetch(RENAME_IMAGE_URL, {
+        // const res = await fetch(RENAME_IMAGE_URL, {
+        //   method: 'POST',
+        //   headers: {
+        //     'Content-Type': 'application/json',
+        //     'X-CSRFToken': csrftoken
+        //   },
+        //   body: JSON.stringify({
+        //     old_image_name: oldDir,
+        //     new_image_name: newName,
+        //     project_name: item.projectName || ''
+        //   })
+        // });
+
+        // const data = await res.json();
+
+        // if (res.status === 401) {
+        //   handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+        //   return;
+        // }
+
+        // if (!res.ok || !data.success) {
+        //   alert('Rename failed: ' + (data.message || ''));
+        //   $textSpan.text(oldText);
+        //   return;
+        // }
+        const data = await fetchJson(RENAME_IMAGE_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1119,19 +1146,6 @@ export function initProjectHandlers(historyStack) {
             project_name: item.projectName || ''
           })
         });
-
-        const data = await res.json();
-
-        if (res.status === 401) {
-          handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-          return;
-        }
-
-        if (!res.ok || !data.success) {
-          alert('Rename failed: ' + (data.message || ''));
-          $textSpan.text(oldText);
-          return;
-        }
 
         item.name = data.image_name;
         item.dir = data.image_name;
@@ -1180,6 +1194,12 @@ export function initProjectHandlers(historyStack) {
     const item = historyStack[idx];
     if (!item) return;
 
+    const imageName = item.dir || item.imageName || item.name;
+    if (!imageName) {
+      alert('Download failed: image name missing');
+      return;
+    }
+
     const layers = window.layerManagerApi.getLayers();
     const [oH, oW] = item.origSize || [];
     const [dH, dW] = item.dispSize || [];
@@ -1210,7 +1230,7 @@ export function initProjectHandlers(historyStack) {
     const p = document.createElement('input');
     p.type = 'hidden';
     p.name = 'image_name';
-    p.value = item.dir;
+    p.value = imageName;
 
     const pj = document.createElement('input');
     pj.type = 'hidden';
@@ -1269,7 +1289,7 @@ export function initProjectHandlers(historyStack) {
       await updateProjectsUI(historyStack);
     } catch (err) {
       console.error(err);
-      alert('Delete failed');
+      alert('Delete failed: ' + (err.message || 'Unknown error'));
     } finally {
       $('.project-history-action-menu').hide();
       $('.menu-click-shield').remove();

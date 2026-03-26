@@ -557,7 +557,7 @@ export function initHistoryHandlers(historyStack) {
 
       } catch (err) {
         console.error(err);
-        alert('Rename failed');
+        alert('Rename failed: ' + (err.message || 'Unknown error'));
         $textSpan.text(oldText);
       }
     };
@@ -639,7 +639,7 @@ export function initHistoryHandlers(historyStack) {
       }
     } catch (err) {
       console.error(err);
-      alert('Delete failed');
+      alert('Delete failed: ' + (err.message || 'Unknown error'));
     } finally {
       pendingDeleteIdx = null;
       $('#delete-modal-overlay').hide();
@@ -652,7 +652,13 @@ export function initHistoryHandlers(historyStack) {
     e.stopPropagation();
     const idx  = $(this).data('idx');
     const item = historyStack[idx];
+    if (!item) return;
+
     const imageName = item.dir;
+    if (!imageName) {
+      alert('Download failed: image name missing');
+      return;
+    }
     
     // Let the browser handle download: use form POST to trigger download (Save As dialog appears immediately)
     const layers = window.layerManagerApi.getLayers();

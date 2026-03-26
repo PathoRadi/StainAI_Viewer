@@ -307,14 +307,44 @@ def _copy_blob(src_blob_name: str, dst_blob_name: str):
 def _copy_blob_prefix(src_prefix: str, dst_prefix: str):
     client = _blob_service_client()
     if client is None:
-        return
+        raise RuntimeError("Blob storage is not configured")
 
     container = settings.AZURE_BLOB_CONTAINER_NAME
     container_client = client.get_container_client(container)
+
     blobs = list(container_client.list_blobs(name_starts_with=src_prefix))
+    if not blobs:
+        raise FileNotFoundError(f"No blobs found under prefix: {src_prefix}")
+
     for item in blobs:
         suffix = item.name[len(src_prefix):]
-        _copy_blob(item.name, f'{dst_prefix}{suffix}')
+        _copy_blob(item.name, f"{dst_prefix}{suffix}")
+
+def _blob_container_client():
+    client = _blob_service_client()
+    if client is None:
+        return None
+    return client.get_container_client(settings.AZURE_BLOB_CONTAINER_NAME)
+
+def _blob_exists(blob_name: str) -> bool:
+    client = _blob_service_client()
+    if client is None:
+        return False
+    blob = client.get_blob_client(container=settings.AZURE_BLOB_CONTAINER_NAME, blob=blob_name)
+    return blob.exists()
+
+def _download_blob_bytes(blob_name: str) -> bytes:
+    client = _blob_service_client()
+    if client is None:
+        raise RuntimeError("Blob storage is not configured")
+    blob = client.get_blob_client(container=settings.AZURE_BLOB_CONTAINER_NAME, blob=blob_name)
+    return blob.download_blob().readall()
+
+def _list_blob_names(prefix: str) -> list[str]:
+    container_client = _blob_container_client()
+    if container_client is None:
+        return []
+    return [b.name for b in container_client.list_blobs(name_starts_with=prefix)]
 
 def _read_detect_result_from_blob(user_id: str, image_name: str) -> dict | None:
     return _download_json_from_blob(_blob_name_for_detect_result(user_id, image_name))
@@ -1313,31 +1343,40 @@ def reset_media(request):
 # Delete image
 # ---------------------------
 @csrf_exempt
+@require_POST
 def delete_image(request):
     try:
         user_id = _require_viewer_user(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
-    if request.method != 'POST':
-        return JsonResponse({'error': 'Invalid request'}, status=400)
+    try:
+        body = json.loads(request.body or "{}") if request.body else {}
+    except Exception:
+        body = {}
 
     try:
-        body = json.loads(request.body or "{}")
-        image_name = (body.get("image_name") or request.GET.get("image") or "").strip()
-
+        image_name = (body.get("image_name") or request.POST.get("image_name") or request.GET.get("image") or "").strip()
         if not image_name:
-            return JsonResponse({'error': 'image_name required'}, status=400)
+            return JsonResponse({"success": False, "message": "image_name required"}, status=400)
 
-        _delete_blob_prefix(_blob_prefix_for_image(user_id, image_name))
+        prefix = _blob_prefix_for_image(user_id, image_name)
+        blob_names = _list_blob_names(prefix)
+        if not blob_names:
+            # 即使 blob 沒了，也仍然清 state，避免前端殘留
+            state_delete_image(user_id, image_name)
+            _delete_local_image_dir_by_userid(user_id, image_name)
+            return JsonResponse({"success": True, "message": "Image already removed"})
+
+        _delete_blob_prefix(prefix)
         _delete_local_image_dir_by_userid(user_id, image_name)
         state_delete_image(user_id, image_name)
 
-        return JsonResponse({'success': True})
+        return JsonResponse({"success": True, "image_name": image_name})
 
-    except Exception:
+    except Exception as e:
         logger.exception("delete_image failed")
-        return HttpResponseServerError("delete failed; see logs")
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
 
 # ---------------------------
 # Rename image
@@ -1357,7 +1396,10 @@ def rename_image(request):
         new_image_name = safe_filename((body.get("new_image_name") or "").strip())
 
         if not old_image_name or not new_image_name:
-            return JsonResponse({"success": False, "message": "old_image_name and new_image_name are required"}, status=400)
+            return JsonResponse(
+                {"success": False, "message": "old_image_name and new_image_name are required"},
+                status=400
+            )
 
         if old_image_name == new_image_name:
             current = _read_detect_result_from_blob(user_id, old_image_name) or {}
@@ -1371,17 +1413,30 @@ def rename_image(request):
 
         state = load_viewer_state_from_blob(user_id)
         if _find_image_entry(state, new_image_name) is not None:
-            return JsonResponse({"success": False, "message": "A folder with this name already exists"}, status=409)
+            return JsonResponse(
+                {"success": False, "message": "A folder with this name already exists"},
+                status=409
+            )
 
         src_prefix = _blob_prefix_for_image(user_id, old_image_name)
         dst_prefix = _blob_prefix_for_image(user_id, new_image_name)
+
+        src_blobs = _list_blob_names(src_prefix)
+        if not src_blobs:
+            return JsonResponse(
+                {"success": False, "message": "Source image folder not found in blob"},
+                status=404
+            )
+
+        if _list_blob_names(dst_prefix):
+            return JsonResponse(
+                {"success": False, "message": "Destination image folder already exists in blob"},
+                status=409
+            )
+
         _copy_blob_prefix(src_prefix, dst_prefix)
 
         data = _read_detect_result_from_blob(user_id, old_image_name) or {}
-
-        original_filename = data.get("original_filename", "")
-        new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
-
         if data:
             _save_detect_result_to_blob(user_id, new_image_name, data)
 
@@ -1389,11 +1444,18 @@ def rename_image(request):
         _delete_local_image_dir_by_userid(user_id, old_image_name)
         state_rename_image(user_id, old_image_name, new_image_name)
 
-        return JsonResponse({"success": True, "image_name": new_image_name, "display_url": new_display_url})
+        original_filename = data.get("original_filename", "")
+        new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
 
-    except Exception:
+        return JsonResponse({
+            "success": True,
+            "image_name": new_image_name,
+            "display_url": new_display_url
+        })
+
+    except Exception as e:
         logger.exception("rename_image failed")
-        return JsonResponse({"success": False, "message": "rename failed"}, status=500)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
     
 @csrf_exempt
 @require_POST
@@ -1615,87 +1677,82 @@ def combine_rgb_tiff_from_paths(
 @require_POST
 def download_project_with_rois(request):
     try:
-        _require_viewer_user(request)
+        user_id = _require_viewer_user(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
-    
-    if request.content_type and request.content_type.startswith("application/json"):
-        payload = json.loads(request.body or "{}")
-        image_name = (payload.get("image_name") or "").strip()
-        project_name = (payload.get("project_name") or "").strip()
-        rois = payload.get("rois") or []
-    else:
-        image_name = (request.POST.get("image_name") or "").strip()
-        project_name = (request.POST.get("project_name") or "").strip()
-        rois_raw = request.POST.get("rois")
-        try:
-            rois = json.loads(rois_raw) if rois_raw else []
-        except Exception:
-            rois = []
 
-    if not image_name:
-        return HttpResponseBadRequest("image_name required")
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            payload = json.loads(request.body or "{}")
+            image_name = (payload.get("image_name") or "").strip()
+            rois = payload.get("rois") or []
+        else:
+            image_name = (request.POST.get("image_name") or "").strip()
+            rois_raw = request.POST.get("rois")
+            try:
+                rois = json.loads(rois_raw) if rois_raw else []
+            except Exception:
+                rois = []
 
-    if project_name:
-        image_dir = _project_image_dir(request, project_name, image_name)
-    else:
-        image_dir = _image_dir(request, image_name)
+        if not image_name:
+            return HttpResponseBadRequest("image_name required")
 
-    if not os.path.isdir(image_dir):
-        return HttpResponseNotFound("Image not found")
+        wanted_files = [
+            f"{image_name}_chart.png",
+            f"{image_name}_mmap.tif",
+            f"{image_name}_results.json",
+        ]
 
-    # logger.info("DOWNLOAD DEBUG image_name=%s project_name=%s", image_name, project_name)
-    # logger.info("DOWNLOAD DEBUG image_dir=%s", image_dir)
+        tmpf = tempfile.TemporaryFile()
 
-    tmpf = tempfile.TemporaryFile()
+        def _compress_type_for(fn: str):
+            return zipfile.ZIP_STORED if fn.lower().endswith((".tif", ".tiff", ".nii", ".zip")) else zipfile.ZIP_DEFLATED
 
-    def _compress_type_for(fn: str):
-        return zipfile.ZIP_STORED if fn.lower().endswith((".tif", ".tiff", ".nii", ".zip")) else zipfile.ZIP_DEFLATED
+        with zipfile.ZipFile(tmpf, "w") as main_zip:
+            found_any = False
 
-    with zipfile.ZipFile(tmpf, "w") as main_zip:
-        folder = os.path.join(image_dir, "result")
-        # logger.info("DOWNLOAD DEBUG result_dir=%s exists=%s", folder, os.path.isdir(folder))
-
-        if os.path.isdir(folder):
-            for root, _, files in os.walk(folder):
-                # logger.info("DOWNLOAD DEBUG walking root=%s files=%s", root, files)
-
-                for fn in files:
-                    src = os.path.join(root, fn)
-                    rel = os.path.relpath(src, image_dir)   # result/xxx
-                    arc = os.path.join(image_name, rel)     # image_name/result/xxx
+            for fn in wanted_files:
+                blob_name = _blob_name_for_result(user_id, image_name, fn)
+                if _blob_exists(blob_name):
+                    file_bytes = _download_blob_bytes(blob_name)
+                    arcname = os.path.join(image_name, "result", fn)
                     ctype = _compress_type_for(fn)
 
-                    # logger.info("DOWNLOAD DEBUG add src=%s arc=%s", src, arc)
-
                     if ctype == zipfile.ZIP_DEFLATED:
-                        main_zip.write(src, arcname=arc, compress_type=ctype, compresslevel=0)
+                        main_zip.writestr(arcname, file_bytes, compress_type=ctype, compresslevel=0)
                     else:
-                        main_zip.write(src, arcname=arc, compress_type=ctype)
+                        main_zip.writestr(arcname, file_bytes, compress_type=ctype)
 
-        if rois:
-            roi_buf = BytesIO()
-            with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
-                for r in rois:
-                    name = safe_filename(r.get("name"))
-                    pts = r.get("points") or []
-                    rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
+                    found_any = True
 
-            main_zip.writestr(
-                os.path.join(image_name, f"{image_name}_rois.zip"),
-                roi_buf.getvalue()
-            )
+            if not found_any:
+                return HttpResponseNotFound("Result files not found in blob")
 
-        # logger.info("DOWNLOAD DEBUG zip namelist=%s", main_zip.namelist())
+            if rois:
+                roi_buf = BytesIO()
+                with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
+                    for r in rois:
+                        name = safe_filename(r.get("name") or "ROI")
+                        pts = r.get("points") or []
+                        rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
 
-    tmpf.seek(0)
-    filename = f"{image_name}.zip"
-    return FileResponse(
-        tmpf,
-        as_attachment=True,
-        filename=filename,
-        content_type="application/zip"
-    )
+                main_zip.writestr(
+                    os.path.join(image_name, f"{image_name}_rois.zip"),
+                    roi_buf.getvalue(),
+                    compress_type=zipfile.ZIP_STORED
+                )
+
+        tmpf.seek(0)
+        return FileResponse(
+            tmpf,
+            as_attachment=True,
+            filename=f"{image_name}.zip",
+            content_type="application/zip"
+        )
+
+    except Exception:
+        logger.exception("download_project_with_rois failed")
+        return HttpResponseServerError("download failed")
 
 # helper function
 def safe_filename(name: str) -> str:
