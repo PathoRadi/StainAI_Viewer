@@ -278,29 +278,6 @@ def _delete_blob_prefix(prefix: str):
 
     container = settings.AZURE_BLOB_CONTAINER_NAME
     container_client = client.get_container_client(container)
-    names = [b.name for b in container_client.list_blobs(name_starts_with=prefix)]
-    if names:
-        container_client.delete_blobs(*names)
-
-def _copy_blob(src_blob_name: str, dst_blob_name: str):
-    client = _blob_service_client()
-    if client is None:
-        raise RuntimeError("Blob storage is not configured")
-
-    container = settings.AZURE_BLOB_CONTAINER_NAME
-    src = client.get_blob_client(container=container, blob=src_blob_name)
-    dst = client.get_blob_client(container=container, blob=dst_blob_name)
-
-    data = src.download_blob().readall()
-    dst.upload_blob(data, overwrite=True)
-
-def _delete_blob_prefix(prefix: str):
-    client = _blob_service_client()
-    if client is None:
-        return
-
-    container = settings.AZURE_BLOB_CONTAINER_NAME
-    container_client = client.get_container_client(container)
 
     blobs = list(container_client.list_blobs(name_starts_with=prefix))
     if not blobs:
@@ -315,6 +292,34 @@ def _delete_blob_prefix(prefix: str):
         except Exception as e:
             logger.exception("Failed to delete blob: %s", name)
             raise
+
+def _copy_blob(src_blob_name: str, dst_blob_name: str):
+    client = _blob_service_client()
+    if client is None:
+        raise RuntimeError("Blob storage is not configured")
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    src = client.get_blob_client(container=container, blob=src_blob_name)
+    dst = client.get_blob_client(container=container, blob=dst_blob_name)
+
+    data = src.download_blob().readall()
+    dst.upload_blob(data, overwrite=True)
+
+def _copy_blob_prefix(src_prefix: str, dst_prefix: str):
+    client = _blob_service_client()
+    if client is None:
+        raise RuntimeError("Blob storage is not configured")
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+    container_client = client.get_container_client(container)
+
+    blobs = list(container_client.list_blobs(name_starts_with=src_prefix))
+    if not blobs:
+        raise FileNotFoundError(f"No blobs found under prefix: {src_prefix}")
+
+    for item in blobs:
+        suffix = item.name[len(src_prefix):]
+        _copy_blob(item.name, f"{dst_prefix}{suffix}")
 
 def _blob_container_client():
     client = _blob_service_client()

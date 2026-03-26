@@ -1109,31 +1109,6 @@ export function initProjectHandlers(historyStack) {
       }
 
       try {
-        // const res = await fetch(RENAME_IMAGE_URL, {
-        //   method: 'POST',
-        //   headers: {
-        //     'Content-Type': 'application/json',
-        //     'X-CSRFToken': csrftoken
-        //   },
-        //   body: JSON.stringify({
-        //     old_image_name: oldDir,
-        //     new_image_name: newName,
-        //     project_name: item.projectName || ''
-        //   })
-        // });
-
-        // const data = await res.json();
-
-        // if (res.status === 401) {
-        //   handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-        //   return;
-        // }
-
-        // if (!res.ok || !data.success) {
-        //   alert('Rename failed: ' + (data.message || ''));
-        //   $textSpan.text(oldText);
-        //   return;
-        // }
         const data = await fetchJson(RENAME_IMAGE_URL, {
           method: 'POST',
           headers: {
