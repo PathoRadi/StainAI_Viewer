@@ -348,19 +348,28 @@ def _blob_original_url(user_id, image_name, filename):
 
     return f"{blob_client.url}?{sas_token}"
 
-def _frontend_detect_result_payload(payload: dict) -> dict:
+def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict) -> dict:
     if not isinstance(payload, dict):
         return {
             'display_url': '',
             'boxes': [],
             'orig_size': [],
             'display_size': [],
+            'original_filename': '',
         }
+
+    original_filename = payload.get('original_filename', '')
+    display_url = ''
+
+    if original_filename:
+        display_url = _blob_original_url(user_id, image_name, original_filename) or ''
+
     return {
-        'display_url': payload.get('display_url', ''),
+        'display_url': display_url,
         'boxes': payload.get('boxes', []),
         'orig_size': payload.get('orig_size', []),
         'display_size': payload.get('display_size', []),
+        'original_filename': original_filename,
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -602,7 +611,7 @@ def _load_detect_result_for_state(user_id: str, image_name: str, location: str) 
     """
     data = _read_detect_result_from_blob(user_id, image_name)
     if data is not None:
-        return _frontend_detect_result_payload(data)
+        return _frontend_detect_result_payload(user_id, image_name, data)
 
     # fallback for images still being processed locally
     image_dir = _image_dir_by_userid(user_id, image_name)
@@ -610,11 +619,11 @@ def _load_detect_result_for_state(user_id: str, image_name: str, location: str) 
     if os.path.exists(result_path):
         try:
             with open(result_path, "r", encoding="utf-8") as f:
-                return _frontend_detect_result_payload(json.load(f))
+                return _frontend_detect_result_payload(user_id, image_name, json.load(f))
         except Exception:
             logger.exception("Failed to load local _detect_result.json for state image=%s", image_name)
 
-    return _frontend_detect_result_payload({})
+    return _frontend_detect_result_payload(user_id, image_name, {})
 
 @require_GET
 def viewer_state(request):
@@ -1068,12 +1077,11 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         done_stage_start = time.perf_counter()
 
         # Write result JSON for frontend /detect_result to read
-        display_url = _blob_original_url(user_id, image_name, orig_name) or _to_media_url(disp_path)
         result = {
             "boxes": detections,
             "orig_size": [ow, oh],
             "display_size": [dw, dh],
-            "display_url": display_url,
+            "original_filename": orig_name,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -1219,7 +1227,7 @@ def detect_result(request):
 
     blob_data = _read_detect_result_from_blob(user_id, image_name)
     if blob_data is not None:
-        return JsonResponse(blob_data)
+        return JsonResponse(_frontend_detect_result_payload(user_id, image_name, blob_data))
 
     image_dir = _image_dir(request, image_name)
     result_path = os.path.join(image_dir, "_detect_result.json")
@@ -1235,7 +1243,7 @@ def detect_result(request):
                 continue
 
             data = json.loads(content)
-            return JsonResponse(data)
+            return JsonResponse(_frontend_detect_result_payload(user_id, image_name, data))
         except JSONDecodeError:
             time.sleep(0.2)
 
@@ -1353,7 +1361,13 @@ def rename_image(request):
 
         if old_image_name == new_image_name:
             current = _read_detect_result_from_blob(user_id, old_image_name) or {}
-            return JsonResponse({"success": True, "image_name": new_image_name, "display_url": current.get("display_url")})
+            original_filename = current.get("original_filename", "")
+            display_url = _blob_original_url(user_id, old_image_name, original_filename) if original_filename else ""
+            return JsonResponse({
+                "success": True,
+                "image_name": new_image_name,
+                "display_url": display_url
+            })
 
         state = load_viewer_state_from_blob(user_id)
         if _find_image_entry(state, new_image_name) is not None:
@@ -1364,14 +1378,11 @@ def rename_image(request):
         _copy_blob_prefix(src_prefix, dst_prefix)
 
         data = _read_detect_result_from_blob(user_id, old_image_name) or {}
-        original_url = data.get('display_url', '')
-        if original_url:
-            original_filename = os.path.basename(original_url.split('?')[0])
-            new_display_url = _blob_original_url(user_id, new_image_name, original_filename) or original_url
-        else:
-            new_display_url = original_url
+
+        original_filename = data.get("original_filename", "")
+        new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
+
         if data:
-            data['display_url'] = new_display_url
             _save_detect_result_to_blob(user_id, new_image_name, data)
 
         _delete_blob_prefix(src_prefix)
