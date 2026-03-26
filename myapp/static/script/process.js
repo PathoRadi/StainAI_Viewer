@@ -1095,26 +1095,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     clearBoxes();
 
-    // load display image
-    // window.viewer.open({
-    //   type: 'image',
-    //   url: d.display_url,
-    //   buildPyramid: false
-    // });
-
-    // window.viewer.addOnceHandler('open', () => {
-    //   const vp = window.viewer.viewport;
-    //   vp.fitBounds(vp.getHomeBounds(), true);
-    //   window.zoomFloor = vp.getHomeZoom();
-
-    //   drawBbox(window.bboxData);
-
-    //   // enable all checkboxes
-    //   showAllBoxes();
-    //   $('#checkbox_All').prop('checked', true);
-    //   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-    //     .prop('checked', true);
-    // });
     window.viewer.open({
       type: 'image',
       url: d.display_url,
