@@ -311,8 +311,8 @@ def _copy_blob(src_blob_name: str, dst_blob_name: str):
     data = src.download_blob().readall()
     dst.upload_blob(data, overwrite=True)
 
-def _blob_dir_prefix_for_image(user_id: str, image_name: str):
-    return f"{user_id}/images/{image_name}/"
+# def _blob_dir_prefix_for_image(user_id: str, image_name: str):
+#     return f"{user_id}/images/{image_name}/"
 
 def _list_real_blob_names(prefix: str) -> list[str]:
     container_client = _blob_container_client()
@@ -1446,47 +1446,75 @@ def rename_image(request):
                 {"success": False, "message": "A folder with this name already exists"},
                 status=409
             )
-        
-        src_root = _blob_prefix_for_image(user_id, old_image_name)
-        dst_root = _blob_prefix_for_image(user_id, new_image_name)
 
-        src_prefix = _blob_prefix_for_image(user_id, old_image_name)
-        dst_prefix = _blob_prefix_for_image(user_id, new_image_name)
+        old_root = _blob_prefix_for_image(user_id, old_image_name)
+        new_root = _blob_prefix_for_image(user_id, new_image_name)
 
-        src_blobs = _list_blob_names(src_prefix)
-        if not src_blobs:
-            return JsonResponse(
-                {"success": False, "message": "Source image folder not found in blob"},
-                status=404
-            )
-
-        if _list_blob_names(dst_root):
+        if _list_blob_names(new_root):
             return JsonResponse(
                 {"success": False, "message": "Destination image folder already exists in blob"},
                 status=409
             )
 
+        data = _read_detect_result_from_blob(user_id, old_image_name) or {}
+        original_filename = data.get("original_filename", "")
+
+        if not original_filename:
+            return JsonResponse(
+                {"success": False, "message": "original_filename missing in detect result"},
+                status=500
+            )
+
+        old_original = _blob_name_for_original(user_id, old_image_name, original_filename)
+        new_original = _blob_name_for_original(user_id, new_image_name, original_filename)
+
+        old_chart = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_chart.png")
+        new_chart = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_chart.png")
+
+        old_mmap = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_mmap.tif")
+        new_mmap = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_mmap.tif")
+
+        old_results = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_results.json")
+        new_results = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_results.json")
+
+        old_detect = _blob_name_for_detect_result(user_id, old_image_name)
+        new_detect = _blob_name_for_detect_result(user_id, new_image_name)
+
+        # 檢查來源是否存在
+        required_sources = [old_original, old_detect]
+        for src in required_sources:
+            if not _blob_exists(src):
+                return JsonResponse(
+                    {"success": False, "message": f"Source blob not found: {src}"},
+                    status=404
+                )
+
         try:
-            _copy_blob_prefix(src_prefix, dst_prefix)
+            _copy_blob(old_original, new_original)
+
+            if _blob_exists(old_chart):
+                _copy_blob(old_chart, new_chart)
+
+            if _blob_exists(old_mmap):
+                _copy_blob(old_mmap, new_mmap)
+
+            if _blob_exists(old_results):
+                _copy_blob(old_results, new_results)
+
+            # detect result 內容裡如果有 image name 相關欄位，可在這裡更新
+            _copy_blob(old_detect, new_detect)
+
         except Exception:
-            # rename 失敗時，把半成品刪掉
             try:
-                _delete_blob_prefix(dst_root)
+                _delete_blob_prefix(new_root)
             except Exception:
-                logger.exception("Failed to rollback destination prefix: %s", dst_root)
+                logger.exception("Failed to rollback destination prefix: %s", new_root)
             raise
 
-        _copy_blob_prefix(src_prefix, dst_prefix)
-
-        data = _read_detect_result_from_blob(user_id, old_image_name) or {}
-        if data:
-            _save_detect_result_to_blob(user_id, new_image_name, data)
-
-        _delete_blob_prefix(src_prefix)
+        _delete_blob_prefix(old_root)
         _delete_local_image_dir_by_userid(user_id, old_image_name)
         state_rename_image(user_id, old_image_name, new_image_name)
 
-        original_filename = data.get("original_filename", "")
         new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
 
         return JsonResponse({
