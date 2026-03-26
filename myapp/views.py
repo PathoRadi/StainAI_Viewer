@@ -311,44 +311,6 @@ def _copy_blob(src_blob_name: str, dst_blob_name: str):
     data = src.download_blob().readall()
     dst.upload_blob(data, overwrite=True)
 
-# def _blob_dir_prefix_for_image(user_id: str, image_name: str):
-#     return f"{user_id}/images/{image_name}/"
-
-def _list_real_blob_names(prefix: str) -> list[str]:
-    container_client = _blob_container_client()
-    if container_client is None:
-        return []
-
-    root_no_slash = prefix.rstrip("/")
-    out = []
-
-    for b in container_client.list_blobs(name_starts_with=prefix):
-        name = b.name.rstrip("/")
-
-        # 跳過 root marker / placeholder
-        if name == root_no_slash:
-            continue
-
-        out.append(b.name)
-
-    return out
-
-def _copy_blob_prefix(src_prefix: str, dst_prefix: str):
-    client = _blob_service_client()
-    if client is None:
-        raise RuntimeError("Blob storage is not configured")
-
-    # container = settings.AZURE_BLOB_CONTAINER_NAME
-    # container_client = client.get_container_client(container)
-
-    blob_names = _list_real_blob_names(src_prefix)
-    if not blob_names:
-        raise FileNotFoundError(f"No blobs found under prefix: {src_prefix}")
-
-    for name in blob_names:
-        suffix = name[len(src_prefix):]
-        _copy_blob(name, f"{dst_prefix}{suffix}")
-
 def _blob_container_client():
     client = _blob_service_client()
     if client is None:
@@ -377,9 +339,6 @@ def _list_blob_names(prefix: str) -> list[str]:
 
 def _read_detect_result_from_blob(user_id: str, image_name: str) -> dict | None:
     return _download_json_from_blob(_blob_name_for_detect_result(user_id, image_name))
-
-def _save_detect_result_to_blob(user_id: str, image_name: str, payload: dict) -> str | None:
-    return _upload_json_to_blob(_blob_name_for_detect_result(user_id, image_name), payload)
 
 def _delete_local_image_dir_by_userid(user_id: str, image_name: str):
     image_dir = _image_dir_by_userid(user_id, image_name)
