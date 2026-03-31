@@ -251,19 +251,6 @@ export async function updateProjectsUI(historyStack) {
 
   container.empty();
 
-  container.append(`
-    <div class="new-project-row">
-      <button id="new-project-btn" class="new-project-btn" type="button">+ New Project</button>
-    </div>
-  `);
-
-  if (!projects.length) {
-    container.append(`
-      <div class="project-empty-state">No projects yet</div>
-    `);
-    return;
-  }
-
   projects.forEach(project => {
     container.append(renderProjectEntry(project, historyStack));
   });

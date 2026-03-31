@@ -30,24 +30,22 @@
 }
 
 .new-project-btn{
-    width: 100%;
+    display: flex;
+    position: relative;
+    z-index: 4000;
+    justify-content: flex-start;
+    align-items: center;
+    width: 160px;
     height: 35px;
-    padding: 8px 12px;
-    background: transparent;
-    border: 1px dashed rgba(255,255,255,0.25);
+    margin: 15px;
+    background: var(--bg-upload-new-img-btn);
+    color: var(--text-upload-new-img-btn);
+    border: var(--border-upload-new-img-btn);
     border-radius: 15px;
-    color: var(--text-history-item);
     font-family: 'PingFangHKWeb', sans-serif;
-    font-size: 14px;
     font-weight: 500;
-    text-align: left;
+    font-size: 15px;
     cursor: pointer;
-    transition: background 0.18s ease, border-color 0.18s ease, opacity 0.18s ease;
-}
-
-.new-project-btn:hover{
-    background: rgba(255,255,255,0.06);
-    border-color: rgba(255,255,255,0.4);
 }
 
 /* ===== Project entry ===== */

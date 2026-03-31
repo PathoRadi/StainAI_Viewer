@@ -47,26 +47,43 @@
           <span id="viewer-account-name" class="viewer-account-name"></span>
         </div>
       </div>
-      <!-- Upload New Images -->
-      <button id="upload-new-img-btn">+ MORE IMAGE</button>
+      <!-- Add New Project -->
+      <button id="new-project-btn" class="new-project-btn" type="button">
+        <span class="btn-plus">+</span>
+        <span class="btn-text">Project</span>
+        <img src="{% static 'logo/folder_icon.png' %}" class="btn-icon">
+      </button>
+      <!-- Upload New Image -->
+      <button id="upload-new-img-btn">
+        <span class="btn-plus">+</span>
+        <span class="btn-text">Image</span>
+        <img src="{% static 'logo/file_icon.png' %}" class="btn-icon">
+      </button>
     </div>
 
     <div class="image-history-container">
-      <!-- Your Images toggle and items -->
-      <button id="your-images-toggle" class="sidebar-section-toggle" type="button" aria-expanded="true">
-        <span class="sidebar-section-title">Your Images</span>
-        <span class="sidebar-section-chevron">⌄</span>
-      </button>
-      <div id="history-container-wrapper" class="expanded">
-        <div id="history-container"></div>
-      </div>
       <!-- Your Projects toggle and items -->
       <button id="your-projects-toggle" class="sidebar-section-toggle" type="button" aria-expanded="true">
-        <span class="sidebar-section-title">Your Projects</span>
-        <span class="sidebar-section-chevron">⌄</span>
+        <span class="sidebar-section-title">
+          <img src="{% static 'logo/folder_icon.png' %}" class="btn-icon">
+          Projects
+        </span>
+        <span class="sidebar-section-chevron">▼</span>
       </button>
       <div id="projects-container-wrapper" class="expanded">
         <div id="projects-container"></div>
+      </div>
+      
+      <!-- Your Images toggle and items -->
+      <button id="your-images-toggle" class="sidebar-section-toggle" type="button" aria-expanded="true">
+        <span class="sidebar-section-title">
+          <img src="{% static 'logo/folder_icon.png' %}" class="btn-icon">
+          Images
+        </span>
+        <span class="sidebar-section-chevron">▼</span>
+      </button>
+      <div id="history-container-wrapper" class="expanded">
+        <div id="history-container"></div>
       </div>
     </div>
 

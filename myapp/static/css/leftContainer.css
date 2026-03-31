@@ -96,6 +96,9 @@
     opacity: 0.9;
 }
 .sidebar-section-title{
+    display: flex;
+    align-items: center;
+    gap: 10px;
     pointer-events: none;
 }
 .sidebar-section-chevron{
@@ -221,11 +224,11 @@
     display: flex;
     position: relative;
     z-index: 4000;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
     width: 160px;
     height: 35px;
-    margin: 15px;
+    margin: 0px 15px 15px 15px;
     background: var(--bg-upload-new-img-btn);
     color: var(--text-upload-new-img-btn);
     border: var(--border-upload-new-img-btn);
@@ -233,6 +236,16 @@
     font-family: 'PingFangHKWeb', sans-serif;
     font-weight: 500;
     font-size: 15px;
+}
+.btn-icon {
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    object-fit: contain;
+}
+.btn-plus {
+    margin-left: 10px;
+    margin-right: 25px;
 }
 
 
