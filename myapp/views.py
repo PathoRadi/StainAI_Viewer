@@ -768,14 +768,14 @@ def upload_image(request):
     and immediately prepare a smaller preview/display image for frontend preview.
     """
     if request.method == 'POST' and request.FILES.get('image'):
-        images_dir = _images_root()
+        images_dir = _images_root(request)
         os.makedirs(images_dir, exist_ok=True)
 
         img = request.FILES['image']
         upload_name = os.path.splitext(img.name)[0]
 
-        image_name = get_unique_image_name(upload_name)
-        image_dir = _image_dir(image_name)
+        image_name = get_unique_image_name(request, upload_name)
+        image_dir = _image_dir(request, image_name)
         os.makedirs(image_dir, exist_ok=True)
 
         original_dir = os.path.join(image_dir, 'original')
