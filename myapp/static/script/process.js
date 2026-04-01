@@ -240,47 +240,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     return Number(val).toFixed(decimals);
   }
 
-
-  // function openSettingsModal(fileName) {
-  //   if (!settingsOverlay) return;
-
-  //   settingsOverlay.hidden = false;
-  //   document.body.style.overflow = 'hidden'; // avoid background scroll
-  //   settingsPanZoom?.reset();
-
-  //   if (settingsImageName) settingsImageName.textContent = fileName || '';
-
-  //   // init UI from pendingParams
-  //   applyParamsToUI(pendingParams);
-  //   syncAllRangeFills();
-
-  //   // ✅ 1) 優先用 upload preview 的 blob URL（最穩）
-  //   const blobUrl = settingsPreviewImg?.dataset?.objUrl;
-
-  //   if (settingsPreviewImg) {
-  //     if (blobUrl) {
-  //       settingsPreviewImg.src = blobUrl;
-  //       return; // 有 blob 就不用再往下
-  //     }
-
-  //     // ✅ 2) 沒有 blob（例如從 history 點開 / 重整頁面）→ 用 server URL
-  //     // 優先順序：display_url > preview_url > imgPath
-  //     const serverUrl =
-  //       window.displayUrl || window.previewUrl || window.imgPath || '';
-
-  //     if (serverUrl) {
-  //       settingsPreviewImg.src = serverUrl;
-
-  //       // ✅ 讓 history / reload 也能做 realtime grayscale preview
-  //       buildPreviewBaseFromBlob(serverUrl).then(() => {
-  //         if (!pendingParams) pendingParams = defaultParams();
-  //         renderRealtimePreview();
-  //       });
-  //     } else {
-  //       settingsPreviewImg.removeAttribute('src');
-  //     }
-  //   }
-  // }
   function openSettingsModal(fileName) {
     if (!settingsOverlay) return;
 
@@ -546,31 +505,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   // ###################################################################
   // #                     Preview helper functions                    #
   // ###################################################################
-  // async function buildPreviewBaseFromBlob(blobUrl) {
-  //   if (!blobUrl || !settingsCanvas) return;
-
-  //   // 用 createImageBitmap 速度很好，超大圖也比 img+canvas 好
-  //   const blob = await fetch(blobUrl).then(r => r.blob());
-  //   const bmp = await createImageBitmap(blob);
-
-  //   // downsample：為了即時性，限制最大邊
-  //   const maxSide = 10000;
-  //   const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
-  //   const w = Math.max(1, Math.round(bmp.width * scale));
-  //   const h = Math.max(1, Math.round(bmp.height * scale));
-
-  //   const tmp = document.createElement('canvas');
-  //   tmp.width = w; tmp.height = h;
-  //   const tctx = tmp.getContext('2d', { willReadFrequently: true });
-  //   tctx.drawImage(bmp, 0, 0, w, h);
-
-  //   const imgData = tctx.getImageData(0, 0, w, h);
-  //   previewBase = { w, h, rgb: imgData.data }; // Uint8ClampedArray RGBA
-
-  //   // canvas 尺寸同步
-  //   settingsCanvas.width = w;
-  //   settingsCanvas.height = h;
-  // }
   async function buildPreviewBaseFromBlob(blobUrl) {
     if (!blobUrl || !settingsCanvas) return false;
 
@@ -622,31 +556,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }
   }
 
-  // function detectModeFromPreviewBase(previewBase, thr = 110) {
-  //   const { w, h, rgb } = previewBase;
-  //   const b = Math.max(1, Math.floor(Math.min(w, h) * 0.06));
-
-  //   let sum = 0, cnt = 0;
-
-  //   // sample border: top, bottom, left, right
-  //   const addPixel = (x, y) => {
-  //     const idx = (y * w + x) * 4;
-  //     const R = rgb[idx], G = rgb[idx + 1], B = rgb[idx + 2];
-  //     const luma = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-  //     sum += luma; cnt++;
-  //   };
-
-  //   // top & bottom
-  //   for (let y = 0; y < b; y++) for (let x = 0; x < w; x++) addPixel(x, y);
-  //   for (let y = h - b; y < h; y++) for (let x = 0; x < w; x++) addPixel(x, y);
-
-  //   // left & right
-  //   for (let y = 0; y < h; y++) for (let x = 0; x < b; x++) addPixel(x, y);
-  //   for (let y = 0; y < h; y++) for (let x = w - b; x < w; x++) addPixel(x, y);
-
-  //   const bg = cnt ? (sum / cnt) : 255;
-  //   return (bg < thr) ? 'fluorescence' : 'brightfield';
-  // }
   function detectModeFromPreviewBase(previewBase, thr = 110) {
     const { w, h, rgb } = previewBase;
 
@@ -776,120 +685,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }, 30);
   }
 
-  // function renderRealtimePreview() {
-  //   if (!previewBase || !settingsCanvas) return;
-  //   if (previewBusy) return;
-  //   previewBusy = true;
-
-  //   try {
-  //     const { w, h, rgb } = previewBase;
-  //     const ctx = settingsCanvas.getContext('2d', { willReadFrequently: true });
-
-  //     // latest params
-  //     const p = pendingParams || defaultParams();
-  //     const mode = detectModeFromPreviewBase(previewBase, 110);
-
-  //     // ✅ align with backend grayscale.py:
-  //     // out01 = clip( ( clip((x-lo)/(hi-lo),0,1) ** gamma ) * gain , 0, 1 )
-  //     const gamma = Math.max(0.1, parseFloat(p.gamma ?? 1));   // same semantic as backend gamma
-  //     const gain  = Math.max(0.0, parseFloat(p.gain  ?? 1));   // same semantic as backend gain
-
-  //     let pLow  = Math.max(0, Math.min(100, parseFloat(p.p_low  ?? 0)));
-  //     let pHigh = Math.max(0, Math.min(100, parseFloat(p.p_high ?? 100)));
-  //     if (pHigh <= pLow) pHigh = Math.min(100, pLow + 1);
-
-  //     const n = w * h;
-  //     const gray = new Float32Array(n);
-
-  //     // fill gray buffer (0..255) and collect min/max
-  //     let gMin = Infinity;
-  //     let gMax = -Infinity;
-
-  //     for (let i = 0, j = 0; i < n; i++, j += 4) {
-  //       const R = rgb[j], G = rgb[j + 1], B = rgb[j + 2];
-  //       let g;
-
-  //       if (mode === 'fluorescence') {
-  //         // backend: green channel
-  //         g = G;
-  //       } else {
-  //         // backend: luma then invert (cells bright on dark)
-  //         g = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-  //         g = 255 - g;
-  //       }
-
-  //       gray[i] = g;
-  //       if (g < gMin) gMin = g;
-  //       if (g > gMax) gMax = g;
-  //     }
-
-  //     // Decide lo/hi
-  //     let lo = gMin;
-  //     let hi = gMax;
-
-  //     const usePercentile = !(pLow <= 0 && pHigh >= 100);
-  //     if (usePercentile) {
-  //       // sample for speed
-  //       const sampleStep = Math.max(1, Math.floor(n / 200000)); // <= 200k samples
-  //       const samples = new Float32Array(Math.ceil(n / sampleStep));
-  //       let si = 0;
-  //       for (let i = 0; i < n; i += sampleStep) samples[si++] = gray[i];
-
-  //       // sort typed array -> normal array (browser sort only works on Array)
-  //       const arr = Array.from(samples.subarray(0, si));
-  //       arr.sort((a, b) => a - b);
-
-  //       const q = (pp) => {
-  //         const idx = Math.min(
-  //           arr.length - 1,
-  //           Math.max(0, Math.round((pp / 100) * (arr.length - 1)))
-  //         );
-  //         return arr[idx];
-  //       };
-
-  //       lo = q(pLow);
-  //       hi = q(pHigh);
-  //     }
-
-  //     const denom = (hi - lo) > 1e-6 ? (hi - lo) : 1.0;
-
-  //     // output image
-  //     const out = ctx.createImageData(w, h);
-  //     const outd = out.data;
-
-  //     for (let i = 0, j = 0; i < n; i++, j += 4) {
-  //       // 1) percentile stretch to [0,1]
-  //       let x = (gray[i] - lo) / denom;
-
-  //       // clamp
-  //       if (x < 0) x = 0;
-  //       else if (x > 1) x = 1;
-
-  //       // 2) gamma + gain (backend-style)
-  //       x = Math.pow(x, gamma) * gain;
-
-  //       // clamp
-  //       if (x < 0) x = 0;
-  //       else if (x > 1) x = 1;
-
-  //       const v = (x * 255) | 0;
-  //       outd[j] = v;
-  //       outd[j + 1] = v;
-  //       outd[j + 2] = v;
-  //       outd[j + 3] = 255;
-  //     }
-
-  //     ctx.putImageData(out, 0, 0);
-
-  //     // show canvas / hide img
-  //     settingsCanvas.style.display = 'block';
-  //     if (settingsPreviewImg) settingsPreviewImg.style.visibility = 'hidden';
-  //     settingsPanZoom?.apply?.();
-
-  //   } finally {
-  //     previewBusy = false;
-  //   }
-  // }
   function renderRealtimePreview() {
     if (!previewBase || !settingsCanvas) return;
     if (previewBusy) return;
@@ -1254,90 +1049,12 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (settingsCanvas) settingsCanvas.style.transform = '';
     settingsPanZoom?.reset();
   }
+  
   window.resetPendingUpload = resetPendingUpload;
-
-
-
-
-
   window.__uploadFileViaDropZone = function(file){
     handleFileUpload(file, UPLOAD_IMAGE_URL);
   };
 
-  // Handle file upload to server
-  // function handleFileUpload(file, UPLOAD_IMAGE_URL) {
-  //   if (isUploading) {
-  //     console.warn('Upload already in progress, skip duplicate call');
-  //     return;
-  //   }
-  //   isUploading = true;
-
-  //   resetPendingUpload(); // clear old preview + reset previous temp upload
-  //   resetSettingsTransform();
-
-  //   const name = (file?.name || '').toLowerCase();
-  //   if (name === 'demo.jpg' || name === 'demo.jpeg') {
-  //     window.isDemoUpload = true;
-  //   }
-
-  //   const fd = new FormData();
-  //   // quick local preview in modal (immediate)
-  //   if (file && settingsPreviewImg) {
-  //     if (settingsPreviewImg.dataset.objUrl) {
-  //       URL.revokeObjectURL(settingsPreviewImg.dataset.objUrl);
-  //       delete settingsPreviewImg.dataset.objUrl;
-  //     }
-  //     const objUrl = URL.createObjectURL(file);
-  //     settingsPreviewImg.dataset.objUrl = objUrl;
-  //     settingsPreviewImg.src = objUrl;
-  //   }
-
-  //   buildPreviewBaseFromBlob(settingsPreviewImg.dataset.objUrl).then(() => {
-  //     if (!pendingParams) pendingParams = defaultParams();
-
-  //     renderRealtimePreview();
-  //   });
-
-  //   fd.append('image', file);
-
-  //   const img = new Image();
-
-  //   img.onload = function() {
-  //     if (img.width > 30000 || img.height > 30000) {
-  //       alert("⚠️ Image to Large (width and height are over 30000 pixel)\nPlease upload smaller image and try again.");
-  //       // disable Start Detection button
-  //       resetPendingUpload();
-  //       closeSettingsModal();
-  //       isUploading = false;
-  //       hideProgressOverlay1();
-  //       return; // Stop further processing
-  //     }
-
-  //     showProgressOverlay1();
-  //     fetch(UPLOAD_IMAGE_URL, {
-  //       method: 'POST',
-  //       headers: { 'X-CSRFToken': csrftoken },
-  //       body: fd
-  //     })
-  //     .then(r => r.json())
-  //     .then(d => {
-  //       window.imgPath = d.image_url || '';
-  //       window.displayUrl = d.display_url || '';   
-  //       window.previewUrl  = d.preview_url  || '';
-
-  //       pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
-
-  //       pendingParams = defaultParams();
-  //       openSettingsModal(file?.name || '');
-  //     })
-  //     .catch(err => console.error(err))
-  //     .finally(() => {
-  //       hideProgressOverlay1();
-  //       isUploading = false;
-  //     });
-  //   }
-  //   img.src = URL.createObjectURL(file);
-  // }
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
     if (isUploading) {
       console.warn('Upload already in progress, skip duplicate call');

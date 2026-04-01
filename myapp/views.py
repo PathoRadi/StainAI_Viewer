@@ -713,54 +713,6 @@ def get_unique_image_name(request,image_name):
 
     return candidate
 
-# @csrf_exempt
-# def upload_image(request):
-#     """
-#     Receive upload, save to media/<image_name>/original/,
-#     If any side >20000, do half resize; return MEDIA URL for direct display.
-#     """
-#     try:
-#         _require_viewer_user(request)
-#     except PermissionError:
-#         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
-    
-#     # check request method is POST and file is in request.FILES
-#     if request.method == 'POST' and request.FILES.get('image'):
-#         # ----------------------------------------------------------------------
-#         #      Step 1: Read User Uploaded Image and Create Image Folder
-#         # ----------------------------------------------------------------------
-#         images_dir = _images_root(request)                                          # Full path of the folder to store all images, e.g. /home/site/wwwroot/media/images/
-#         os.makedirs(images_dir, exist_ok=True)                                      # Create folder to store all images, e.g. /home/site/wwwroot/media/images/
-
-#         # User uploaded image
-#         img = request.FILES['image']                                                # Get user uploaded image, eg. "sample.png"
-#         upload_name = os.path.splitext(img.name)[0]                                 # Get user uploaded image name without extension, e.g. "sample" from "sample.png"
-
-#         # Create folder for the uploaded image
-#         image_name = get_unique_image_name(request, upload_name)                    # Get unique folder name for the user uploaded image, e.g. "sample_1" if "sample" already exists, otherwise "sample"
-#         image_dir = _image_dir(request, image_name)                                 # Full path of the user uploaded image folder, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
-#         os.makedirs(image_dir, exist_ok=True)                                       # Create folder for the user uploaded image, e.g. /home/site/wwwroot/media/images/{sample or sample_1}/
-
-        
-#         # ----------------------------------------------------------------------
-#         #      Step 2: Save User Uploaded Image into "Original" Subfolder
-#         # ----------------------------------------------------------------------
-#         original_dir = os.path.join(image_dir, 'original')                          # Full path of the original image folder, e.g. /home/site/wwwroot/media/{sample or sample_1}/original/
-#         os.makedirs(original_dir, exist_ok=True)                                    # Create folder for the original image, e.g. /home/site/wwwroot/media/{sample or sample_1}/original/
-#         original_path = os.path.join(original_dir, img.name)                        # Full path of the original image, e.g. /home/site/wwwroot/media/{sample or sample_1}/original/sample.png
-#         with open(original_path, 'wb+') as f:                                       # Save user uploaded image to the original image folder, e.g. save to /home/site/wwwroot/media/{sample or sample_1}/original/sample.png
-#             for chunk in img.chunks():
-#                 f.write(chunk)
-
-#         print(f"Image successfully uploaded: {img.name}")
-#         print(f"Uploaded image saved to {original_path}")
-
-#         return JsonResponse({
-#             'image_url': _to_media_url(original_path),
-#             'image_name': image_name
-#         })                                                                          # Return original image URL and image name
-
-#     return JsonResponse({'error': 'Invalid upload'}, status=400)                    # Return error if not POST or no file
 @csrf_exempt
 def upload_image(request):
     """
