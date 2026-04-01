@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from PIL import Image, ImageFile
+from PIL import Image, ImageFile, ImageFilter
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
@@ -34,7 +34,10 @@ class GrayscaleConverter:
         fluo_kernel: int = 25,
         bright_kernel: int = 41,
         bright_bg_L_thr: int = 245,
-        write_u8_png: bool = True,   # <-- strongly recommended
+        write_u8_png: bool = True,
+        bg_radius: int = 101,
+        do_bg_correction: bool = True,
+        bg_mode: str = "subtract",
     ):
         self.img_path = img_path
         self.output_dir = output_dir
@@ -49,6 +52,10 @@ class GrayscaleConverter:
         self.bright_bg_L_thr = int(bright_bg_L_thr)
 
         self.write_u8_png = bool(write_u8_png)
+
+        self.bg_radius = int(bg_radius)
+        self.do_bg_correction = bool(do_bg_correction)
+        self.bg_mode = str(bg_mode)
 
         base = os.path.basename(img_path)
         self.root, self.ext = os.path.splitext(base)
@@ -165,8 +172,16 @@ class GrayscaleConverter:
     # Core math in float01
     # ------------------------------------------------------------------
     def _norm_percentile01(self, x01: np.ndarray) -> np.ndarray:
-        lo = np.percentile(x01, self.p_low)
-        hi = np.percentile(x01, self.p_high)
+        # new
+        x = x01[np.isfinite(x01)]
+        if x.size == 0:
+            return np.zeros_like(x01, dtype=np.float32)
+        
+        lo = np.percentile(x, self.p_low)
+        hi = np.percentile(x, self.p_high)
+
+        # lo = np.percentile(x01, self.p_low)
+        # hi = np.percentile(x01, self.p_high)
         if hi <= lo:
             hi = lo + 1e-6
         y = (x01 - lo) / (hi - lo)
@@ -174,6 +189,33 @@ class GrayscaleConverter:
 
     def _enhance01(self, norm01: np.ndarray) -> np.ndarray:
         y = np.power(norm01, self.gamma) * self.gain
+        return np.clip(y, 0.0, 1.0)
+
+    # new helper
+    def _estimate_background_mean(self, x01: np.ndarray, radius: int) -> np.ndarray:
+        """
+        Fast local mean background estimation using Pillow BoxBlur.
+        radius should be much larger than cell size.
+        """
+        x8 = (np.clip(x01, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)
+        bg_img = Image.fromarray(x8, mode="L").filter(ImageFilter.BoxBlur(radius))
+        bg01 = np.asarray(bg_img, dtype=np.float32) / 255.0
+        return bg01
+    
+    # new helper
+    def _background_correct01(self, x01: np.ndarray) -> np.ndarray:
+        if not self.do_bg_correction:
+            return np.clip(x01, 0.0, 1.0)
+
+        bg01 = self._estimate_background_mean(x01, self.bg_radius)
+
+        if self.bg_mode == "divide":
+            y = x01 / (bg01 + 1e-4)
+        else:
+            y = x01 - bg01
+
+        y = y - y.min()
+        y = y / (y.max() + 1e-6)
         return np.clip(y, 0.0, 1.0)
 
     def _edge_bg_mean_0_1(self, gray01: np.ndarray) -> float:
@@ -219,12 +261,18 @@ class GrayscaleConverter:
             # green channel (uint8)
             g = arr[:, :, 1]
             g01 = g.astype(np.float32) / 255.0
-            out01 = self._enhance01(self._norm_percentile01(g01))
+            # out01 = self._enhance01(self._norm_percentile01(g01))
+            corr01 = self._background_correct01(g01)
+            out01 = self._enhance01(self._norm_percentile01(corr01))
+
             out_arr, out_dtype = self._from_float01(out01, np.uint8)  # rgb images end up as u8
         else:
             # already grayscale (could be u16)
             x01 = self._to_float01(arr, dtype=dtype)
-            out01 = self._enhance01(self._norm_percentile01(x01))
+            # out01 = self._enhance01(self._norm_percentile01(x01))
+            corr01 = self._background_correct01(x01)
+            out01 = self._enhance01(self._norm_percentile01(corr01))
+
             out_arr, out_dtype = self._from_float01(out01, dtype)
 
         main_path = self._save_follow_ext(out_arr, out_dtype)
@@ -241,12 +289,18 @@ class GrayscaleConverter:
             rgb01 = arr.astype(np.float32) / 255.0
             L = 0.2126 * rgb01[:, :, 0] + 0.7152 * rgb01[:, :, 1] + 0.0722 * rgb01[:, :, 2]
             inv = 1.0 - L
-            out01 = self._enhance01(self._norm_percentile01(inv))
+            # out01 = self._enhance01(self._norm_percentile01(inv))
+            corr01 = self._background_correct01(inv)
+            out01 = self._enhance01(self._norm_percentile01(corr01))
+
             out_arr, out_dtype = self._from_float01(out01, np.uint8)
         else:
             x01 = self._to_float01(arr, dtype=dtype)
             inv = 1.0 - x01
-            out01 = self._enhance01(self._norm_percentile01(inv))
+            # out01 = self._enhance01(self._norm_percentile01(inv))
+            corr01 = self._background_correct01(inv)
+            out01 = self._enhance01(self._norm_percentile01(corr01))
+
             out_arr, out_dtype = self._from_float01(out01, dtype)
 
         main_path = self._save_follow_ext(out_arr, out_dtype)

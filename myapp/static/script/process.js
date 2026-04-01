@@ -218,7 +218,12 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       gain: 1,
       p_low: 0,
       p_high: 100,
-      resolution: '' // user input
+      resolution: '', // user input
+
+      // new
+      bg_radius: 101,
+      bg_mode: 'subtract',
+      do_bg_correction: true
     };
   }
 
@@ -236,41 +241,64 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   }
 
 
+  // function openSettingsModal(fileName) {
+  //   if (!settingsOverlay) return;
+
+  //   settingsOverlay.hidden = false;
+  //   document.body.style.overflow = 'hidden'; // avoid background scroll
+  //   settingsPanZoom?.reset();
+
+  //   if (settingsImageName) settingsImageName.textContent = fileName || '';
+
+  //   // init UI from pendingParams
+  //   applyParamsToUI(pendingParams);
+  //   syncAllRangeFills();
+
+  //   // ✅ 1) 優先用 upload preview 的 blob URL（最穩）
+  //   const blobUrl = settingsPreviewImg?.dataset?.objUrl;
+
+  //   if (settingsPreviewImg) {
+  //     if (blobUrl) {
+  //       settingsPreviewImg.src = blobUrl;
+  //       return; // 有 blob 就不用再往下
+  //     }
+
+  //     // ✅ 2) 沒有 blob（例如從 history 點開 / 重整頁面）→ 用 server URL
+  //     // 優先順序：display_url > preview_url > imgPath
+  //     const serverUrl =
+  //       window.displayUrl || window.previewUrl || window.imgPath || '';
+
+  //     if (serverUrl) {
+  //       settingsPreviewImg.src = serverUrl;
+
+  //       // ✅ 讓 history / reload 也能做 realtime grayscale preview
+  //       buildPreviewBaseFromBlob(serverUrl).then(() => {
+  //         if (!pendingParams) pendingParams = defaultParams();
+  //         renderRealtimePreview();
+  //       });
+  //     } else {
+  //       settingsPreviewImg.removeAttribute('src');
+  //     }
+  //   }
+  // }
   function openSettingsModal(fileName) {
     if (!settingsOverlay) return;
 
     settingsOverlay.hidden = false;
-    document.body.style.overflow = 'hidden'; // avoid background scroll
+    document.body.style.overflow = 'hidden';
     settingsPanZoom?.reset();
 
     if (settingsImageName) settingsImageName.textContent = fileName || '';
 
-    // init UI from pendingParams
     applyParamsToUI(pendingParams);
     syncAllRangeFills();
 
-    // ✅ 1) 優先用 upload preview 的 blob URL（最穩）
-    const blobUrl = settingsPreviewImg?.dataset?.objUrl;
+    // 方法二：一律用 backend 回傳的小圖 / display 圖
+    const serverUrl = window.previewUrl || window.displayUrl || window.imgPath || '';
 
     if (settingsPreviewImg) {
-      if (blobUrl) {
-        settingsPreviewImg.src = blobUrl;
-        return; // 有 blob 就不用再往下
-      }
-
-      // ✅ 2) 沒有 blob（例如從 history 點開 / 重整頁面）→ 用 server URL
-      // 優先順序：display_url > preview_url > imgPath
-      const serverUrl =
-        window.displayUrl || window.previewUrl || window.imgPath || '';
-
       if (serverUrl) {
         settingsPreviewImg.src = serverUrl;
-
-        // ✅ 讓 history / reload 也能做 realtime grayscale preview
-        buildPreviewBaseFromBlob(serverUrl).then(() => {
-          if (!pendingParams) pendingParams = defaultParams();
-          renderRealtimePreview();
-        });
       } else {
         settingsPreviewImg.removeAttribute('src');
       }
@@ -518,56 +546,226 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   // ###################################################################
   // #                     Preview helper functions                    #
   // ###################################################################
+  // async function buildPreviewBaseFromBlob(blobUrl) {
+  //   if (!blobUrl || !settingsCanvas) return;
+
+  //   // 用 createImageBitmap 速度很好，超大圖也比 img+canvas 好
+  //   const blob = await fetch(blobUrl).then(r => r.blob());
+  //   const bmp = await createImageBitmap(blob);
+
+  //   // downsample：為了即時性，限制最大邊
+  //   const maxSide = 10000;
+  //   const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  //   const w = Math.max(1, Math.round(bmp.width * scale));
+  //   const h = Math.max(1, Math.round(bmp.height * scale));
+
+  //   const tmp = document.createElement('canvas');
+  //   tmp.width = w; tmp.height = h;
+  //   const tctx = tmp.getContext('2d', { willReadFrequently: true });
+  //   tctx.drawImage(bmp, 0, 0, w, h);
+
+  //   const imgData = tctx.getImageData(0, 0, w, h);
+  //   previewBase = { w, h, rgb: imgData.data }; // Uint8ClampedArray RGBA
+
+  //   // canvas 尺寸同步
+  //   settingsCanvas.width = w;
+  //   settingsCanvas.height = h;
+  // }
   async function buildPreviewBaseFromBlob(blobUrl) {
-    if (!blobUrl || !settingsCanvas) return;
+    if (!blobUrl || !settingsCanvas) return false;
 
-    // 用 createImageBitmap 速度很好，超大圖也比 img+canvas 好
-    const blob = await fetch(blobUrl).then(r => r.blob());
-    const bmp = await createImageBitmap(blob);
+    try {
+      const blob = await fetch(blobUrl).then(r => r.blob());
 
-    // downsample：為了即時性，限制最大邊
-    const maxSide = 10000;
-    const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
-    const w = Math.max(1, Math.round(bmp.width * scale));
-    const h = Math.max(1, Math.round(bmp.height * scale));
+      // 先試著直接要求縮小版 bitmap
+      // 這樣比先完整 decode 再縮更省
+      let probe = await createImageBitmap(blob);
 
-    const tmp = document.createElement('canvas');
-    tmp.width = w; tmp.height = h;
-    const tctx = tmp.getContext('2d', { willReadFrequently: true });
-    tctx.drawImage(bmp, 0, 0, w, h);
+      const previewMaxSide = 10000;
+      const scale = Math.min(1, previewMaxSide / Math.max(probe.width, probe.height));
+      const w = Math.max(1, Math.round(probe.width * scale));
+      const h = Math.max(1, Math.round(probe.height * scale));
 
-    const imgData = tctx.getImageData(0, 0, w, h);
-    previewBase = { w, h, rgb: imgData.data }; // Uint8ClampedArray RGBA
+      probe.close?.();
 
-    // canvas 尺寸同步
-    settingsCanvas.width = w;
-    settingsCanvas.height = h;
+      let bmp;
+      try {
+        bmp = await createImageBitmap(blob, {
+          resizeWidth: w,
+          resizeHeight: h,
+          resizeQuality: 'high'
+        });
+      } catch (e) {
+        // 某些瀏覽器如果不支援 resize 參數，就 fallback
+        bmp = await createImageBitmap(blob);
+      }
+
+      const tmp = document.createElement('canvas');
+      tmp.width = w;
+      tmp.height = h;
+
+      const tctx = tmp.getContext('2d', { willReadFrequently: true });
+      tctx.drawImage(bmp, 0, 0, w, h);
+
+      const imgData = tctx.getImageData(0, 0, w, h);
+      previewBase = { w, h, rgb: imgData.data };
+
+      settingsCanvas.width = w;
+      settingsCanvas.height = h;
+
+      bmp.close?.();
+      return true;
+    } catch (err) {
+      console.error('buildPreviewBaseFromBlob failed:', err);
+      previewBase = null;
+      return false;
+    }
   }
 
+  // function detectModeFromPreviewBase(previewBase, thr = 110) {
+  //   const { w, h, rgb } = previewBase;
+  //   const b = Math.max(1, Math.floor(Math.min(w, h) * 0.06));
+
+  //   let sum = 0, cnt = 0;
+
+  //   // sample border: top, bottom, left, right
+  //   const addPixel = (x, y) => {
+  //     const idx = (y * w + x) * 4;
+  //     const R = rgb[idx], G = rgb[idx + 1], B = rgb[idx + 2];
+  //     const luma = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+  //     sum += luma; cnt++;
+  //   };
+
+  //   // top & bottom
+  //   for (let y = 0; y < b; y++) for (let x = 0; x < w; x++) addPixel(x, y);
+  //   for (let y = h - b; y < h; y++) for (let x = 0; x < w; x++) addPixel(x, y);
+
+  //   // left & right
+  //   for (let y = 0; y < h; y++) for (let x = 0; x < b; x++) addPixel(x, y);
+  //   for (let y = 0; y < h; y++) for (let x = w - b; x < w; x++) addPixel(x, y);
+
+  //   const bg = cnt ? (sum / cnt) : 255;
+  //   return (bg < thr) ? 'fluorescence' : 'brightfield';
+  // }
   function detectModeFromPreviewBase(previewBase, thr = 110) {
     const { w, h, rgb } = previewBase;
-    const b = Math.max(1, Math.floor(Math.min(w, h) * 0.06));
 
-    let sum = 0, cnt = 0;
+    const b = Math.max(32, Math.min(256, Math.round(0.03 * Math.min(w, h))));
 
-    // sample border: top, bottom, left, right
+    let sum = 0;
+    let cnt = 0;
+
     const addPixel = (x, y) => {
       const idx = (y * w + x) * 4;
-      const R = rgb[idx], G = rgb[idx + 1], B = rgb[idx + 2];
-      const luma = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-      sum += luma; cnt++;
+      const R01 = rgb[idx] / 255.0;
+      const G01 = rgb[idx + 1] / 255.0;
+      const B01 = rgb[idx + 2] / 255.0;
+      const luma01 = 0.2126 * R01 + 0.7152 * G01 + 0.0722 * B01;
+      sum += luma01;
+      cnt++;
     };
 
-    // top & bottom
-    for (let y = 0; y < b; y++) for (let x = 0; x < w; x++) addPixel(x, y);
-    for (let y = h - b; y < h; y++) for (let x = 0; x < w; x++) addPixel(x, y);
+    for (let y = 0; y < b; y++) {
+      for (let x = 0; x < w; x++) addPixel(x, y);
+    }
+    for (let y = h - b; y < h; y++) {
+      for (let x = 0; x < w; x++) addPixel(x, y);
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < b; x++) addPixel(x, y);
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = w - b; x < w; x++) addPixel(x, y);
+    }
 
-    // left & right
-    for (let y = 0; y < h; y++) for (let x = 0; x < b; x++) addPixel(x, y);
-    for (let y = 0; y < h; y++) for (let x = w - b; x < w; x++) addPixel(x, y);
+    const bg01 = cnt ? (sum / cnt) : 1.0;
+    return (bg01 < (thr / 255.0)) ? 'fluorescence' : 'brightfield';
+  }
 
-    const bg = cnt ? (sum / cnt) : 255;
-    return (bg < thr) ? 'fluorescence' : 'brightfield';
+  function boxBlurGray01(src, w, h, radius) {
+    const out = new Float32Array(src.length);
+    const tmp = new Float32Array(src.length);
+
+    const win = radius * 2 + 1;
+
+    // horizontal
+    for (let y = 0; y < h; y++) {
+      let sum = 0;
+      const row = y * w;
+
+      for (let k = -radius; k <= radius; k++) {
+        const x = Math.max(0, Math.min(w - 1, k));
+        sum += src[row + x];
+      }
+
+      for (let x = 0; x < w; x++) {
+        tmp[row + x] = sum / win;
+
+        const xOut = Math.max(0, x - radius);
+        const xIn  = Math.min(w - 1, x + radius + 1);
+        sum += src[row + xIn] - src[row + xOut];
+      }
+    }
+
+    // vertical
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+
+      for (let k = -radius; k <= radius; k++) {
+        const y = Math.max(0, Math.min(h - 1, k));
+        sum += tmp[y * w + x];
+      }
+
+      for (let y = 0; y < h; y++) {
+        out[y * w + x] = sum / win;
+
+        const yOut = Math.max(0, y - radius);
+        const yIn  = Math.min(h - 1, y + radius + 1);
+        sum += tmp[yIn * w + x] - tmp[yOut * w + x];
+      }
+    }
+
+    return out;
+  }
+
+  function backgroundCorrect01(x01, w, h, radius = 101, mode = 'subtract') {
+    if (radius <= 0) return x01;
+
+    const bg01 = boxBlurGray01(x01, w, h, radius);
+    const out = new Float32Array(x01.length);
+
+    let ymin = Infinity;
+    let ymax = -Infinity;
+
+    for (let i = 0; i < x01.length; i++) {
+      let y;
+      if (mode === 'divide') {
+        y = x01[i] / (bg01[i] + 1e-4);
+      } else {
+        y = x01[i] - bg01[i];
+      }
+
+      out[i] = y;
+      if (y < ymin) ymin = y;
+      if (y > ymax) ymax = y;
+    }
+
+    const denom = Math.max(1e-6, ymax - ymin);
+    for (let i = 0; i < out.length; i++) {
+      let y = (out[i] - ymin) / denom;
+      if (y < 0) y = 0;
+      else if (y > 1) y = 1;
+      out[i] = y;
+    }
+
+    return out;
+  }
+
+  function percentileFromSample(arrLike, p) {
+    const arr = Array.from(arrLike);
+    arr.sort((a, b) => a - b);
+    const idx = Math.min(arr.length - 1, Math.max(0, Math.round((p / 100) * (arr.length - 1))));
+    return arr[idx];
   }
 
   function scheduleRealtimePreview() {
@@ -578,6 +776,120 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }, 30);
   }
 
+  // function renderRealtimePreview() {
+  //   if (!previewBase || !settingsCanvas) return;
+  //   if (previewBusy) return;
+  //   previewBusy = true;
+
+  //   try {
+  //     const { w, h, rgb } = previewBase;
+  //     const ctx = settingsCanvas.getContext('2d', { willReadFrequently: true });
+
+  //     // latest params
+  //     const p = pendingParams || defaultParams();
+  //     const mode = detectModeFromPreviewBase(previewBase, 110);
+
+  //     // ✅ align with backend grayscale.py:
+  //     // out01 = clip( ( clip((x-lo)/(hi-lo),0,1) ** gamma ) * gain , 0, 1 )
+  //     const gamma = Math.max(0.1, parseFloat(p.gamma ?? 1));   // same semantic as backend gamma
+  //     const gain  = Math.max(0.0, parseFloat(p.gain  ?? 1));   // same semantic as backend gain
+
+  //     let pLow  = Math.max(0, Math.min(100, parseFloat(p.p_low  ?? 0)));
+  //     let pHigh = Math.max(0, Math.min(100, parseFloat(p.p_high ?? 100)));
+  //     if (pHigh <= pLow) pHigh = Math.min(100, pLow + 1);
+
+  //     const n = w * h;
+  //     const gray = new Float32Array(n);
+
+  //     // fill gray buffer (0..255) and collect min/max
+  //     let gMin = Infinity;
+  //     let gMax = -Infinity;
+
+  //     for (let i = 0, j = 0; i < n; i++, j += 4) {
+  //       const R = rgb[j], G = rgb[j + 1], B = rgb[j + 2];
+  //       let g;
+
+  //       if (mode === 'fluorescence') {
+  //         // backend: green channel
+  //         g = G;
+  //       } else {
+  //         // backend: luma then invert (cells bright on dark)
+  //         g = 0.2126 * R + 0.7152 * G + 0.0722 * B;
+  //         g = 255 - g;
+  //       }
+
+  //       gray[i] = g;
+  //       if (g < gMin) gMin = g;
+  //       if (g > gMax) gMax = g;
+  //     }
+
+  //     // Decide lo/hi
+  //     let lo = gMin;
+  //     let hi = gMax;
+
+  //     const usePercentile = !(pLow <= 0 && pHigh >= 100);
+  //     if (usePercentile) {
+  //       // sample for speed
+  //       const sampleStep = Math.max(1, Math.floor(n / 200000)); // <= 200k samples
+  //       const samples = new Float32Array(Math.ceil(n / sampleStep));
+  //       let si = 0;
+  //       for (let i = 0; i < n; i += sampleStep) samples[si++] = gray[i];
+
+  //       // sort typed array -> normal array (browser sort only works on Array)
+  //       const arr = Array.from(samples.subarray(0, si));
+  //       arr.sort((a, b) => a - b);
+
+  //       const q = (pp) => {
+  //         const idx = Math.min(
+  //           arr.length - 1,
+  //           Math.max(0, Math.round((pp / 100) * (arr.length - 1)))
+  //         );
+  //         return arr[idx];
+  //       };
+
+  //       lo = q(pLow);
+  //       hi = q(pHigh);
+  //     }
+
+  //     const denom = (hi - lo) > 1e-6 ? (hi - lo) : 1.0;
+
+  //     // output image
+  //     const out = ctx.createImageData(w, h);
+  //     const outd = out.data;
+
+  //     for (let i = 0, j = 0; i < n; i++, j += 4) {
+  //       // 1) percentile stretch to [0,1]
+  //       let x = (gray[i] - lo) / denom;
+
+  //       // clamp
+  //       if (x < 0) x = 0;
+  //       else if (x > 1) x = 1;
+
+  //       // 2) gamma + gain (backend-style)
+  //       x = Math.pow(x, gamma) * gain;
+
+  //       // clamp
+  //       if (x < 0) x = 0;
+  //       else if (x > 1) x = 1;
+
+  //       const v = (x * 255) | 0;
+  //       outd[j] = v;
+  //       outd[j + 1] = v;
+  //       outd[j + 2] = v;
+  //       outd[j + 3] = 255;
+  //     }
+
+  //     ctx.putImageData(out, 0, 0);
+
+  //     // show canvas / hide img
+  //     settingsCanvas.style.display = 'block';
+  //     if (settingsPreviewImg) settingsPreviewImg.style.visibility = 'hidden';
+  //     settingsPanZoom?.apply?.();
+
+  //   } finally {
+  //     previewBusy = false;
+  //   }
+  // }
   function renderRealtimePreview() {
     if (!previewBase || !settingsCanvas) return;
     if (previewBusy) return;
@@ -587,95 +899,82 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const { w, h, rgb } = previewBase;
       const ctx = settingsCanvas.getContext('2d', { willReadFrequently: true });
 
-      // latest params
       const p = pendingParams || defaultParams();
       const mode = detectModeFromPreviewBase(previewBase, 110);
 
-      // ✅ align with backend grayscale.py:
-      // out01 = clip( ( clip((x-lo)/(hi-lo),0,1) ** gamma ) * gain , 0, 1 )
-      const gamma = Math.max(0.1, parseFloat(p.gamma ?? 1));   // same semantic as backend gamma
-      const gain  = Math.max(0.0, parseFloat(p.gain  ?? 1));   // same semantic as backend gain
+      const gamma = Math.max(0.1, parseFloat(p.gamma ?? 1.0));
+      const gain  = Math.max(0.0, parseFloat(p.gain ?? 1.0));
 
-      let pLow  = Math.max(0, Math.min(100, parseFloat(p.p_low  ?? 0)));
+      let pLow  = Math.max(0, Math.min(100, parseFloat(p.p_low ?? 0)));
       let pHigh = Math.max(0, Math.min(100, parseFloat(p.p_high ?? 100)));
       if (pHigh <= pLow) pHigh = Math.min(100, pLow + 1);
 
       const n = w * h;
-      const gray = new Float32Array(n);
+      const x01 = new Float32Array(n);
 
-      // fill gray buffer (0..255) and collect min/max
-      let gMin = Infinity;
-      let gMax = -Infinity;
-
+      // 先做 backend 同款 x01
       for (let i = 0, j = 0; i < n; i++, j += 4) {
-        const R = rgb[j], G = rgb[j + 1], B = rgb[j + 2];
-        let g;
+        const R01 = rgb[j] / 255.0;
+        const G01 = rgb[j + 1] / 255.0;
+        const B01 = rgb[j + 2] / 255.0;
 
         if (mode === 'fluorescence') {
-          // backend: green channel
-          g = G;
+          x01[i] = G01;
         } else {
-          // backend: luma then invert (cells bright on dark)
-          g = 0.2126 * R + 0.7152 * G + 0.0722 * B;
-          g = 255 - g;
+          const L01 = 0.2126 * R01 + 0.7152 * G01 + 0.0722 * B01;
+          x01[i] = 1.0 - L01;
         }
-
-        gray[i] = g;
-        if (g < gMin) gMin = g;
-        if (g > gMax) gMax = g;
       }
 
-      // Decide lo/hi
-      let lo = gMin;
-      let hi = gMax;
+      // 跟 backend 對齊：先背景校正
+      const corrected01 = backgroundCorrect01(x01, w, h, 101, 'subtract');
+
+      // 再 percentile
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = 0; i < n; i++) {
+        const v = corrected01[i];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
 
       const usePercentile = !(pLow <= 0 && pHigh >= 100);
       if (usePercentile) {
-        // sample for speed
-        const sampleStep = Math.max(1, Math.floor(n / 200000)); // <= 200k samples
+        const sampleStep = Math.max(1, Math.floor(n / 200000));
         const samples = new Float32Array(Math.ceil(n / sampleStep));
         let si = 0;
-        for (let i = 0; i < n; i += sampleStep) samples[si++] = gray[i];
+        for (let i = 0; i < n; i += sampleStep) {
+          const v = corrected01[i];
+          if (Number.isFinite(v)) samples[si++] = v;
+        }
 
-        // sort typed array -> normal array (browser sort only works on Array)
-        const arr = Array.from(samples.subarray(0, si));
-        arr.sort((a, b) => a - b);
-
-        const q = (pp) => {
-          const idx = Math.min(
-            arr.length - 1,
-            Math.max(0, Math.round((pp / 100) * (arr.length - 1)))
-          );
-          return arr[idx];
-        };
-
-        lo = q(pLow);
-        hi = q(pHigh);
+        const valid = samples.subarray(0, si);
+        if (valid.length > 0) {
+          lo = percentileFromSample(valid, pLow);
+          hi = percentileFromSample(valid, pHigh);
+        }
       }
 
-      const denom = (hi - lo) > 1e-6 ? (hi - lo) : 1.0;
+      if (hi <= lo) hi = lo + 1e-6;
+      const denom = hi - lo;
 
-      // output image
       const out = ctx.createImageData(w, h);
       const outd = out.data;
 
       for (let i = 0, j = 0; i < n; i++, j += 4) {
-        // 1) percentile stretch to [0,1]
-        let x = (gray[i] - lo) / denom;
+        let y = (corrected01[i] - lo) / denom;
 
-        // clamp
-        if (x < 0) x = 0;
-        else if (x > 1) x = 1;
+        if (y < 0) y = 0;
+        else if (y > 1) y = 1;
 
-        // 2) gamma + gain (backend-style)
-        x = Math.pow(x, gamma) * gain;
+        y = Math.pow(y, gamma) * gain;
 
-        // clamp
-        if (x < 0) x = 0;
-        else if (x > 1) x = 1;
+        if (y < 0) y = 0;
+        else if (y > 1) y = 1;
 
-        const v = (x * 255) | 0;
-        outd[j] = v;
+        const v = Math.round(y * 255.0);
+
+        outd[j]     = v;
         outd[j + 1] = v;
         outd[j + 2] = v;
         outd[j + 3] = 255;
@@ -683,7 +982,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
       ctx.putImageData(out, 0, 0);
 
-      // show canvas / hide img
       settingsCanvas.style.display = 'block';
       if (settingsPreviewImg) settingsPreviewImg.style.visibility = 'hidden';
       settingsPanZoom?.apply?.();
@@ -967,14 +1265,88 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   };
 
   // Handle file upload to server
+  // function handleFileUpload(file, UPLOAD_IMAGE_URL) {
+  //   if (isUploading) {
+  //     console.warn('Upload already in progress, skip duplicate call');
+  //     return;
+  //   }
+  //   isUploading = true;
+
+  //   resetPendingUpload(); // clear old preview + reset previous temp upload
+  //   resetSettingsTransform();
+
+  //   const name = (file?.name || '').toLowerCase();
+  //   if (name === 'demo.jpg' || name === 'demo.jpeg') {
+  //     window.isDemoUpload = true;
+  //   }
+
+  //   const fd = new FormData();
+  //   // quick local preview in modal (immediate)
+  //   if (file && settingsPreviewImg) {
+  //     if (settingsPreviewImg.dataset.objUrl) {
+  //       URL.revokeObjectURL(settingsPreviewImg.dataset.objUrl);
+  //       delete settingsPreviewImg.dataset.objUrl;
+  //     }
+  //     const objUrl = URL.createObjectURL(file);
+  //     settingsPreviewImg.dataset.objUrl = objUrl;
+  //     settingsPreviewImg.src = objUrl;
+  //   }
+
+  //   buildPreviewBaseFromBlob(settingsPreviewImg.dataset.objUrl).then(() => {
+  //     if (!pendingParams) pendingParams = defaultParams();
+
+  //     renderRealtimePreview();
+  //   });
+
+  //   fd.append('image', file);
+
+  //   const img = new Image();
+
+  //   img.onload = function() {
+  //     if (img.width > 30000 || img.height > 30000) {
+  //       alert("⚠️ Image to Large (width and height are over 30000 pixel)\nPlease upload smaller image and try again.");
+  //       // disable Start Detection button
+  //       resetPendingUpload();
+  //       closeSettingsModal();
+  //       isUploading = false;
+  //       hideProgressOverlay1();
+  //       return; // Stop further processing
+  //     }
+
+  //     showProgressOverlay1();
+  //     fetch(UPLOAD_IMAGE_URL, {
+  //       method: 'POST',
+  //       headers: { 'X-CSRFToken': csrftoken },
+  //       body: fd
+  //     })
+  //     .then(r => r.json())
+  //     .then(d => {
+  //       window.imgPath = d.image_url || '';
+  //       window.displayUrl = d.display_url || '';   
+  //       window.previewUrl  = d.preview_url  || '';
+
+  //       pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
+
+  //       pendingParams = defaultParams();
+  //       openSettingsModal(file?.name || '');
+  //     })
+  //     .catch(err => console.error(err))
+  //     .finally(() => {
+  //       hideProgressOverlay1();
+  //       isUploading = false;
+  //     });
+  //   }
+  //   img.src = URL.createObjectURL(file);
+  // }
   function handleFileUpload(file, UPLOAD_IMAGE_URL) {
     if (isUploading) {
       console.warn('Upload already in progress, skip duplicate call');
       return;
     }
-    isUploading = true;
+    if (!file) return;
 
-    resetPendingUpload(); // clear old preview + reset previous temp upload
+    isUploading = true;
+    resetPendingUpload();
     resetSettingsTransform();
 
     const name = (file?.name || '').toLowerCase();
@@ -983,62 +1355,54 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }
 
     const fd = new FormData();
-    // quick local preview in modal (immediate)
-    if (file && settingsPreviewImg) {
-      if (settingsPreviewImg.dataset.objUrl) {
-        URL.revokeObjectURL(settingsPreviewImg.dataset.objUrl);
-        delete settingsPreviewImg.dataset.objUrl;
-      }
-      const objUrl = URL.createObjectURL(file);
-      settingsPreviewImg.dataset.objUrl = objUrl;
-      settingsPreviewImg.src = objUrl;
-    }
-
-    buildPreviewBaseFromBlob(settingsPreviewImg.dataset.objUrl).then(() => {
-      if (!pendingParams) pendingParams = defaultParams();
-
-      renderRealtimePreview();
-    });
-
     fd.append('image', file);
 
-    const img = new Image();
+    showProgressOverlay1();
 
-    img.onload = function() {
-      if (img.width > 30000 || img.height > 30000) {
-        alert("⚠️ Image to Large (width and height are over 30000 pixel)\nPlease upload smaller image and try again.");
-        // disable Start Detection button
-        resetPendingUpload();
-        closeSettingsModal();
-        isUploading = false;
-        hideProgressOverlay1();
-        return; // Stop further processing
-      }
-
-      showProgressOverlay1();
-      fetch(UPLOAD_IMAGE_URL, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        body: fd
+    fetch(UPLOAD_IMAGE_URL, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': csrftoken },
+      body: fd
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          throw new Error(`Upload failed: HTTP ${r.status} ${text}`);
+        }
+        return r.json();
       })
-      .then(r => r.json())
-      .then(d => {
+      .then(async (d) => {
         window.imgPath = d.image_url || '';
-        window.displayUrl = d.display_url || '';   
-        window.previewUrl  = d.preview_url  || '';
+        window.displayUrl = d.display_url || '';
+        window.previewUrl = d.preview_url || '';
 
-        pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
-
+        const parts = (window.imgPath || '').split('/');
+        pendingImageDir = parts[3] || null;
         pendingParams = defaultParams();
+
+        const previewSrc = window.previewUrl || window.displayUrl || window.imgPath || '';
+
+        let ok = false;
+        if (previewSrc) {
+          ok = await buildPreviewBaseFromBlob(previewSrc);
+        }
+
         openSettingsModal(file?.name || '');
+
+        if (ok) {
+          renderRealtimePreview();
+        } else {
+          console.warn('Server preview build failed, skip realtime preview.');
+        }
       })
-      .catch(err => console.error(err))
+      .catch(err => {
+        console.error('Upload error:', err);
+        alert('⚠️ Upload failed. Please try again.');
+      })
       .finally(() => {
         hideProgressOverlay1();
         isUploading = false;
       });
-    }
-    img.src = URL.createObjectURL(file);
   }
 
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('hover'); });
