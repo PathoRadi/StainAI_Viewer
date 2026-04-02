@@ -677,6 +677,53 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     return arr[idx];
   }
 
+  function selectFluorescenceChannelFromPreviewBase(previewBase) {
+    const { w, h, rgb } = previewBase;
+    const n = w * h;
+
+    const rVals = new Float32Array(n);
+    const gVals = new Float32Array(n);
+    const bVals = new Float32Array(n);
+
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      rVals[i] = rgb[j] / 255.0;
+      gVals[i] = rgb[j + 1] / 255.0;
+      bVals[i] = rgb[j + 2] / 255.0;
+    }
+
+    const scoreOf = (vals) => {
+      const p995 = percentileFromSample(vals, 99.5);
+      const med  = percentileFromSample(vals, 50.0);
+      return p995 - med;
+    };
+
+    const rScore = scoreOf(rVals);
+    const gScore = scoreOf(gVals);
+    const bScore = scoreOf(bVals);
+
+    let idx = 0;
+    let best = rScore;
+
+    if (gScore > best) {
+      idx = 1;
+      best = gScore;
+    }
+    if (bScore > best) {
+      idx = 2;
+      best = bScore;
+    }
+
+    return {
+      idx,
+      name: ['red', 'green', 'blue'][idx],
+      scores: {
+        red: rScore,
+        green: gScore,
+        blue: bScore
+      }
+    };
+  }
+
   function scheduleRealtimePreview() {
     // debounce：滑動時不要每一個 input 都 full compute
     clearTimeout(previewTimer);
@@ -708,13 +755,30 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const x01 = new Float32Array(n);
 
       // 先做 backend 同款 x01
+      let fluoChannelInfo = null;
+      if (mode === 'fluorescence') {
+        fluoChannelInfo = selectFluorescenceChannelFromPreviewBase(previewBase);
+
+        console.log(
+          'Preview fluorescence channel:',
+          fluoChannelInfo.name,
+          fluoChannelInfo.scores
+        );
+      }
+
       for (let i = 0, j = 0; i < n; i++, j += 4) {
         const R01 = rgb[j] / 255.0;
         const G01 = rgb[j + 1] / 255.0;
         const B01 = rgb[j + 2] / 255.0;
 
         if (mode === 'fluorescence') {
-          x01[i] = G01;
+          if (fluoChannelInfo.idx === 0) {
+            x01[i] = R01;
+          } else if (fluoChannelInfo.idx === 1) {
+            x01[i] = G01;
+          } else {
+            x01[i] = B01;
+          }
         } else {
           const L01 = 0.2126 * R01 + 0.7152 * G01 + 0.0722 * B01;
           x01[i] = 1.0 - L01;
@@ -1049,7 +1113,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (settingsCanvas) settingsCanvas.style.transform = '';
     settingsPanZoom?.reset();
   }
-  
+
   window.resetPendingUpload = resetPendingUpload;
   window.__uploadFileViaDropZone = function(file){
     handleFileUpload(file, UPLOAD_IMAGE_URL);
@@ -1337,8 +1401,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       document.getElementById('drop-zone').style.display = 'flex';
     });
   });
-
-
 
   // Add chart button (max 3)
   const addBtn = document.getElementById('addChartBtn');

@@ -257,19 +257,43 @@ class GrayscaleConverter:
     def convert_to_grayscale_fluorescence(self):
         arr, is_rgb, dtype = self._read_keep_bit()
 
+        detected_channel = None
+        channel_scores = None
+
         if is_rgb:
-            # green channel (uint8)
-            g = arr[:, :, 1]
-            g01 = g.astype(np.float32) / 255.0
-            # out01 = self._enhance01(self._norm_percentile01(g01))
-            corr01 = self._background_correct01(g01)
+            rgb01 = arr.astype(np.float32) / 255.0
+
+            # Auto-detect the strongest fluorescence channel.
+            # Use (high percentile - median) to prefer sparse bright signals
+            # instead of being biased by dark background or global mean.
+            channel_names = ["red", "green", "blue"]
+            score_list = []
+
+            for c in range(3):
+                ch = rgb01[:, :, c]
+                p995 = np.percentile(ch, 99.5)
+                med = np.percentile(ch, 50.0)
+                score = float(p995 - med)
+                score_list.append(score)
+
+            idx = int(np.argmax(score_list))
+            detected_channel = channel_names[idx]
+            channel_scores = {
+                "red": float(score_list[0]),
+                "green": float(score_list[1]),
+                "blue": float(score_list[2]),
+            }
+
+            ch01 = rgb01[:, :, idx]
+
+            corr01 = self._background_correct01(ch01)
             out01 = self._enhance01(self._norm_percentile01(corr01))
 
             out_arr, out_dtype = self._from_float01(out01, np.uint8)  # rgb images end up as u8
+
         else:
             # already grayscale (could be u16)
             x01 = self._to_float01(arr, dtype=dtype)
-            # out01 = self._enhance01(self._norm_percentile01(x01))
             corr01 = self._background_correct01(x01)
             out01 = self._enhance01(self._norm_percentile01(corr01))
 
@@ -280,7 +304,17 @@ class GrayscaleConverter:
         if self.write_u8_png:
             extra_u8 = self._save_extra_u8_png(out01, suffix="_u8")
 
-        return {"gray_path": main_path, "gray_u8_path": extra_u8, "mode": "fluorescence"}
+        result = {
+            "gray_path": main_path,
+            "gray_u8_path": extra_u8,
+            "mode": "fluorescence",
+        }
+
+        if detected_channel is not None:
+            result["channel"] = detected_channel
+            result["channel_scores"] = channel_scores
+
+        return result
 
     def convert_to_grayscale_brightfield(self):
         arr, is_rgb, dtype = self._read_keep_bit()
