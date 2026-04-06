@@ -511,9 +511,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     try {
       const blob = await fetch(blobUrl).then(r => r.blob());
-
-      // 先試著直接要求縮小版 bitmap
-      // 這樣比先完整 decode 再縮更省
       let probe = await createImageBitmap(blob);
 
       const previewMaxSide = 8000;
