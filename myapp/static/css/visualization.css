@@ -246,7 +246,7 @@
     justify-content: center;
     width: 350px;
     height: 60px;
-    margin: 0 45px 0 30px;
+    margin: 0 10px 0 60px;
 }
 .checkbox-label {
     color: var(--checkbox-label);
