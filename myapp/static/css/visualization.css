@@ -285,10 +285,11 @@
 .hidden-checkbox:checked + .checkbox-icon-label .icon-checked   { display: inline-block; }
 /* cell count checkbox */
 .cell-count-checkbox-label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     margin-right: 45px;
+    position: relative;
 }
 .cellcount-icon {
     width: 100%;
@@ -297,7 +298,6 @@
     filter: var(--icon-inactive-filter);
     transition: filter .2s ease;
 }
-/* turn back to checked state */
 .hidden-checkbox:checked + .cell-count-checkbox-label .cellcount-icon {
     filter: none;
 }
