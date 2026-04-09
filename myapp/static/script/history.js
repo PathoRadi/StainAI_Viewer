@@ -214,6 +214,7 @@ export function initHistoryHandlers(historyStack) {
         if (window.chartRefs && window.chartRefs.length) {
           window.chartRefs.forEach((chart, i) => {
             initCheckboxes(window.bboxData, chart);
+            $('#Checkbox_CellCount').prop('checked', false);
             $('#checkbox_All').prop('checked', true);
             $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
               .prop('checked', true);

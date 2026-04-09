@@ -122,6 +122,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         // 2) Make every box visible
         showAllBoxes();
         // 3) Reset filter checkboxes to All
+        $('#Checkbox_CellCount').prop('checked', false);
         $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
@@ -129,6 +130,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       onShowAllBoxes: () => {
         drawBbox(window.bboxData);
         showAllBoxes();
+        $('#Checkbox_CellCount').prop('checked', false);
         $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
@@ -264,15 +266,35 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       B:  'rgba(220,112,0,0.30)',
       A:  'rgba(204,0,0,0.30)',
       RD: 'rgba(0,210,210,0.30)',
-      HR: 'rgba(0,0,204,0.30)'
+      HR: 'rgba(0,0,204,0.30)',
+      CELLCOUNT: 'rgba(142, 68, 173, 0.30)'
     };
     // Check what cell types are selected (determine what boxes should be drawn on the screenshot)
+    // function getSelectedTypes() {
+    //   return new Set(
+    //     $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+    //       .map((_, el) => el.id.split('_')[1])
+    //       .get()
+    //   );
+    // }
     function getSelectedTypes() {
-      return new Set(
-        $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
-          .map((_, el) => el.id.split('_')[1])
-          .get()
-      );
+      const isCellCount = $('#Checkbox_CellCount').is(':checked');
+
+      if (isCellCount) {
+        return {
+          cellCountMode: true,
+          selected: new Set(['R', 'H', 'B', 'A', 'RD', 'HR'])
+        };
+      }
+
+      return {
+        cellCountMode: false,
+        selected: new Set(
+          $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+            .map((_, el) => el.id.split('_')[1])
+            .get()
+        )
+      };
     }
     async function exportCompositePNG() {
       const viewer = window.viewer;        // OpenSeadragon
@@ -298,7 +320,8 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
       // 3) Overlay BBOX (only draw currently selected cell types)
       try {
-        const selected = getSelectedTypes();                       // visible types
+        // const selected = getSelectedTypes();                       // visible types
+        const { selected, cellCountMode } = getSelectedTypes();
         const vp = viewer.viewport;
         const data = Array.isArray(window.bboxData) ? window.bboxData : [];
 
@@ -319,7 +342,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           const ph = Math.abs(p2.y - p1.y);
 
           // Semi-transparent fill (same as screen)
-          ctx.fillStyle = BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)';
+          // ctx.fillStyle = BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)';
+          ctx.fillStyle = cellCountMode
+            ? BBOX_COLORS.CELLCOUNT
+            : (BBOX_COLORS[d.type] || 'rgba(255,0,0,0.25)');
           ctx.fillRect(px, py, pw, ph);
         });
       } catch (e) {

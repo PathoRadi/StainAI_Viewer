@@ -65,7 +65,7 @@
     width: 400px;
     display: flex;
     gap: 10px;
-    margin: 0 0 0 35px;
+    margin: 0 0 0 0;
 }
 .tooltip-parent {
     position: relative;
@@ -278,6 +278,25 @@
 
 .hidden-checkbox:checked + .checkbox-icon-label .icon-unchecked { display: none; }
 .hidden-checkbox:checked + .checkbox-icon-label .icon-checked   { display: inline-block; }
+/* cell count checkbox */
+.cell-count-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.cellcount-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: var(--icon-inactive-filter);
+    transition: filter .2s ease;
+}
+/* turn back to checked state */
+.hidden-checkbox:checked + .cell-count-checkbox-label .cellcount-icon {
+    filter: none;
+}
+
+
 /* Screen Shot */
 .screenshot-menu-wrapper {
     width: 30px;

@@ -1363,7 +1363,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
           drawBbox(window.bboxData);
           showAllBoxes();
-
+          
+          $('#Checkbox_CellCount').prop('checked', false);
           $('#checkbox_All').prop('checked', true);
           $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
             .prop('checked', true);

@@ -121,30 +121,113 @@ export function updateChartAll(bboxData, barChart) {
   barChart.update();
 }
 
+// export function initCheckboxes(bboxData, barChart) {
+//   $('#checkbox_All').prop('checked', false);
+//   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+//     .prop('checked', false);
+//   hideAllBoxes();
+
+//   $('#checkbox_All').off('change').on('change', function(){
+//     const on = this.checked;
+//     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+//       .prop('checked', on);
+//     on ? showAllBoxes() : hideAllBoxes();
+//   });
+
+//   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+//     .off('change').on('change', function(){
+//       const sel = $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+//         .map((i,el)=>el.id.split('_')[1]).get();
+//       $('#checkbox_All').prop('checked', sel.length === 6);
+//       showBoxesByType(sel);
+//   });
+
+//   const $menu = $('#filter-menu');
+//   $('#filter-btn').off('click').on('click', e => {
+//     e.stopPropagation(); $menu.toggleClass('show');
+//   });
+//   $(document).off('click.filterClose').on('click.filterClose', () => $menu.removeClass('show'));
+//   $menu.off('click').on('click', e => e.stopPropagation());
+// }
+
+
 export function initCheckboxes(bboxData, barChart) {
-  $('#checkbox_All').prop('checked', false);
-  $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-    .prop('checked', false);
+  const classSelector = '#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR';
+  const allSelector = '#checkbox_All';
+  const cellCountSelector = '#Checkbox_CellCount';
+
+  $(cellCountSelector).prop('checked', false);
+  $(allSelector).prop('checked', false);
+  $(classSelector).prop('checked', false);
   hideAllBoxes();
 
-  $('#checkbox_All').off('change').on('change', function(){
+  function getSelectedClassTypes() {
+    return $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+      .map((i, el) => el.id.split('_')[1])
+      .get();
+  }
+
+  function updateChartForCurrentSelection() {
+    if (!barChart) return;
+
+    const isCellCount = $(cellCountSelector).is(':checked');
+
+    if (isCellCount) {
+      updateChartAll(bboxData, barChart);
+      return;
+    }
+
+    updateChart(bboxData, barChart);
+  }
+
+  $(cellCountSelector).off('change').on('change', function () {
     const on = this.checked;
-    $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-      .prop('checked', on);
-    on ? showAllBoxes() : hideAllBoxes();
+
+    if (on) {
+      $(allSelector).prop('checked', false);
+      $(classSelector).prop('checked', false);
+      showAllBoxesAsCellCount();
+    } else {
+      hideAllBoxes();
+    }
+
+    updateChartForCurrentSelection();
   });
 
-  $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-    .off('change').on('change', function(){
-      const sel = $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
-        .map((i,el)=>el.id.split('_')[1]).get();
-      $('#checkbox_All').prop('checked', sel.length === 6);
+  $(allSelector).off('change').on('change', function () {
+    const on = this.checked;
+
+    $(cellCountSelector).prop('checked', false);
+    $(classSelector).prop('checked', on);
+
+    if (on) {
+      showAllBoxes();
+    } else {
+      hideAllBoxes();
+    }
+
+    updateChartForCurrentSelection();
+  });
+
+  $(classSelector).off('change').on('change', function () {
+    $(cellCountSelector).prop('checked', false);
+
+    const sel = getSelectedClassTypes();
+    $(allSelector).prop('checked', sel.length === 6);
+
+    if (sel.length > 0) {
       showBoxesByType(sel);
+    } else {
+      hideAllBoxes();
+    }
+
+    updateChartForCurrentSelection();
   });
 
   const $menu = $('#filter-menu');
   $('#filter-btn').off('click').on('click', e => {
-    e.stopPropagation(); $menu.toggleClass('show');
+    e.stopPropagation();
+    $menu.toggleClass('show');
   });
   $(document).off('click.filterClose').on('click.filterClose', () => $menu.removeClass('show'));
   $menu.off('click').on('click', e => e.stopPropagation());

@@ -298,8 +298,13 @@
           </div>
           <!-- Box Controls -->
           <div class="checkbox-container-wrapper">
-            <text class="checkbox-label">CLASS TO DISPLAY</text>
+            <!-- all cell types -->
             <div class="checkbox-container">
+              <input type="checkbox" id="Checkbox_CellCount" class="hidden-checkbox">
+              <label for="Checkbox_CellCount" class="checkbox-icon-label tooltip-parent cell-count-checkbox-label">
+                <img src="{% static 'logo/cellcount_icon_b.png' %}" class="checkbox-icon cellcount-icon">
+                <span class="tooltip-text">Cell Count</span>
+              </label>
               <input type="checkbox" id="Checkbox_R" class="hidden-checkbox">
               <label for="Checkbox_R" class="checkbox-icon-label tooltip-parent">
                 <img src="{% static 'logo/R_icon_on.png' %}" class="checkbox-icon icon-checked">
