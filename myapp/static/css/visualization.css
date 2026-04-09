@@ -57,6 +57,7 @@
 .roi-toolbar-container {
     display: flex;
     flex-direction: row;
+    align-items: center;
     width: 965px;
     height: 60px;
     margin: 20px 10px 10px 25px;
