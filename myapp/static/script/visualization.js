@@ -1,5 +1,5 @@
 // static/script/visualization.js
-import { hideAllBoxes, showAllBoxes, showBoxesByType } from './box.js';
+import { hideAllBoxes, showAllBoxes, showBoxesByType, showAllBoxesAsCellCount } from './box.js';
 
 const fullNames ={
   R:  'Ramified',
@@ -150,7 +150,6 @@ export function updateChartAll(bboxData, barChart) {
 //   $menu.off('click').on('click', e => e.stopPropagation());
 // }
 
-
 export function initCheckboxes(bboxData, barChart) {
   const classSelector = '#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR';
   const allSelector = '#checkbox_All';
@@ -165,6 +164,13 @@ export function initCheckboxes(bboxData, barChart) {
     return $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
       .map((i, el) => el.id.split('_')[1])
       .get();
+  }
+
+  function setAllCheckedState() {
+    $(cellCountSelector).prop('checked', false);
+    $(allSelector).prop('checked', true);
+    $(classSelector).prop('checked', true);
+    showAllBoxes();
   }
 
   function updateChartForCurrentSelection() {
@@ -188,7 +194,7 @@ export function initCheckboxes(bboxData, barChart) {
       $(classSelector).prop('checked', false);
       showAllBoxesAsCellCount();
     } else {
-      hideAllBoxes();
+      setAllCheckedState();
     }
 
     updateChartForCurrentSelection();
