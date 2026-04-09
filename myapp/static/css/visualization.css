@@ -241,9 +241,9 @@
 .checkbox-container-wrapper {
     display: flex;
     flex-direction: column;
-    width: 350px;
+    width: 395px;
     height: 60px;
-    margin: 0 45px 0 150px;
+    margin: 0 45px 0 55px;
 }
 .checkbox-label {
     color: var(--checkbox-label);
@@ -283,7 +283,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-right: 20px;
+    margin-right: 45px;
 }
 .cellcount-icon {
     width: 100%;
