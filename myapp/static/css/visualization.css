@@ -62,7 +62,7 @@
     margin: 20px 10px 10px 25px;
 }
 .konva-controls {
-    width: 400px;
+    width: 450px;
     display: flex;
     gap: 10px;
     margin: 0 0 0 0;
@@ -241,7 +241,7 @@
 .checkbox-container-wrapper {
     display: flex;
     flex-direction: column;
-    width: 305px;
+    width: 350px;
     height: 60px;
     margin: 0 45px 0 150px;
 }
@@ -283,6 +283,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    margin-right: 20px;
 }
 .cellcount-icon {
     width: 100%;
