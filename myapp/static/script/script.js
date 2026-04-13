@@ -110,6 +110,14 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
     window.viewer = viewer;
 
+    try {
+      if (typeof viewer.svgOverlay === 'function') {
+        viewer.__stainSvgOverlay = viewer.svgOverlay();
+      }
+    } catch (e) {
+      console.warn('svgOverlay init failed, using HTML bbox fallback:', e);
+    }
+
     // ──────── Initialize Konva ROI manager ────────
     window.konvaManager = initKonvaManager({
       viewer,
