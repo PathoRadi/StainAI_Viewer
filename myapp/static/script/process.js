@@ -110,7 +110,10 @@ export function addBarChart(barChartWrappers) {
 
   // Create Chart
   const chart = createBarChart(`barChart${idx}`);
-  initCheckboxes(window.bboxData, chart);
+  // initCheckboxes(window.bboxData, chart);
+  if (idx === 1) {
+    initCheckboxes(window.bboxData, chart);
+  }
 
   // Reset filters & draw
   $('#checkbox_All').prop('checked', true);

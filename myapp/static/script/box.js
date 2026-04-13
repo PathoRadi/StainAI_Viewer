@@ -156,24 +156,6 @@ function getOverlayMode() {
   return 'html';
 }
 
-// function ensureOverlayRoot() {
-//   const mode = getOverlayMode();
-
-//   if (mode === 'svg') {
-//     const svg = getSvgOverlayNode();
-//     if (!svg) return { mode: 'html', root: ensureHtmlOverlayRoot() };
-
-//     let layer = svg.querySelector('#bbox-svg-layer');
-//     if (!layer) {
-//       layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-//       layer.setAttribute('id', 'bbox-svg-layer');
-//       svg.appendChild(layer);
-//     }
-//     return { mode: 'svg', root: layer };
-//   }
-
-//   return { mode: 'html', root: ensureHtmlOverlayRoot() };
-// }
 function ensureOverlayRoot() {
   return { mode: 'html', root: ensureHtmlOverlayRoot() };
 }
