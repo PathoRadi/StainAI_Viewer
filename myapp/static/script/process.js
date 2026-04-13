@@ -6,6 +6,22 @@ import { refreshProjectsUI } from './project.js';
 
 window.chartRefs = [];
 
+function getTotalCellCountFromChart(chart) {
+  if (!chart?.data?.datasets?.length) return 0;
+
+  return chart.data.datasets.reduce((sum, ds) => {
+    const arr = Array.isArray(ds.data) ? ds.data : [];
+    return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
+  }, 0);
+}
+
+function updateChartTotalText(chart, idx) {
+  const totalEl = document.getElementById(`chart-total-value${idx}`);
+  if (!totalEl) return;
+
+  totalEl.textContent = getTotalCellCountFromChart(chart);
+}
+
 // Add a new bar chart to the DOM and initialize it
 export function addBarChart(barChartWrappers) {
   const wrappers = document.getElementById(barChartWrappers);
@@ -24,10 +40,19 @@ export function addBarChart(barChartWrappers) {
   if (idx === 1) {
     // First barChart-wrapper: only barChart
     wrapper.innerHTML = `
-      <span class="chart-label">Full Image</span>
+      <div class="chart-left-info">
+        <span class="chart-label">Full Image</span>
+
+        <div class="chart-total-block" id="chart-total-block${idx}">
+          <div class="chart-total-title">Total Cell Count</div>
+          <div class="chart-total-value" id="chart-total-value${idx}">0</div>
+        </div>
+      </div>
+
       <canvas class="barChart" id="barChart${idx}"
               width="400" height="200"
               style="margin-top:16px;"></canvas>
+
       <div style="position: absolute; top: 1px; right: 8px;">
         <div class="screenshot-menu-wrapper">
           <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
@@ -95,6 +120,7 @@ export function addBarChart(barChartWrappers) {
   if (idx === 1) {
     // First chart shows full image data
     updateChart(window.bboxData, chart);
+    updateChartTotalText(chart, idx);
   } else {
     // Other charts start empty
     chart.data.datasets[0].data = [0,0,0,0,0,0];

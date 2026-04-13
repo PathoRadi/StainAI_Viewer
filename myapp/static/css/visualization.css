@@ -435,6 +435,46 @@
     font-family: 'PingFangHKWeb', sans-serif;
     white-space: nowrap;           
 }
+.chart-left-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 150px;
+    height: 100%;
+    padding: 30px 0 22px 30px;
+    box-sizing: border-box;
+}
+.chart-left-info .chart-label {
+    width: auto;
+    height: auto;
+    margin: 0;
+    text-align: left;
+}
+.chart-total-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    min-height: 56px;
+}
+.chart-total-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--chart-tick-color);
+    font-family: 'PingFangHKWeb', sans-serif;
+    line-height: 1.2;
+    opacity: 0.85;
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
+.chart-total-value {
+    font-size: 28px;
+    font-weight: 600;
+    color: var(--chart-tick-color);
+    font-family: 'PingFangHKWeb', sans-serif;
+    line-height: 1;
+}
+
 .barChart-wrapper .barChart {
     display: block;
     width: 100%;

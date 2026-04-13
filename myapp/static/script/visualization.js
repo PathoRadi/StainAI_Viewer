@@ -10,6 +10,24 @@ const fullNames ={
   HR: 'Hyper-Rod'
 }
 
+function syncMainChartTotal(barChart) {
+  if (!barChart?.canvas?.id) return;
+
+  const match = String(barChart.canvas.id).match(/^barChart(\d+)$/);
+  if (!match) return;
+
+  const idx = match[1];
+  const totalEl = document.getElementById(`chart-total-value${idx}`);
+  if (!totalEl) return;
+
+  const total = (barChart.data.datasets || []).reduce((sum, ds) => {
+    const arr = Array.isArray(ds.data) ? ds.data : [];
+    return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
+  }, 0);
+
+  totalEl.textContent = total;
+}
+
 export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0]) {
   const tickColor = getComputedStyle(document.documentElement)
                       .getPropertyValue('--chart-tick-color').trim();
@@ -112,6 +130,7 @@ export function updateChart(bboxData, barChart) {
 
   barChart.data.datasets[0].data = counts;
   barChart.update();
+  syncMainChartTotal(barChart);
 }
 
 export function updateChartAll(bboxData, barChart) {
@@ -119,6 +138,7 @@ export function updateChartAll(bboxData, barChart) {
   const counts = types.map(t => bboxData.filter(d => d.type === t).length);
   barChart.data.datasets[0].data = counts;
   barChart.update();
+  syncMainChartTotal(barChart);
 }
 
 // export function initCheckboxes(bboxData, barChart) {
