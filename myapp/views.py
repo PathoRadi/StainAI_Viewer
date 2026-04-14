@@ -249,6 +249,9 @@ def _blob_name_for_original(user_id: str, image_name: str, filename: str) -> str
 def _blob_name_for_result(user_id: str, image_name: str, filename: str) -> str:
     return f"{_blob_prefix_for_image(user_id, image_name)}/result/{filename}"
 
+def _blob_name_for_resized(user_id: str, image_name: str, filename: str) -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name)}/resized/{filename}"
+
 def _download_json_from_blob(blob_name: str) -> dict | None:
     client = _blob_service_client()
     if client is None:
@@ -411,6 +414,7 @@ def upload_detection_outputs_to_blob(
     image_dir: str,
     orig_path: str,
     result_json_path: str,
+    resized_path: str | None = None,
     detect_result_path: str | None = None,
 ):
     """
@@ -423,9 +427,11 @@ def upload_detection_outputs_to_blob(
         logger.warning("Blob disabled (no connection string)")
         return
 
+    # upload original image
     original_filename = os.path.basename(orig_path)
     _upload_file_to_blob(orig_path, _blob_name_for_original(user_id, image_name, original_filename))
 
+    # upload mmap.tif
     result_dir = os.path.join(image_dir, "result")
     mmap_path = os.path.join(result_dir, f"{image_name}_mmap.tif")
     if os.path.exists(mmap_path):
@@ -433,16 +439,23 @@ def upload_detection_outputs_to_blob(
     else:
         logger.warning("mmap.tif not found: %s", mmap_path)
 
+    # upload results.json
     if os.path.exists(result_json_path):
         _upload_file_to_blob(result_json_path, _blob_name_for_result(user_id, image_name, f"{image_name}_results.json"))
     else:
         logger.warning("result json not found: %s", result_json_path)
 
+    # upload chart.png
     chart_path = os.path.join(result_dir, f"{image_name}_chart.png")
     if os.path.exists(chart_path):
         _upload_file_to_blob(chart_path, _blob_name_for_result(user_id, image_name, f"{image_name}_chart.png"))
     else:
         logger.warning("chart png not found: %s", chart_path)
+
+    # upload resized display image
+    if resized_path and os.path.exists(resized_path):
+        _upload_file_to_blob(resized_path, _blob_name_for_resized(user_id, image_name, f"{image_name}_resized.png"))
+
 
     if detect_result_path and os.path.exists(detect_result_path):
         _upload_file_to_blob(detect_result_path, _blob_name_for_detect_result(user_id, image_name))
@@ -1124,7 +1137,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # 6) Save to Azure Blob Storage
         # ---------------------------
         try:
-            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, download_result_path, result_path)
+            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, download_result_path, result_path, disp_path)
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
 
