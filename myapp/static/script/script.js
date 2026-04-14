@@ -162,10 +162,13 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             imageName: item.image_name,
             location: item.location || "images",
             projectName: item.location === "images" ? "" : item.location,
-            displayUrl: item.display_url || "",
+            // displayUrl: item.display_url || "",
+            // boxes: Array.isArray(item.boxes) ? item.boxes : [],
+            // origSize: item.orig_size || [],
+            // dispSize: item.display_size || [],
+            tileSource: item.tileSource || item.tile_source || "",
             boxes: Array.isArray(item.boxes) ? item.boxes : [],
-            origSize: item.orig_size || [],
-            dispSize: item.display_size || [],
+            origSize: item.origSize || item.orig_size || [],
             demo: false,
           }))
         );

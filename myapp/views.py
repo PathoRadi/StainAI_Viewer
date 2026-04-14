@@ -366,27 +366,101 @@ def _blob_original_url(user_id, image_name, filename):
 
     return f"{blob_client.url}?{sas_token}"
 
+def _blob_name_for_dzi(user_id: str, image_name: str, filename: str) -> str:
+    return f"{_blob_prefix_for_image(user_id, image_name)}/dzi/{filename}"
+
+def _blob_name_for_dzi_tile(user_id: str, image_name: str, relative_tile_path: str) -> str:
+    rel = str(relative_tile_path).replace("\\", "/").lstrip("/")
+    return f"{_blob_prefix_for_image(user_id, image_name)}/dzi/{rel}"
+
+def _blob_sas_url(blob_name: str, *, expiry_hours: int = 2) -> str | None:
+    client = _blob_service_client()
+    if client is None:
+        return None
+
+    container_name = settings.AZURE_BLOB_CONTAINER_NAME
+    blob_client = client.get_blob_client(container=container_name, blob=blob_name)
+
+    sas_token = generate_blob_sas(
+        account_name=blob_client.account_name,
+        container_name=container_name,
+        blob_name=blob_name,
+        account_key=settings.AZURE_ACCOUNT_KEY,
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.utcnow() + timedelta(hours=expiry_hours),
+    )
+    return f"{blob_client.url}?{sas_token}"
+
+def _blob_dzi_url(user_id: str, image_name: str, dzi_filename: str) -> str | None:
+    blob_name = _blob_name_for_dzi(user_id, image_name, dzi_filename)
+    return _blob_sas_url(blob_name)
+
+def _blob_dzi_tile_base_url(user_id: str, image_name: str, dzi_filename: str) -> str | None:
+    """
+    Return SAS base url for the DZI _files directory, e.g.
+    https://.../container/user/images/foo/dzi/foo_files?...SAS...
+    """
+    stem, _ = os.path.splitext(dzi_filename)
+    blob_name = _blob_name_for_dzi(user_id, image_name, f"{stem}_files")
+    return _blob_sas_url(blob_name)
+
+# def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict) -> dict:
+#     if not isinstance(payload, dict):
+#         return {
+#             # 'display_url': '',
+#             # 'boxes': [],
+#             # 'orig_size': [],
+#             # 'display_size': [],
+#             # 'original_filename': '',
+#             'tile_source': None,
+#             'boxes': [],
+#             'orig_size': [],
+#             'original_filename': '',
+#         }
+
+#     original_filename = payload.get('original_filename', '')
+#     # display_url = ''
+
+#     # if original_filename:
+#     #     display_url = _blob_original_url(user_id, image_name, original_filename) or ''
+#     dzi_url = payload.get('dzi_url') or payload.get('dzi_path') or ''
+
+#     return {
+#         # 'display_url': display_url,
+#         # 'boxes': payload.get('boxes', []),
+#         # 'orig_size': payload.get('orig_size', []),
+#         # 'display_size': payload.get('display_size', []),
+#         # 'original_filename': original_filename,
+#         'tile_source': dzi_url,
+#         'boxes': payload.get('boxes', []),
+#         'orig_size': payload.get('orig_size', []),
+#         'original_filename': original_filename,
+#     }
+
 def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict) -> dict:
     if not isinstance(payload, dict):
         return {
-            'display_url': '',
+            'tile_source': None,
             'boxes': [],
             'orig_size': [],
-            'display_size': [],
             'original_filename': '',
         }
 
     original_filename = payload.get('original_filename', '')
-    display_url = ''
+    dzi_filename = payload.get('dzi_filename', '')
 
-    if original_filename:
-        display_url = _blob_original_url(user_id, image_name, original_filename) or ''
+    tile_source = payload.get('dzi_url') or ''
+
+    if not tile_source and dzi_filename:
+        tile_source = _blob_dzi_url(user_id, image_name, dzi_filename) or ''
+
+    if not tile_source:
+        tile_source = payload.get('dzi_path') or ''
 
     return {
-        'display_url': display_url,
+        'tile_source': tile_source,
         'boxes': payload.get('boxes', []),
         'orig_size': payload.get('orig_size', []),
-        'display_size': payload.get('display_size', []),
         'original_filename': original_filename,
     }
 
@@ -412,6 +486,7 @@ def upload_detection_outputs_to_blob(
     orig_path: str,
     result_json_path: str,
     detect_result_path: str | None = None,
+    dzi_path: str | None = None,
 ):
     """
     Upload final detection outputs to Azure Blob Storage.
@@ -423,9 +498,11 @@ def upload_detection_outputs_to_blob(
         logger.warning("Blob disabled (no connection string)")
         return
 
+    # Upload original image
     original_filename = os.path.basename(orig_path)
     _upload_file_to_blob(orig_path, _blob_name_for_original(user_id, image_name, original_filename))
 
+    # Upload (mmap.tif)
     result_dir = os.path.join(image_dir, "result")
     mmap_path = os.path.join(result_dir, f"{image_name}_mmap.tif")
     if os.path.exists(mmap_path):
@@ -433,11 +510,36 @@ def upload_detection_outputs_to_blob(
     else:
         logger.warning("mmap.tif not found: %s", mmap_path)
 
+    # Upload DZI and tiles
+    if dzi_path and os.path.exists(dzi_path):
+        dzi_filename = os.path.basename(dzi_path)
+        _upload_file_to_blob(dzi_path, _blob_name_for_dzi(user_id, image_name, dzi_filename))
+
+        stem, _ = os.path.splitext(dzi_filename)
+        dzi_tiles_dir = os.path.join(os.path.dirname(dzi_path), f"{stem}_files")
+
+        if os.path.isdir(dzi_tiles_dir):
+            for root, _, files in os.walk(dzi_tiles_dir):
+                for fn in files:
+                    local_tile_path = os.path.join(root, fn)
+                    rel = os.path.relpath(local_tile_path, os.path.dirname(dzi_path))
+                    # rel 會長得像 foo_files/0/0_0.jpg
+                    _upload_file_to_blob(
+                        local_tile_path,
+                        _blob_name_for_dzi_tile(user_id, image_name, rel)
+                    )
+        else:
+            logger.warning("DZI tile folder not found: %s", dzi_tiles_dir)
+    else:
+        logger.warning("DZI file not found: %s", dzi_path)
+
+    # Upload result JSON
     if os.path.exists(result_json_path):
         _upload_file_to_blob(result_json_path, _blob_name_for_result(user_id, image_name, f"{image_name}_results.json"))
     else:
         logger.warning("result json not found: %s", result_json_path)
 
+    # Upload chart PNG
     chart_path = os.path.join(result_dir, f"{image_name}_chart.png")
     if os.path.exists(chart_path):
         _upload_file_to_blob(chart_path, _blob_name_for_result(user_id, image_name, f"{image_name}_chart.png"))
@@ -665,10 +767,13 @@ def viewer_state(request):
         hydrated_history.append({
             "image_name": image_name,
             "location": location,
-            "display_url": result_data.get("display_url", ""),
+            # "display_url": result_data.get("display_url", ""),
+            # "boxes": result_data.get("boxes", []),
+            # "orig_size": result_data.get("orig_size", []),
+            # "display_size": result_data.get("display_size", []),
+            "tileSource": result_data.get("tile_source"),
             "boxes": result_data.get("boxes", []),
-            "orig_size": result_data.get("orig_size", []),
-            "display_size": result_data.get("display_size", []),
+            "origSize": result_data.get("orig_size", []),
         })
 
     return JsonResponse({
@@ -767,7 +872,7 @@ def upload_image(request):
         return JsonResponse({
             'image_url': image_url,
             'preview_url': preview_url,
-            'display_url': display_url,
+            'image_name': image_name,
         })
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)
@@ -914,7 +1019,10 @@ def get_project_images(request):
             "dir": image_name,
             "name": image_name,
             "project_name": project_name,
-            "displayUrl": data.get("display_url"),
+            # "displayUrl": data.get("display_url"),
+            "tileSource": data.get("tile_source"),
+            "boxes": data.get("boxes", []),
+            "origSize": data.get("orig_size", []),
         })
 
     return JsonResponse({"success": True, "images": items})
@@ -980,11 +1088,13 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         ow, oh = _image_size_wh(orig_path)
 
         # Decide which image to show in the viewer (if any side > 20000, create a half-size display image)
-        if oh > 20000 or ow > 20000:
-            disp_path = DisplayImageGenerator(orig_path, image_dir).generate_display_image()
-            logger.info("Resized display image created: %s", disp_path)
-        else:
-            disp_path = orig_path
+        # if oh > 20000 or ow > 20000:
+        #     disp_path = DisplayImageGenerator(orig_path, image_dir).generate_display_image()
+        #     logger.info("Resized display image created: %s", disp_path)
+        # else:
+        #     disp_path = orig_path
+
+        dzi_path = DisplayImageGenerator(orig_path, image_dir).generate_dzi()
 
         init_stage_end = time.perf_counter()
         logger.info("Initialization done")
@@ -1069,7 +1179,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         proc_stage_start = time.perf_counter()
         _set_progress_stage(image_dir, "proc")  # enter stage 4) proc
 
-        dw, dh = _image_size_wh(disp_path)  # display image (w, h)
+        # dw, dh = _image_size_wh(disp_path)  # display image (w, h)
 
         # Create Original_Mmap.tiff
         result_dir = os.path.join(image_dir, "result")
@@ -1106,10 +1216,15 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
 
         # Write result JSON for frontend /detect_result to read
         result = {
+            # "boxes": detections,
+            # "orig_size": [ow, oh],
+            # "display_size": [dw, dh],
+            # "original_filename": orig_name,
             "boxes": detections,
             "orig_size": [ow, oh],
-            "display_size": [dw, dh],
             "original_filename": orig_name,
+            "dzi_filename": os.path.basename(dzi_path),
+            "dzi_path": _to_media_url(dzi_path),   # local fallback
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -1124,9 +1239,29 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # 6) Save to Azure Blob Storage
         # ---------------------------
         try:
-            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, download_result_path, result_path)
+            # upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, download_result_path, result_path)
+            upload_detection_outputs_to_blob(
+                user_id,
+                image_name,
+                image_dir,
+                orig_path,
+                download_result_path,
+                result_path,
+                dzi_path=dzi_path,
+            )
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
+
+        try:
+            dzi_filename = os.path.basename(dzi_path)
+            blob_dzi_url = _blob_dzi_url(user_id, image_name, dzi_filename)
+            if blob_dzi_url:
+                result["dzi_url"] = blob_dzi_url
+                with open(result_path, "w", encoding="utf-8") as f:
+                    json.dump(result, f)
+                _upload_file_to_blob(result_path, _blob_name_for_detect_result(user_id, image_name))
+        except Exception:
+            logger.exception("Failed to update detect_result with blob dzi url for image=%s", image_name)
 
         try:
             state_add_image(user_id, image_name, "images")
@@ -1379,6 +1514,132 @@ def delete_image(request):
 # ---------------------------
 # Rename image
 # ---------------------------
+# @csrf_exempt
+# @require_POST
+# def rename_image(request):
+#     try:
+#         user_id = _require_viewer_user(request)
+#     except PermissionError:
+#         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+#     try:
+#         body = json.loads(request.body or "{}")
+
+#         old_image_name = (body.get("old_image_name") or "").strip()
+#         new_image_name = safe_filename((body.get("new_image_name") or "").strip())
+
+#         if not old_image_name or not new_image_name:
+#             return JsonResponse(
+#                 {"success": False, "message": "old_image_name and new_image_name are required"},
+#                 status=400
+#             )
+
+#         if old_image_name == new_image_name:
+#             # current = _read_detect_result_from_blob(user_id, old_image_name) or {}
+#             # original_filename = current.get("original_filename", "")
+#             # display_url = _blob_original_url(user_id, old_image_name, original_filename) if original_filename else ""
+#             # return JsonResponse({
+#             #     "success": True,
+#             #     "image_name": new_image_name,
+#             #     "display_url": display_url
+#             # })
+#             current = _read_detect_result_from_blob(user_id, old_image_name) or {}
+#             frontend = _frontend_detect_result_payload(user_id, old_image_name, current)
+#             return JsonResponse({
+#                 "success": True,
+#                 "image_name": new_image_name,
+#                 "tile_source": frontend.get("tile_source"),
+#                 "boxes": frontend.get("boxes", []),
+#                 "orig_size": frontend.get("orig_size", []),
+#             })
+
+#         state = load_viewer_state_from_blob(user_id)
+#         if _find_image_entry(state, new_image_name) is not None:
+#             return JsonResponse(
+#                 {"success": False, "message": "A folder with this name already exists"},
+#                 status=409
+#             )
+
+#         old_root = _blob_prefix_for_image(user_id, old_image_name)
+#         new_root = _blob_prefix_for_image(user_id, new_image_name)
+
+#         if _list_blob_names(new_root):
+#             return JsonResponse(
+#                 {"success": False, "message": "Destination image folder already exists in blob"},
+#                 status=409
+#             )
+
+#         data = _read_detect_result_from_blob(user_id, old_image_name) or {}
+#         original_filename = data.get("original_filename", "")
+
+#         if not original_filename:
+#             return JsonResponse(
+#                 {"success": False, "message": "original_filename missing in detect result"},
+#                 status=500
+#             )
+
+#         old_original = _blob_name_for_original(user_id, old_image_name, original_filename)
+#         new_original = _blob_name_for_original(user_id, new_image_name, original_filename)
+
+#         old_chart = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_chart.png")
+#         new_chart = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_chart.png")
+
+#         old_mmap = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_mmap.tif")
+#         new_mmap = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_mmap.tif")
+
+#         old_results = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_results.json")
+#         new_results = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_results.json")
+
+#         old_detect = _blob_name_for_detect_result(user_id, old_image_name)
+#         new_detect = _blob_name_for_detect_result(user_id, new_image_name)
+
+#         # 檢查來源是否存在
+#         required_sources = [old_original, old_detect]
+#         for src in required_sources:
+#             if not _blob_exists(src):
+#                 return JsonResponse(
+#                     {"success": False, "message": f"Source blob not found: {src}"},
+#                     status=404
+#                 )
+
+#         try:
+#             _copy_blob(old_original, new_original)
+
+#             if _blob_exists(old_chart):
+#                 _copy_blob(old_chart, new_chart)
+
+#             if _blob_exists(old_mmap):
+#                 _copy_blob(old_mmap, new_mmap)
+
+#             if _blob_exists(old_results):
+#                 _copy_blob(old_results, new_results)
+
+#             # detect result 內容裡如果有 image name 相關欄位，可在這裡更新
+#             _copy_blob(old_detect, new_detect)
+
+#         except Exception:
+#             try:
+#                 _delete_blob_prefix(new_root)
+#             except Exception:
+#                 logger.exception("Failed to rollback destination prefix: %s", new_root)
+#             raise
+
+#         _delete_blob_prefix(old_root)
+#         _delete_local_image_dir_by_userid(user_id, old_image_name)
+#         state_rename_image(user_id, old_image_name, new_image_name)
+
+#         new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
+
+#         return JsonResponse({
+#             "success": True,
+#             "image_name": new_image_name,
+#             "display_url": new_display_url
+#         })
+
+#     except Exception as e:
+#         logger.exception("rename_image failed")
+#         return JsonResponse({"success": False, "message": str(e)}, status=500)
+
 @csrf_exempt
 @require_POST
 def rename_image(request):
@@ -1399,14 +1660,16 @@ def rename_image(request):
                 status=400
             )
 
+        # same name -> just return current frontend payload
         if old_image_name == new_image_name:
             current = _read_detect_result_from_blob(user_id, old_image_name) or {}
-            original_filename = current.get("original_filename", "")
-            display_url = _blob_original_url(user_id, old_image_name, original_filename) if original_filename else ""
+            frontend = _frontend_detect_result_payload(user_id, old_image_name, current)
             return JsonResponse({
                 "success": True,
                 "image_name": new_image_name,
-                "display_url": display_url
+                "tile_source": frontend.get("tile_source"),
+                "boxes": frontend.get("boxes", []),
+                "orig_size": frontend.get("orig_size", []),
             })
 
         state = load_viewer_state_from_blob(user_id)
@@ -1425,8 +1688,9 @@ def rename_image(request):
                 status=409
             )
 
-        data = _read_detect_result_from_blob(user_id, old_image_name) or {}
-        original_filename = data.get("original_filename", "")
+        detect_payload = _read_detect_result_from_blob(user_id, old_image_name) or {}
+        original_filename = detect_payload.get("original_filename", "")
+        dzi_filename = detect_payload.get("dzi_filename", "")
 
         if not original_filename:
             return JsonResponse(
@@ -1449,7 +1713,7 @@ def rename_image(request):
         old_detect = _blob_name_for_detect_result(user_id, old_image_name)
         new_detect = _blob_name_for_detect_result(user_id, new_image_name)
 
-        # 檢查來源是否存在
+        # required sources
         required_sources = [old_original, old_detect]
         for src in required_sources:
             if not _blob_exists(src):
@@ -1459,8 +1723,10 @@ def rename_image(request):
                 )
 
         try:
+            # 1) original
             _copy_blob(old_original, new_original)
 
+            # 2) result files
             if _blob_exists(old_chart):
                 _copy_blob(old_chart, new_chart)
 
@@ -1470,8 +1736,32 @@ def rename_image(request):
             if _blob_exists(old_results):
                 _copy_blob(old_results, new_results)
 
-            # detect result 內容裡如果有 image name 相關欄位，可在這裡更新
-            _copy_blob(old_detect, new_detect)
+            # 3) DZI + tiles
+            if dzi_filename:
+                old_dzi = _blob_name_for_dzi(user_id, old_image_name, dzi_filename)
+                new_dzi = _blob_name_for_dzi(user_id, new_image_name, dzi_filename)
+
+                if _blob_exists(old_dzi):
+                    _copy_blob(old_dzi, new_dzi)
+
+                stem, _ = os.path.splitext(dzi_filename)
+                old_dzi_prefix = _blob_name_for_dzi(user_id, old_image_name, f"{stem}_files")
+                new_dzi_prefix = _blob_name_for_dzi(user_id, new_image_name, f"{stem}_files")
+
+                for name in _list_blob_names(old_dzi_prefix):
+                    suffix = name[len(old_dzi_prefix):].lstrip("/")
+                    dst = f"{new_dzi_prefix}/{suffix}" if suffix else new_dzi_prefix
+                    _copy_blob(name, dst)
+
+            # 4) rewrite detect_result.json instead of raw copy
+            new_detect_payload = dict(detect_payload)
+            if dzi_filename:
+                new_detect_payload["dzi_filename"] = dzi_filename
+                new_detect_payload["dzi_url"] = _blob_dzi_url(user_id, new_image_name, dzi_filename) or ""
+            else:
+                new_detect_payload["dzi_url"] = ""
+
+            _upload_json_to_blob(new_detect, new_detect_payload)
 
         except Exception:
             try:
@@ -1480,16 +1770,19 @@ def rename_image(request):
                 logger.exception("Failed to rollback destination prefix: %s", new_root)
             raise
 
+        # remove old blobs after successful copy
         _delete_blob_prefix(old_root)
         _delete_local_image_dir_by_userid(user_id, old_image_name)
         state_rename_image(user_id, old_image_name, new_image_name)
 
-        new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
+        frontend = _frontend_detect_result_payload(user_id, new_image_name, new_detect_payload)
 
         return JsonResponse({
             "success": True,
             "image_name": new_image_name,
-            "display_url": new_display_url
+            "tile_source": frontend.get("tile_source"),
+            "boxes": frontend.get("boxes", []),
+            "orig_size": frontend.get("orig_size", []),
         })
 
     except Exception as e:

@@ -283,7 +283,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     syncAllRangeFills();
 
     // 方法二：一律用 backend 回傳的小圖 / display 圖
-    const serverUrl = window.previewUrl || window.displayUrl || window.imgPath || '';
+    // const serverUrl = window.previewUrl || window.displayUrl || window.imgPath || '';
+    const serverUrl = window.previewUrl || window.imgPath || '';
 
     if (settingsPreviewImg) {
       if (serverUrl) {
@@ -1342,25 +1343,27 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
 
   function handleDetectionResult(d, imageDir) {
-    const boxes         = d.boxes;
-    const [origW,origH] = d.orig_size;
-    const [dispW,dispH] = d.display_size;
+    // const boxes         = d.boxes;
+    // const [origW,origH] = d.orig_size;
+    // const [dispW,dispH] = d.display_size;
 
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
+    // const scaleX = dispW / origW;
+    // const scaleY = dispH / origH;
 
-    // scale boxes for viewer display
-    window.bboxData = (scaleX !== 1 || scaleY !== 1)
-      ? boxes.map(b => ({
-          type: b.type,
-          coords: [
-            b.coords[0] * scaleX,
-            b.coords[1] * scaleY,
-            b.coords[2] * scaleX,
-            b.coords[3] * scaleY
-          ]
-        }))
-      : boxes.slice();
+    // // scale boxes for viewer display
+    // window.bboxData = (scaleX !== 1 || scaleY !== 1)
+    //   ? boxes.map(b => ({
+    //       type: b.type,
+    //       coords: [
+    //         b.coords[0] * scaleX,
+    //         b.coords[1] * scaleY,
+    //         b.coords[2] * scaleX,
+    //         b.coords[3] * scaleY
+    //       ]
+    //     }))
+    //   : boxes.slice();
+    const boxes = Array.isArray(d.boxes) ? d.boxes : [];
+    window.bboxData = boxes.slice();
 
     // UI update
     document.getElementById('drop-zone').style.display = 'none';
@@ -1369,11 +1372,12 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     clearBoxes();
 
-    window.viewer.open({
-      type: 'image',
-      url: d.display_url,
-      buildPyramid: false
-    });
+    // window.viewer.open({
+    //   type: 'image',
+    //   url: d.display_url,
+    //   buildPyramid: false
+    // });
+    window.viewer.open(d.tile_source);
 
     window.viewer.addOnceHandler('open', () => {
       const viewer = window.viewer;
@@ -1418,15 +1422,24 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     const fileName = d.file_name || d.image_name || imageDir;
 
     historyStack.push({
+      // dir: imageDir,
+      // name: fileName,
+      // imageName: d.image_name || imageDir,
+      // location: d.location || 'images',
+      // projectName: (d.location && d.location !== 'images') ? d.location : '',
+      // displayUrl: d.display_url,
+      // boxes: window.bboxData.slice(),
+      // origSize: d.orig_size,
+      // dispSize: d.display_size,
+      // demo: !!window.isDemoUpload
       dir: imageDir,
       name: fileName,
       imageName: d.image_name || imageDir,
       location: d.location || 'images',
       projectName: (d.location && d.location !== 'images') ? d.location : '',
-      displayUrl: d.display_url,
+      tileSource: d.tile_source,
       boxes: window.bboxData.slice(),
       origSize: d.orig_size,
-      dispSize: d.display_size,
       demo: !!window.isDemoUpload
     });
     window.isDemoUpload = false;
@@ -1470,7 +1483,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       document.getElementById('drop-zone').style.display = 'none';
       showMain();
 
-      window.viewer.open({ type: 'image', url: item.displayUrl, buildPyramid: false });
+      // window.viewer.open({ type: 'image', url: item.displayUrl, buildPyramid: false });
+      window.viewer.open(item.tileSource);
       window.viewer.addOnceHandler('open', () => {
         const vp = window.viewer.viewport;
         vp.goHome();
@@ -1498,7 +1512,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     // 新偵測：關 modal → 進度條 → call backend
     closeSettingsModal();
 
-    window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });
+    // window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });
+    window.viewer.close();
     showProgressOverlay();
     startStageWatcher(imageDir);
     clearBoxes();
