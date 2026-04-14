@@ -169,6 +169,41 @@ export function initHistoryHandlers(historyStack) {
     if (startBtn) startBtn.disabled = true;
   }
 
+  function toDisplayScaleBoxes(item) {
+    const boxes = Array.isArray(item?.boxes) ? item.boxes : [];
+    const origSize = Array.isArray(item?.origSize) ? item.origSize : [];
+    const dispSize = Array.isArray(item?.dispSize) ? item.dispSize : [];
+
+    if (origSize.length < 2 || dispSize.length < 2) {
+      return boxes.slice();
+    }
+
+    const [origW, origH] = origSize;
+    const [dispW, dispH] = dispSize;
+
+    if (!origW || !origH || !dispW || !dispH) {
+      return boxes.slice();
+    }
+
+    const scaleX = dispW / origW;
+    const scaleY = dispH / origH;
+
+    // 如果本來就沒縮放，直接回傳
+    if (scaleX === 1 && scaleY === 1) {
+      return boxes.slice();
+    }
+
+    return boxes.map(b => ({
+      ...b,
+      coords: [
+        b.coords[0] * scaleX,
+        b.coords[1] * scaleY,
+        b.coords[2] * scaleX,
+        b.coords[3] * scaleY
+      ]
+    }));
+  }
+
   // Public: load a history item by index (used by Demo button, etc.)
   function loadHistoryItemByIndex(idx) {
     const item = historyStack[idx];
@@ -198,7 +233,7 @@ export function initHistoryHandlers(historyStack) {
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide();
 
-      window.bboxData = Array.isArray(item.boxes) ? item.boxes.slice() : [];
+      window.bboxData = toDisplayScaleBoxes(item);
 
       try {
         if (window.layerManagerApi?.getLayers?.().length) {
