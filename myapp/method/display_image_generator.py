@@ -135,27 +135,3 @@ class DisplayImageGenerator:
                 pass
 
         return self._generate_with_pil(self.image_path, out_path)
-
-
-    def generate_dzi(self):
-        dzi_dir = os.path.join(self.output_dir, "dzi")
-        os.makedirs(dzi_dir, exist_ok=True)
-
-        base, _ = os.path.splitext(os.path.basename(self.image_path))
-        out_base = os.path.join(dzi_dir, base)
-
-        if _HAS_VIPS:
-            image = pyvips.Image.new_from_file(self.image_path, access="sequential")
-            if image.hasalpha():
-                image = image.flatten(background=[255, 255, 255])
-
-            image.dzsave(
-                out_base,
-                layout="dz",
-                suffix=".jpg[Q=90]",
-                overlap=1,
-                tile_size=254
-            )
-            return f"{out_base}.dzi"
-
-        raise RuntimeError("pyvips is required for DZI generation")

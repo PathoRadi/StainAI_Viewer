@@ -596,8 +596,8 @@ export function initProjectHandlers(historyStack) {
       item.projectName = data.project_name || projectName;
       item.location = data.project_name || projectName;
 
-      if (data.tile_source) {
-        item.tileSource = data.tile_source;
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       // hide menus
@@ -673,8 +673,8 @@ export function initProjectHandlers(historyStack) {
       item.projectName = data.project_name || targetProjectName;
       item.location = data.project_name || targetProjectName;
 
-      if (data.tile_source) {
-        item.tileSource = data.tile_source;
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       _expandedProjects.add(targetProjectName);
@@ -1113,8 +1113,8 @@ export function initProjectHandlers(historyStack) {
         item.dir = data.image_name;
         item.imageName = data.image_name;
 
-        if (data.tile_source) {
-          item.tileSource = data.tile_source;
+        if (data.display_url) {
+          item.displayUrl = data.display_url;
         }
 
         $textSpan.text(data.image_name);
@@ -1163,26 +1163,19 @@ export function initProjectHandlers(historyStack) {
     }
 
     const layers = window.layerManagerApi.getLayers();
-    // const [oH, oW] = item.origSize || [];
-    // const [dH, dW] = item.dispSize || [];
-    // let sx = 1, sy = 1;
-    // if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
-    //   sx = oW / dW;
-    //   sy = oH / dH;
-    // }
+    const [oH, oW] = item.origSize || [];
+    const [dH, dW] = item.dispSize || [];
+    let sx = 1, sy = 1;
+    if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
+      sx = oW / dW;
+      sy = oH / dH;
+    }
 
-    // const roisPayload = (layers || []).map(l => ({
-    //   name: l.name || 'ROI',
-    //   points: (l.points || []).map(p => ({
-    //     x: Math.round(p.x * sx),
-    //     y: Math.round(p.y * sy)
-    //   }))
-    // }));
     const roisPayload = (layers || []).map(l => ({
       name: l.name || 'ROI',
       points: (l.points || []).map(p => ({
-        x: Math.round(p.x),
-        y: Math.round(p.y)
+        x: Math.round(p.x * sx),
+        y: Math.round(p.y * sy)
       }))
     }));
 
@@ -1280,8 +1273,8 @@ export function initProjectHandlers(historyStack) {
       item.projectName = data.project_name || projectName;
       item.location = data.project_name || projectName;
 
-      if (data.tile_source) {
-        item.tileSource = data.tile_source;
+      if (data.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       $('.project-history-action-menu').hide();

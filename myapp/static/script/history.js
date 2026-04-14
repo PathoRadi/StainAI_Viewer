@@ -184,17 +184,11 @@ export function initHistoryHandlers(historyStack) {
     $('#progress-overlay1').show();
 
     // open the saved display URL
-    // window.viewer.open({
-    //   type: 'image',
-    //   url: item.displayUrl,
-    //   buildPyramid: false
-    // });
-    if (!item.tileSource) {
-      $('#progress-overlay1').hide();
-      alert('Missing DZI tile source.');
-      return;
-    }
-    window.viewer.open(item.tileSource);
+    window.viewer.open({
+      type: 'image',
+      url: item.displayUrl,
+      buildPyramid: false
+    });
 
     window.viewer.addOnceHandler('open-failed', () => {
       $('#progress-overlay1').hide();
@@ -372,17 +366,8 @@ export function initHistoryHandlers(historyStack) {
       item.projectName = '';
       item.location = 'images';
 
-      // if (data?.display_url) {
-      //   item.displayUrl = data.display_url;
-      // }
-      if (data?.tile_source) {
-        item.tileSource = data.tile_source;
-      }
-      if (Array.isArray(data?.boxes)) {
-        item.boxes = data.boxes;
-      }
-      if (Array.isArray(data?.orig_size)) {
-        item.origSize = data.orig_size;
+      if (data?.display_url) {
+        item.displayUrl = data.display_url;
       }
 
       updateHistoryUI(historyStack);
@@ -562,11 +547,8 @@ export function initHistoryHandlers(historyStack) {
         item.dir = data.image_name;
         item.imageName = data.image_name;
 
-        // if (data.display_url) {
-        //   item.displayUrl = data.display_url;
-        // }
-        if (data.tile_source) {
-          item.tileSource = data.tile_source;
+        if (data.display_url) {
+          item.displayUrl = data.display_url;
         }
 
         $textSpan.text(data.image_name);
@@ -681,29 +663,22 @@ export function initHistoryHandlers(historyStack) {
     
     // Let the browser handle download: use form POST to trigger download (Save As dialog appears immediately)
     const layers = window.layerManagerApi.getLayers();
-    // const [oH, oW] = item.origSize || [];
-    // const [dH, dW] = item.dispSize || [];       // ★ Saved into history by 1)
-    //   let sx = 1, sy = 1;
-    //   if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
-    //     sx = oW / dW;
-    //     sy = oH / dH;
-    // }
+    const [oH, oW] = item.origSize || [];
+    const [dH, dW] = item.dispSize || [];       // ★ Saved into history by 1)
+      let sx = 1, sy = 1;
+      if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
+        sx = oW / dW;
+        sy = oH / dH;
+    }
 
-    // // Scale ROI points from display back to original (rounded to integer, ImageJ ROI friendly)
-    // const roisPayload = (layers || []).map(l => {
-    //   const scaled = (l.points || []).map(p => ({
-    //     x: Math.round(p.x * sx),
-    //     y: Math.round(p.y * sy)
-    //   }));
-    //   return { name: l.name || 'ROI', points: scaled };
-    // });
-    const roisPayload = (layers || []).map(l => ({
-      name: l.name || 'ROI',
-      points: (l.points || []).map(p => ({
-        x: Math.round(p.x),
-        y: Math.round(p.y)
-      }))
-    }));
+    // Scale ROI points from display back to original (rounded to integer, ImageJ ROI friendly)
+    const roisPayload = (layers || []).map(l => {
+      const scaled = (l.points || []).map(p => ({
+        x: Math.round(p.x * sx),
+        y: Math.round(p.y * sy)
+      }));
+      return { name: l.name || 'ROI', points: scaled };
+    });
     
     const form = document.createElement('form');
     form.method = 'POST';
