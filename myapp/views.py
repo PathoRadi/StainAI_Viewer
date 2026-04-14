@@ -369,28 +369,54 @@ def _blob_original_url(user_id, image_name, filename):
 
     return f"{blob_client.url}?{sas_token}"
 
+def _blob_resized_url(user_id, image_name):
+    path = f"{user_id}/images/{image_name}/resized/{image_name}_resized.png"
+
+    client = _blob_service_client()
+    if client is None:
+        return None
+
+    blob_client = client.get_blob_client(
+        container=settings.AZURE_BLOB_CONTAINER_NAME,
+        blob=path
+    )
+
+    if not blob_client.exists():
+        return None
+
+    sas_token = generate_blob_sas(
+        account_name=blob_client.account_name,
+        container_name=settings.AZURE_BLOB_CONTAINER_NAME,
+        blob_name=path,
+        account_key=settings.AZURE_ACCOUNT_KEY,
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.utcnow() + timedelta(hours=2)
+    )
+
+    return f"{blob_client.url}?{sas_token}"
+
 def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict) -> dict:
     if not isinstance(payload, dict):
         return {
-            'display_url': '',
-            'boxes': [],
-            'orig_size': [],
-            'display_size': [],
-            'original_filename': '',
+            "display_url": "",
+            "boxes": [],
+            "orig_size": [],
+            "display_size": [],
+            "original_filename": "",
         }
 
-    original_filename = payload.get('original_filename', '')
-    display_url = ''
+    original_filename = payload.get("original_filename", "")
 
-    if original_filename:
-        display_url = _blob_original_url(user_id, image_name, original_filename) or ''
+    display_url = _blob_resized_url(user_id, image_name)
+    if not display_url and original_filename:
+        display_url = _blob_original_url(user_id, image_name, original_filename) or ""
 
     return {
-        'display_url': display_url,
-        'boxes': payload.get('boxes', []),
-        'orig_size': payload.get('orig_size', []),
-        'display_size': payload.get('display_size', []),
-        'original_filename': original_filename,
+        "display_url": display_url,
+        "boxes": payload.get("boxes", []),
+        "orig_size": payload.get("orig_size", []),
+        "display_size": payload.get("display_size", []),
+        "original_filename": original_filename,
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -1137,7 +1163,15 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # 6) Save to Azure Blob Storage
         # ---------------------------
         try:
-            upload_detection_outputs_to_blob(user_id, image_name, image_dir, orig_path, download_result_path, result_path, disp_path)
+            upload_detection_outputs_to_blob(
+                user_id=user_id,
+                image_name=image_name,
+                image_dir=image_dir,
+                orig_path=orig_path,
+                result_json_path=download_result_path,
+                resized_path=disp_path,
+                detect_result_path=result_path,
+            )
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
 
