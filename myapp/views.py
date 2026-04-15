@@ -1154,9 +1154,9 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         with open(result_path, "w", encoding="utf-8") as f:
             json.dump(result, f)
 
-        # download_result_path = os.path.join(result_dir, f"{image_name}_results.json")
-        # with open(download_result_path, "w", encoding="utf-8") as f:
-        #     json.dump(detections, f)
+        download_result_path = os.path.join(result_dir, f"{image_name}_results.json")
+        with open(download_result_path, "w", encoding="utf-8") as f:
+            json.dump(detections, f)
 
 
         # ---------------------------
