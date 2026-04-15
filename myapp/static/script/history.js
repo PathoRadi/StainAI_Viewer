@@ -96,10 +96,6 @@ function stabilizeViewerAndRender(bboxData, afterRender) {
 
       window.zoomFloor = viewer.viewport.getHomeZoom();
 
-      // clearBoxes();
-      // drawBbox(Array.isArray(bboxData) ? bboxData : []);
-      // showAllBoxes();
-
       if (typeof afterRender === 'function') {
         afterRender();
       }
@@ -110,13 +106,6 @@ function stabilizeViewerAndRender(bboxData, afterRender) {
 export function initHistoryHandlers(historyStack) {
   // Hard reset to homepage (no history items)
   function hardResetToHomepage() {
-    // 0) call backend reset (clear media/session)
-    // try {
-    //   if (window.RESET_MEDIA_URL) navigator.sendBeacon(window.RESET_MEDIA_URL);
-    // } catch (e) {
-    //   console.warn('reset_media beacon failed:', e);
-    // }
-
     // 1) UI: show homepage, hide viewer
     $('.main-container').prop('hidden', true);
     $('#drop-zone').show();
