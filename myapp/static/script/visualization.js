@@ -61,6 +61,43 @@ function countsToDensity(counts, areaPx) {
   return counts.map(v => Number(v) / area);
 }
 
+function formatScientific1(value) {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n === 0) return '0';
+
+  const exp = Math.floor(Math.log10(Math.abs(n)));
+  const coeff = n / (10 ** exp);
+
+  const roundedCoeff = Math.round(coeff * 10) / 10;
+  const coeffText = Number.isInteger(roundedCoeff)
+    ? String(roundedCoeff)
+    : roundedCoeff.toFixed(1);
+
+  return `${coeffText}×10${toSuperscript(exp)}`;
+}
+
+function toSuperscript(num) {
+  const map = {
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '-': '⁻'
+  };
+
+  return String(num)
+    .split('')
+    .map(ch => map[ch] || ch)
+    .join('');
+}
+
 function applyMetricToChart(barChart, counts) {
   const mode = getChartMode(barChart);
   const areaPx = getCurrentAreaPixels();
@@ -75,17 +112,30 @@ function applyMetricToChart(barChart, counts) {
   barChart.options.scales.y.title.text =
     mode === 'density' ? 'Density (cells/px²)' : 'Count';
 
+  // y-axis tick format
+  if (mode === 'density') {
+    barChart.options.scales.y.ticks.callback = function(value) {
+      return formatScientific1(value);
+    };
+  } else {
+    barChart.options.scales.y.ticks.callback = function(value) {
+      return value;
+    };
+  }
+
+  // tooltip format
   barChart.options.plugins.tooltip.callbacks.label = (item) => {
     if (mode === 'density') {
-      return `Density: ${Number(item.parsed.y).toFixed(4)} cells/px²`;
+      return `Density: ${formatScientific1(item.parsed.y)} cells/px²`;
     }
     return `Count: ${item.parsed.y}`;
   };
 
+  // bar top labels
   barChart.options.plugins.datalabels.formatter = (value) => {
     if (!(value > 0)) return '';
     return mode === 'density'
-      ? Number(value).toFixed(3)
+      ? formatScientific1(value)
       : value;
   };
 
@@ -195,16 +245,12 @@ export function updateChart(bboxData, barChart) {
     return !hasROI || window.konvaManager.isInAnyPolygon(cx, cy);
   }).length);
 
-  barChart.data.datasets[0].data = counts;
-  barChart.update();
   applyMetricToChart(barChart, counts);
 }
 
 export function updateChartAll(bboxData, barChart) {
   const types = ['R','H','B','A','RD','HR'];
   const counts = types.map(t => bboxData.filter(d => d.type === t).length);
-  barChart.data.datasets[0].data = counts;
-  barChart.update();
   applyMetricToChart(barChart, counts);
 }
 
