@@ -7,7 +7,7 @@
   height: 211px;
   max-height: 211px;
   overflow-y: auto;
-  margin: 15px 0px 15px 30px;
+  margin: 15px 12.5px 15px 12.5px;
   background: var(--bg-roi-container);
   border-radius: 15px;
 }
