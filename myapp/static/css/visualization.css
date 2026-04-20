@@ -482,7 +482,8 @@
 }
 .chart-pill {
     min-width: 130px;
-    padding: 8px 18px;
+    height: 30px;
+    padding: 1px 18px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.45);
     display: flex;
@@ -507,13 +508,14 @@
 .chart-mode-toggle {
     display: inline-flex;
     align-items: center;
-    padding: 4px;
+    height: 30px;
+    padding: 1px;
     border-radius: 999px;
     border: 1px solid rgba(255,255,255,0.45);
 }
 .chart-mode-btn {
     min-width: 92px;
-    height: 38px;
+    height: 30px;
     border: none;
     border-radius: 999px;
     background: transparent;
