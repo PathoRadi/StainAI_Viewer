@@ -19,6 +19,12 @@ function getChartIdx(barChart) {
 }
 
 function getTotalFromDataset(barChart) {
+  const rawCounts = Array.isArray(barChart?.$rawCounts) ? barChart.$rawCounts : null;
+
+  if (rawCounts) {
+    return rawCounts.reduce((sum, v) => sum + (Number(v) || 0), 0);
+  }
+
   return (barChart.data.datasets || []).reduce((sum, ds) => {
     const arr = Array.isArray(ds.data) ? ds.data : [];
     return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
@@ -101,6 +107,9 @@ function toSuperscript(num) {
 function applyMetricToChart(barChart, counts) {
   const mode = getChartMode(barChart);
   const areaPx = getCurrentAreaPixels();
+
+  // store raw counts for later density calculations, in case of mode switch
+  barChart.$rawCounts = Array.isArray(counts) ? counts.slice() : [0,0,0,0,0,0];
 
   const values = (mode === 'density')
     ? countsToDensity(counts, areaPx)
