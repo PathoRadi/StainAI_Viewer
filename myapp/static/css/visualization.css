@@ -36,13 +36,13 @@
 /* ------- image ------- */
 #image-container {
     width: 1000px;
-    height: 836px;
-    margin: 60px 0px 15px 15px;
+    height: 881px;
+    margin: 15px 0px 15px 15px;
 }
 #displayedImage-wrapper {
     position: relative;
     width: 950px;
-    height: 761px;
+    height: 766px;
     margin: 0 25px 25px 25px;
     border-radius: 15px;
     overflow: hidden;
