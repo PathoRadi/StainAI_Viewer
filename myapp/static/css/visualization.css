@@ -515,7 +515,7 @@
 }
 .chart-mode-btn {
     min-width: 92px;
-    height: 30px;
+    height: 26px;
     border: none;
     border-radius: 999px;
     background: transparent;
@@ -531,7 +531,7 @@
 .barChart {
     width: 400px !important;
     height: 200px !important;
-    margin: 20px 15px 15px 15px;
+    margin: 5px 15px 15px 15px;
 }
 
 
