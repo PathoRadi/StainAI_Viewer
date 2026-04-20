@@ -440,7 +440,6 @@
     font-size: 20px;
     font-weight: 500;
     text-align: center;
-    margin: 30px 0px 15px 30px;
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
     white-space: nowrap;           
@@ -492,13 +491,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 505px;
+    width: 495px;
     /* margin: 6px 0 6px 0; */
 }
 .chart-topbar-center {
     display: flex;
     align-items: center;
     justify-content: center;
+    width: 455px;
     gap: 10px;
     flex: 1;
 }
@@ -506,8 +506,8 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    width: 36px;
-    margin-left: 8px;
+    width: 30px;
+    margin: 0 0 0 10px;
 }
 .chart-pill {
     min-width: 130px;
