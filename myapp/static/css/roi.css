@@ -3,23 +3,29 @@
 .roi-container {
   display: flex;
   flex-direction: column;
-  width: 130px;
+  width: 100%;
   height: 211px;
   max-height: 211px;
   overflow-y: auto;
-  margin: 15px 12.5px 15px 12.5px;
+  margin: 15px 15px 15px 15px;
   background: var(--bg-roi-container);
   border-radius: 15px;
+}
+.roi-entry {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 5px;
 }
 .roi-item {
   display: flex;
   align-items: center;
   text-align: left;
   font-size: 14px;
-  width: 100px !important;
+  width: 100% !important;
   height: 30px !important;
   margin: 5px 0 5px 0;
-  padding: 0 3px 0 3px;
+  padding: 0 28px 0 5px;
   background: var(--bg-roi-item);
   color: var(--text-roi-item);
   border: none;
@@ -42,6 +48,7 @@
 }
 .roi-item .roi-label{
   flex: 1;
+  width: 100%;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -49,18 +56,21 @@
 .roi-item-selected{
   background: var(--bg-roi-item-hover) !important;
 }
-.roi-entry {
-  position: relative;
-}
 .roi-menu-btn {
   position: absolute;
-  right: 20px;           
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: bold;
   cursor: pointer;
   z-index: 2;
-  color: var(--text-roi-menu-btn); 
+  color: var(--text-roi-menu-btn);
+  line-height: 1;
 }
 .roi-action-menu {
   position: absolute;
