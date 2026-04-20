@@ -425,11 +425,15 @@
     height: 200px !important;
     margin: 20px 15px 15px 15px;
 }
-/* .barChart-wrapper .barChart {
-    display: block;
-    width: 100%;
-    height: 200px;
-} */
+.chart-left-info {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    width: 150px;
+    height: 250px;
+    padding: 30px 0 30px 30px;
+    box-sizing: border-box;
+}
 .chart-label {
     width: 130px;
     height: 30px;
@@ -440,21 +444,6 @@
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
     white-space: nowrap;           
-}
-.chart-left-info {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    width: 150px;
-    height: 100%;
-    padding: 30px 0 30px 30px;
-    box-sizing: border-box;
-}
-.chart-left-info .chart-label {
-    width: auto;
-    height: auto;
-    margin: 0;
-    text-align: left;
 }
 
 
@@ -494,22 +483,23 @@
     display: flex;
     flex-direction: column;
     flex: 1;
-    height: 100%;
-    padding: 12px 18px 12px 0;
+    width: 515px;
+    height: 250px;
+    padding: 10px 10px 10px 10px;
     box-sizing: border-box;
 }
 .chart-topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 52px;
-    margin: 6px 0 6px 0;
+    width: 505px;
+    /* margin: 6px 0 6px 0; */
 }
 .chart-topbar-center {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 14px;
+    gap: 10px;
     flex: 1;
 }
 .chart-topbar-right {
@@ -530,14 +520,14 @@
     justify-content: center;
 }
 .chart-pill-title {
-    font-size: 13px;
+    font-size: 10px;
     line-height: 1.1;
     opacity: 0.85;
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
 }
 .chart-pill-value {
-    font-size: 17px;
+    font-size: 12px;
     line-height: 1.2;
     color: var(--chart-tick-color);
     font-family: 'PingFangHKWeb', sans-serif;
