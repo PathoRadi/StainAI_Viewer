@@ -11,6 +11,14 @@
   background: var(--bg-roi-container);
   border-radius: 15px;
 }
+.roi-container {
+    width: 130px;
+    min-width: 130px;
+    height: 250px;
+    padding: 20px 0 20px 20px;
+    box-sizing: border-box;
+    overflow-y: auto;
+}
 .roi-item {
   display: flex;
   align-items: center;

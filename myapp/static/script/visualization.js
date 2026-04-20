@@ -31,7 +31,10 @@ function getTotalFromDataset(barChart) {
   }, 0);
 }
 
-function getCurrentAreaPixels() {
+function getCurrentAreaPixels(barChart) {
+  if (Number.isFinite(Number(barChart?.$areaPixels))) {
+    return Number(barChart.$areaPixels) || 0;
+  }
   return Number(window.currentImageMeta?.totalPixels) || 0;
 }
 
@@ -55,7 +58,7 @@ function syncMainChartSummary(barChart) {
   const areaEl = document.getElementById(`chart-area-value${idx}`);
 
   const total = getTotalFromDataset(barChart);
-  const areaPx = getCurrentAreaPixels();
+  const areaPx = getCurrentAreaPixels(barChart);
 
   if (totalEl) totalEl.textContent = total.toLocaleString();
   if (areaEl) areaEl.textContent = formatPixelArea(areaPx);
@@ -104,11 +107,15 @@ function toSuperscript(num) {
     .join('');
 }
 
-function applyMetricToChart(barChart, counts) {
+function applyMetricToChart(barChart, counts, areaOverridePx = null) {
   const mode = getChartMode(barChart);
-  const areaPx = getCurrentAreaPixels();
 
-  // store raw counts for later density calculations, in case of mode switch
+  if (areaOverridePx !== null) {
+    barChart.$areaPixels = Number(areaOverridePx) || 0;
+  }
+
+  const areaPx = getCurrentAreaPixels(barChart);
+
   barChart.$rawCounts = Array.isArray(counts) ? counts.slice() : [0,0,0,0,0,0];
 
   const values = (mode === 'density')
@@ -150,6 +157,10 @@ function applyMetricToChart(barChart, counts) {
 
   barChart.update();
   syncMainChartSummary(barChart);
+}
+
+export function updateChartWithArea(barChart, counts, areaPx) {
+  applyMetricToChart(barChart, counts, areaPx);
 }
 
 export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0]) {

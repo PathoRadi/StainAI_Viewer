@@ -82,38 +82,78 @@ export function addBarChart(barChartWrappers) {
         <canvas class="barChart" id="barChart${idx}" width="400" height="200"></canvas>
       </div>
     `;
-  } else if(idx === 2) {
-    // second barChart-wrapper: add ROI list
+  } else if (idx === 2) {
     wrapper.innerHTML = `
       <div class="roi-container" id="roi-container${idx}"></div>
-      <canvas class="barChart" id="barChart${idx}"
-              width="400" height="200"
-              style="margin-top:16px;"></canvas>
-      <div style="position: absolute; top: 1px; right: 8px;">
-        <div class="screenshot-menu-wrapper">
-          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
-          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
-            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+
+      <div class="chart-main">
+        <div class="chart-topbar">
+          <div class="chart-topbar-center">
+            <div class="chart-pill">
+              <div class="chart-pill-title">Area</div>
+              <div class="chart-pill-value" id="chart-area-value${idx}">0 px²</div>
+            </div>
+
+            <div class="chart-pill">
+              <div class="chart-pill-title">Total Count</div>
+              <div class="chart-pill-value" id="chart-total-value${idx}">0</div>
+            </div>
+
+            <div class="chart-mode-toggle" id="chart-mode-toggle${idx}">
+              <button class="chart-mode-btn active" data-mode="count" type="button">Count</button>
+              <button class="chart-mode-btn" data-mode="density" type="button">Density</button>
+            </div>
+          </div>
+
+          <div class="chart-topbar-right">
+            <div class="screenshot-menu-wrapper">
+              <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+              <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+                <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+              </div>
+            </div>
           </div>
         </div>
+
+        <canvas class="barChart" id="barChart${idx}" width="400" height="200"></canvas>
       </div>
     `;
   }
   else {
-    // third and forth barChart-wrapper: add ROI list and Close button
     wrapper.innerHTML = `
       <div class="roi-container" id="roi-container${idx}"></div>
-      <canvas class="barChart" id="barChart${idx}"
-              width="400" height="200"
-              style="margin-top:16px;"></canvas>
-      <div style="position: absolute; top: 1px; right: 8px;">
-        <div class="screenshot-menu-wrapper">
-          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
-          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
-            <button class="take-screenshot-btn close-chart-btn" id="close-chart-btn${idx}">Close Bar Chart</button>
-            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+
+      <div class="chart-main">
+        <div class="chart-topbar">
+          <div class="chart-topbar-center">
+            <div class="chart-pill">
+              <div class="chart-pill-title">Area</div>
+              <div class="chart-pill-value" id="chart-area-value${idx}">0 px²</div>
+            </div>
+
+            <div class="chart-pill">
+              <div class="chart-pill-title">Total Count</div>
+              <div class="chart-pill-value" id="chart-total-value${idx}">0</div>
+            </div>
+
+            <div class="chart-mode-toggle" id="chart-mode-toggle${idx}">
+              <button class="chart-mode-btn active" data-mode="count" type="button">Count</button>
+              <button class="chart-mode-btn" data-mode="density" type="button">Density</button>
+            </div>
+          </div>
+
+          <div class="chart-topbar-right">
+            <div class="screenshot-menu-wrapper">
+              <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+              <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+                <button class="take-screenshot-btn close-chart-btn" id="close-chart-btn${idx}">Close Bar Chart</button>
+                <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+              </div>
+            </div>
           </div>
         </div>
+
+        <canvas class="barChart" id="barChart${idx}" width="400" height="200"></canvas>
       </div>
     `;
   }
@@ -130,7 +170,7 @@ export function addBarChart(barChartWrappers) {
 
   // Create Chart
   const chart = createBarChart(`barChart${idx}`);
-  if (idx === 1) {
+  if (idx >= 1) {
     const toggle = wrapper.querySelector(`#chart-mode-toggle${idx}`);
     if (toggle) {
       toggle.addEventListener('click', (e) => {
@@ -144,7 +184,15 @@ export function addBarChart(barChartWrappers) {
         });
 
         chart.$metricMode = mode;
-        updateChart(window.bboxData, chart);
+
+        if (idx === 1) {
+          updateChart(window.bboxData, chart);
+        } else {
+          const panel = wrapper.querySelector(`#roi-container${idx}`);
+          if (panel && typeof window.updateSingleROIPanelChart === 'function') {
+            window.updateSingleROIPanelChart(panel, chart);
+          }
+        }
       });
     }
   }

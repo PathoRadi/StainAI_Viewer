@@ -1,6 +1,6 @@
 // static/script/roi.js
 import { layerManagerApi } from './layerManager.js';
-import { updateChartAll } from './visualization.js';
+import { updateChartWithArea } from './visualization.js';
 
 // ────────────────────────────────────────────────────────────
 // Helpers
@@ -15,6 +15,25 @@ const CLASS_COLORS = [
   'rgb(0,210,210)', // RD
   'rgb(0,0,204)'    // HR
 ];
+
+function polygonArea(points) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p1 = points[i];
+    const p2 = points[(i + 1) % points.length];
+    sum += (p1.x * p2.y) - (p2.x * p1.y);
+  }
+
+  return Math.abs(sum) / 2;
+}
+
+function areaForLayer(layerId) {
+  const layerInfo = layerManagerApi.getLayers().find(l => l.id === layerId);
+  if (!layerInfo || !Array.isArray(layerInfo.points)) return 0;
+  return polygonArea(layerInfo.points);
+}
 
 /** Count cells for a given ROI layerId across the 6 classes */
 function countsForLayer(layerId) {
@@ -44,7 +63,6 @@ function updatePanelChart($panel, chart) {
     .map((_, el) => $(el).closest('.roi-entry').data('layer-id'))
     .get();
 
-  // Label highlight = checked state (scoped to this panel)
   $panel.find('.roi-item').removeClass('roi-item-selected');
   checkedIds.forEach(id => {
     $panel.find(`.roi-entry[data-layer-id="${id}"] .roi-item`).addClass('roi-item-selected');
@@ -52,35 +70,30 @@ function updatePanelChart($panel, chart) {
 
   if (!chart) return;
 
-  chart.data.labels = TYPES.slice();
+  const zeroCounts = TYPES.map(() => 0);
 
   if (checkedIds.length === 0) {
-    chart.data.datasets = [{
-      label: 'All',
-      data: [0,0,0,0,0,0],
-      backgroundColor: CLASS_COLORS,
-      borderWidth: 0
-    }];
-    
-    chart.update();
+    chart.$rawCounts = zeroCounts.slice();
+    chart.$areaPixels = 0;
+    updateChartWithArea(chart, zeroCounts, 0);
     return;
   }
 
-  // Multi selected => multi dataset
-  const sum = TYPES.map(() => 0);
+  const sumCounts = TYPES.map(() => 0);
+  let sumArea = 0;
+
   checkedIds.forEach(layerId => {
-    const c = countsForLayer(layerId); // [R,H,B,A,RD,HR] counts for this ROI
-    for (let i = 0; i < sum.length; i++) sum[i] += c[i];
+    const counts = countsForLayer(layerId);
+    const area = areaForLayer(layerId);
+
+    sumArea += area;
+
+    for (let i = 0; i < sumCounts.length; i++) {
+      sumCounts[i] += counts[i];
+    }
   });
 
-  chart.data.datasets = [{
-    label: 'Selected (sum)',
-    data: sum,
-    backgroundColor: CLASS_COLORS,
-    borderColor: CLASS_COLORS,
-    borderWidth: 0
-  }];
-  chart.update();
+  updateChartWithArea(chart, sumCounts, sumArea);
 }
 
 /** Recompute all ROI panels' charts */
@@ -355,6 +368,11 @@ function updateROIChart(/*layerId*/) {
 // Expose to window for legacy callers
 window.triggerROIChartUpdate = triggerROIChartUpdate;
 window.updateROIChart = updateROIChart;
+
+window.updateSingleROIPanelChart = function(panelEl, chart) {
+  const $panel = $(panelEl);
+  updatePanelChart($panel, chart);
+};
 
 export { initROI, updateROIChart, triggerROIChartUpdate };
 export default { initROI, updateROIChart, triggerROIChartUpdate };
