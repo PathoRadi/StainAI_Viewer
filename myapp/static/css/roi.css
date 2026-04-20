@@ -16,9 +16,10 @@
   align-items: center;
   text-align: left;
   font-size: 14px;
-  width: 105px !important;
+  width: 100px !important;
   height: 30px !important;
   margin: 5px 0 5px 0;
+  padding: 0 3px 0 3px;
   background: var(--bg-roi-item);
   color: var(--text-roi-item);
   border: none;
