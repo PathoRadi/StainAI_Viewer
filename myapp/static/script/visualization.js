@@ -41,23 +41,6 @@ function setChartMode(barChart, mode) {
   barChart.$metricMode = (mode === 'density') ? 'density' : 'count';
 }
 
-// function syncMainChartTotal(barChart) {
-//   if (!barChart?.canvas?.id) return;
-
-//   const match = String(barChart.canvas.id).match(/^barChart(\d+)$/);
-//   if (!match) return;
-
-//   const idx = match[1];
-//   const totalEl = document.getElementById(`chart-total-value${idx}`);
-//   if (!totalEl) return;
-
-//   const total = (barChart.data.datasets || []).reduce((sum, ds) => {
-//     const arr = Array.isArray(ds.data) ? ds.data : [];
-//     return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
-//   }, 0);
-
-//   totalEl.textContent = total;
-// }
 function syncMainChartSummary(barChart) {
   const idx = getChartIdx(barChart);
   if (!idx) return;

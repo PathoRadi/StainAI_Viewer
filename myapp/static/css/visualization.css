@@ -397,19 +397,20 @@
 }
 #barChart-wrappers {
     height: 270px;
-    width: 655px;
+    width: 675px;
 }
 #barChart-wrappers1 {
-    max-height: 810px;          
+    max-height: 810px;
+    width: 675px;          
     overflow-y: auto;
-    padding-right: 5px;         
+    padding-right: 5px;        
     scroll-behavior: smooth;    
 }
 .barChart-wrapper {
     display: flex;                  
     flex-direction: row;
     position: relative;
-    width: 625px;
+    width: 645px;
     height: 250px;
     margin: 10px 15px 10px 15px;
     border: var(--border-barchart-wrapper);
