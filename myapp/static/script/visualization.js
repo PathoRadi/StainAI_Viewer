@@ -10,22 +10,104 @@ const fullNames ={
   HR: 'Hyper-Rod'
 }
 
-function syncMainChartTotal(barChart) {
-  if (!barChart?.canvas?.id) return;
+const CHART_TYPES = ['R','H','B','A','RD','HR'];
 
+function getChartIdx(barChart) {
+  if (!barChart?.canvas?.id) return null;
   const match = String(barChart.canvas.id).match(/^barChart(\d+)$/);
-  if (!match) return;
+  return match ? match[1] : null;
+}
 
-  const idx = match[1];
-  const totalEl = document.getElementById(`chart-total-value${idx}`);
-  if (!totalEl) return;
-
-  const total = (barChart.data.datasets || []).reduce((sum, ds) => {
+function getTotalFromDataset(barChart) {
+  return (barChart.data.datasets || []).reduce((sum, ds) => {
     const arr = Array.isArray(ds.data) ? ds.data : [];
     return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
   }, 0);
+}
 
-  totalEl.textContent = total;
+function getCurrentAreaPixels() {
+  return Number(window.currentImageMeta?.totalPixels) || 0;
+}
+
+function formatPixelArea(px) {
+  return `${Number(px || 0).toLocaleString()} px²`;
+}
+
+function getChartMode(barChart) {
+  return barChart?.$metricMode || 'count';
+}
+
+function setChartMode(barChart, mode) {
+  barChart.$metricMode = (mode === 'density') ? 'density' : 'count';
+}
+
+// function syncMainChartTotal(barChart) {
+//   if (!barChart?.canvas?.id) return;
+
+//   const match = String(barChart.canvas.id).match(/^barChart(\d+)$/);
+//   if (!match) return;
+
+//   const idx = match[1];
+//   const totalEl = document.getElementById(`chart-total-value${idx}`);
+//   if (!totalEl) return;
+
+//   const total = (barChart.data.datasets || []).reduce((sum, ds) => {
+//     const arr = Array.isArray(ds.data) ? ds.data : [];
+//     return sum + arr.reduce((s, v) => s + (Number(v) || 0), 0);
+//   }, 0);
+
+//   totalEl.textContent = total;
+// }
+function syncMainChartSummary(barChart) {
+  const idx = getChartIdx(barChart);
+  if (!idx) return;
+
+  const totalEl = document.getElementById(`chart-total-value${idx}`);
+  const areaEl = document.getElementById(`chart-area-value${idx}`);
+
+  const total = getTotalFromDataset(barChart);
+  const areaPx = getCurrentAreaPixels();
+
+  if (totalEl) totalEl.textContent = total.toLocaleString();
+  if (areaEl) areaEl.textContent = formatPixelArea(areaPx);
+}
+
+function countsToDensity(counts, areaPx) {
+  const area = Number(areaPx) || 0;
+  if (!area) return counts.map(() => 0);
+  return counts.map(v => Number(v) / area);
+}
+
+function applyMetricToChart(barChart, counts) {
+  const mode = getChartMode(barChart);
+  const areaPx = getCurrentAreaPixels();
+
+  const values = (mode === 'density')
+    ? countsToDensity(counts, areaPx)
+    : counts;
+
+  barChart.data.datasets[0].label = mode === 'density' ? 'Density' : 'Count';
+  barChart.data.datasets[0].data = values;
+
+  barChart.options.scales.y.title.text =
+    mode === 'density' ? 'Density (cells/px²)' : 'Count';
+
+  barChart.options.plugins.tooltip.callbacks.label = (item) => {
+    if (mode === 'density') {
+      return `Density: ${Number(item.parsed.y).toFixed(4)} cells/px²`;
+    }
+    return `Count: ${item.parsed.y}`;
+  };
+
+  barChart.options.plugins.datalabels.formatter = (value) => {
+    if (!(value > 0)) return '';
+    return mode === 'density'
+      ? Number(value).toFixed(3)
+      : value;
+  };
+
+  barChart.update();
+  syncMainChartSummary(barChart);
 }
 
 export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0]) {
@@ -34,7 +116,7 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
 
   const ctx = document.getElementById(canvasId).getContext('2d');
   Chart.register(ChartDataLabels);
-  return new Chart(ctx, {
+  const chart = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: ['R','H','B','A','RD','HR'],
@@ -111,6 +193,8 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
       }
     }
   });
+  setChartMode(chart, 'count');
+  return chart;
 }
 
 
@@ -130,7 +214,7 @@ export function updateChart(bboxData, barChart) {
 
   barChart.data.datasets[0].data = counts;
   barChart.update();
-  syncMainChartTotal(barChart);
+  applyMetricToChart(barChart, counts);
 }
 
 export function updateChartAll(bboxData, barChart) {
@@ -138,7 +222,7 @@ export function updateChartAll(bboxData, barChart) {
   const counts = types.map(t => bboxData.filter(d => d.type === t).length);
   barChart.data.datasets[0].data = counts;
   barChart.update();
-  syncMainChartTotal(barChart);
+  applyMetricToChart(barChart, counts);
 }
 
 // export function initCheckboxes(bboxData, barChart) {

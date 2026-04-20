@@ -807,6 +807,9 @@ def upload_image(request):
             'image_url': image_url,
             'preview_url': preview_url,
             'display_url': display_url,
+            'image_name': image_name,
+            'orig_size': [ow, oh],
+            'total_pixels': int(ow * oh),
         })
 
     return JsonResponse({'error': 'Invalid upload'}, status=400)

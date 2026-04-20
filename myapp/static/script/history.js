@@ -224,6 +224,15 @@ export function initHistoryHandlers(historyStack) {
 
       window.bboxData = toDisplayScaleBoxes(item);
 
+      window.currentImageMeta = {
+        imageName: item.imageName || item.name || item.dir || '',
+        origSize: Array.isArray(item.origSize) ? item.origSize : [0, 0],
+        totalPixels:
+          Array.isArray(item.origSize) && item.origSize.length >= 2
+            ? (Number(item.origSize[0]) || 0) * (Number(item.origSize[1]) || 0)
+            : 0,
+      };
+
       try {
         if (window.layerManagerApi?.getLayers?.().length) {
           window.layerManagerApi.getLayers().forEach(layer => {

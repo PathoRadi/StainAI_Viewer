@@ -6,6 +6,12 @@ import { refreshProjectsUI } from './project.js';
 
 window.chartRefs = [];
 
+window.currentImageMeta = {
+  imageName: '',
+  origSize: [0, 0],
+  totalPixels: 0,
+};
+
 function getTotalCellCountFromChart(chart) {
   if (!chart?.data?.datasets?.length) return 0;
 
@@ -42,24 +48,38 @@ export function addBarChart(barChartWrappers) {
     wrapper.innerHTML = `
       <div class="chart-left-info">
         <span class="chart-label">Full Image</span>
-
-        <div class="chart-total-block" id="chart-total-block${idx}">
-          <div class="chart-total-title">Total Cell Count</div>
-          <div class="chart-total-value" id="chart-total-value${idx}">0</div>
-        </div>
       </div>
 
-      <canvas class="barChart" id="barChart${idx}"
-              width="400" height="200"
-              style="margin-top:16px;"></canvas>
+      <div class="chart-main">
+        <div class="chart-topbar">
+          <div class="chart-topbar-center">
+            <div class="chart-pill">
+              <div class="chart-pill-title">Area</div>
+              <div class="chart-pill-value" id="chart-area-value${idx}">0 px²</div>
+            </div>
 
-      <div style="position: absolute; top: 1px; right: 8px;">
-        <div class="screenshot-menu-wrapper">
-          <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
-          <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
-            <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+            <div class="chart-pill">
+              <div class="chart-pill-title">Total Count</div>
+              <div class="chart-pill-value" id="chart-total-value${idx}">0</div>
+            </div>
+
+            <div class="chart-mode-toggle" id="chart-mode-toggle${idx}">
+              <button class="chart-mode-btn active" data-mode="count" type="button">Count</button>
+              <button class="chart-mode-btn" data-mode="density" type="button">Density</button>
+            </div>
+          </div>
+
+          <div class="chart-topbar-right">
+            <div class="screenshot-menu-wrapper">
+              <button class="screenshot-menu-btn" id="screenshot-menu-btn${idx}">⋯</button>
+              <div class="screenshot-dropdown" id="screenshot-dropdown${idx}">
+                <button class="take-screenshot-btn" id="take-screenshot-btn${idx}">Save Image</button>
+              </div>
+            </div>
           </div>
         </div>
+
+        <canvas class="barChart" id="barChart${idx}" width="400" height="200"></canvas>
       </div>
     `;
   } else if(idx === 2) {
@@ -110,7 +130,24 @@ export function addBarChart(barChartWrappers) {
 
   // Create Chart
   const chart = createBarChart(`barChart${idx}`);
-  // initCheckboxes(window.bboxData, chart);
+  if (idx === 1) {
+    const toggle = wrapper.querySelector(`#chart-mode-toggle${idx}`);
+    if (toggle) {
+      toggle.addEventListener('click', (e) => {
+        const btn = e.target.closest('.chart-mode-btn');
+        if (!btn) return;
+
+        const mode = btn.dataset.mode === 'density' ? 'density' : 'count';
+
+        toggle.querySelectorAll('.chart-mode-btn').forEach(b => {
+          b.classList.toggle('active', b === btn);
+        });
+
+        chart.$metricMode = mode;
+        updateChart(window.bboxData, chart);
+      });
+    }
+  }
   if (idx === 1) {
     initCheckboxes(window.bboxData, chart);
   }
@@ -122,8 +159,9 @@ export function addBarChart(barChartWrappers) {
   showAllBoxes();
   if (idx === 1) {
     // First chart shows full image data
+    // updateChart(window.bboxData, chart);
+    // updateChartTotalText(chart, idx);
     updateChart(window.bboxData, chart);
-    updateChartTotalText(chart, idx);
   } else {
     // Other charts start empty
     chart.data.datasets[0].data = [0,0,0,0,0,0];
@@ -1210,6 +1248,12 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.displayUrl = d.display_url || '';
         window.previewUrl = d.preview_url || '';
 
+        window.currentImageMeta = {
+          imageName: d.image_name || '',
+          origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
+          totalPixels: Number(d.total_pixels) || 0,
+        };
+
         const parts = (window.imgPath || '').split('/');
         pendingImageDir = parts[3] || null;
         pendingParams = defaultParams();
@@ -1278,6 +1322,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     const scaleX = dispW / origW;
     const scaleY = dispH / origH;
+
+    window.currentImageMeta = {
+      imageName: imageDir || '',
+      origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
+      totalPixels:
+        Array.isArray(d.orig_size) && d.orig_size.length >= 2
+          ? (Number(d.orig_size[0]) || 0) * (Number(d.orig_size[1]) || 0)
+          : 0,
+    };
 
     // scale boxes for viewer display
     window.bboxData = (scaleX !== 1 || scaleY !== 1)
