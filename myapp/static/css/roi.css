@@ -18,8 +18,7 @@
   font-size: 14px;
   width: 105px !important;
   height: 30px !important;
-  padding: 0 0 0 10px;
-  margin: 5px 5px 5px 5px;
+  margin: 5px 0 5px 0;
   background: var(--bg-roi-item);
   color: var(--text-roi-item);
   border: none;
