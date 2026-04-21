@@ -1,5 +1,5 @@
 /* static/css/leftContainer.css */
-.left-container {
+/* .left-container {
     display: flex;
     flex-direction: column;
     position:fixed;
@@ -19,6 +19,22 @@
     border-bottom-left-radius: 0px;
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
+} */
+.left-container {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 200px;
+    height: 100vh;
+    z-index: 3000;
+
+    overflow: hidden;
+    min-height: 0;
+
+    background: var(--bg-left);
+    box-sizing: border-box;
 }
 
 
@@ -26,44 +42,21 @@
 /* .left-container-header {
     display: flex;
     flex-direction: column;
-    position: relative;
-    z-index: 4000;
-    width: 190px;
-    background: var(--bg-left-header);
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-} */
-.left-container-header {
-    display: flex;
-    flex-direction: column;
     position: sticky;
     top: 0;
     z-index: 20;
     width: 100%;
     background: transparent;
+} */
+ .left-container-header {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: var(--bg-left-header);
+    z-index: 20;
+    position: relative;
 }
 /* .image-history-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-
-    overflow-y: auto;
-    overflow-x: hidden;
-    min-height: 177px;
-
-    background: var(--bg-left-middle);
-
-    padding-top: 260px;   
-    padding-bottom: 80px; 
-
-    padding-right: 8px;
-    box-sizing: border-box;
-} */
-.image-history-container {
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
@@ -71,6 +64,15 @@
     overflow: visible;
     background: transparent;
 
+    padding: 12px 0 12px 0;
+    box-sizing: border-box;
+} */
+.image-history-container {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    background: var(--bg-left-middle);
     padding: 12px 0 12px 0;
     box-sizing: border-box;
 }
@@ -94,28 +96,6 @@
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 /* ===== Sidebar section toggle ===== */
-/* .sidebar-section-toggle{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    width: 100%;
-    min-height: 40px;
-    padding: 10px 16px 6px 20px;
-
-    border: none;
-    color: var(--text-history-item);
-    font-family: 'PingFangHKWeb', sans-serif;
-    font-size: 16px;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-
-    position: sticky;
-    top: 0;              
-    z-index: 5;
-    background: transparent;
-} */
 .sidebar-section-toggle {
     display: flex;
     align-items: center;
@@ -185,7 +165,7 @@
 
 
 
-.left-container-bottom {
+/* .left-container-bottom {
     display: flex;
     flex-direction: column;
     position: sticky;
@@ -194,22 +174,15 @@
     width: 100%;
     margin-top: auto;
     background: transparent;
-}
-
-/* .left-container-bottom {
+} */
+.left-container-bottom {
     display: flex;
     flex-direction: column;
-    position: relative;
-    z-index: 4000;
-    width: 190px;
+    width: 100%;
     background: var(--bg-left-bottom);
-    margin-top: auto;
-    padding-bottom: 0;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-} */
+    z-index: 20;
+    position: relative;
+}
 
 
 
