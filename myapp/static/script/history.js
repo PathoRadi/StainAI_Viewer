@@ -158,6 +158,8 @@ export function initHistoryHandlers(historyStack) {
     if (startBtn) startBtn.disabled = true;
   }
 
+  window.hardResetToHomepage = hardResetToHomepage;
+
   function toDisplayScaleBoxes(item) {
     const boxes = Array.isArray(item?.boxes) ? item.boxes : [];
     const origSize = Array.isArray(item?.origSize) ? item.origSize : [];
@@ -665,9 +667,7 @@ export function initHistoryHandlers(historyStack) {
         updateHistoryUI(historyStack);
         await updateProjectsUI(historyStack);
 
-        if (historyStack.length === 0) {
-          hardResetToHomepage();
-        }
+        hardResetToHomepage();
       } else {
         alert('Delete failed: ' + (data.message || ''));
       }

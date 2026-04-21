@@ -992,67 +992,6 @@ export function initProjectHandlers(historyStack) {
       });
   });
 
-  // $(document).on('click', '.project-folder-delete-btn', async function (e) {
-  //   e.stopPropagation();
-
-  //   const projectName = normalizeProjectName($(this).data('project'));
-  //   if (!projectName) return;
-
-  //   // if (!confirm(`Delete project "${projectName}" and all images inside?`)) return;
-  //   for (let i = historyStack.length - 1; i >= 0; i--) {
-  //     if ((historyStack[i].projectName || '') === projectName) {
-  //       historyStack.splice(i, 1);
-  //     }
-  //   }
-
-  //   try {
-  //     const res = await fetch(DELETE_PROJECT_URL, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         'X-CSRFToken': csrftoken
-  //       },
-  //       body: JSON.stringify({
-  //         project_name: projectName
-  //       })
-  //     });
-
-  //     const data = await res.json();
-
-  //     if (res.status === 401) {
-  //       handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-  //       return;
-  //     }
-
-  //     if (!res.ok || !data.success) {
-  //       alert('Delete failed: ' + (data.message || ''));
-  //       return;
-  //     }
-
-  //     for (let i = historyStack.length - 1; i >= 0; i--) {
-  //       if ((historyStack[i].projectName || '') === projectName) {
-  //         historyStack.splice(i, 1);
-  //       }
-  //     }
-
-  //     if (Array.isArray(window.viewerProjects)) {
-  //       window.viewerProjects = window.viewerProjects.filter(
-  //         p => normalizeProjectName(p.project_name) !== projectName
-  //       );
-  //     }
-
-  //     updateHistoryUI(historyStack);
-  //     await updateProjectsUI(historyStack);
-
-  //   } catch (err) {
-  //     console.error(err);
-  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
-  //   } finally {
-  //     $('.project-action-menu').hide();
-  //     $('.menu-click-shield').remove();
-  //     restoreProjectFolderMenusToOrigin();
-  //   }
-  // });
 
   $(document).off('click.projectFolderDelete').on('click.projectFolderDelete', '.project-folder-delete-btn', function (e) {
     e.stopPropagation();
@@ -1104,11 +1043,8 @@ export function initProjectHandlers(historyStack) {
           updateHistoryUI(historyStack);
           await updateProjectsUI(historyStack);
 
-          if (historyStack.length === 0) {
-            $('.main-container').prop('hidden', true);
-            $('#drop-zone').show();
-            try { window.viewer?.close(); } catch (e) {}
-          }
+          window.hardResetToHomepage?.();
+
         } else {
           alert('Delete failed: ' + (data.message || ''));
         }
@@ -1147,6 +1083,8 @@ export function initProjectHandlers(historyStack) {
 
           updateHistoryUI(historyStack);
           await updateProjectsUI(historyStack);
+
+          window.hardResetToHomepage?.();
         } else {
           alert('Delete failed: ' + (data.message || ''));
         }
