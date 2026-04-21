@@ -251,19 +251,31 @@ export function createBarChart(canvasId = 'barChart', initialData = [0,0,0,0,0,0
 }
 
 
+// export function updateChart(bboxData, barChart) {
+//   const types = ['R','H','B','A','RD','HR'];
+//   const hasROI = typeof window.konvaManager?.isInAnyPolygon === 'function' 
+//                  && window.layerManagerApi?.getLayers?.().length > 0;
+//   const sel = $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
+//                 .map((i,el)=>el.id.split('_')[1]).get();
+
+//   const counts = types.map(t => bboxData.filter(d => {
+//     if (!sel.includes(t) || d.type !== t) return false;
+//     const cx = (d.coords[0] + d.coords[2]) / 2;
+//     const cy = (d.coords[1] + d.coords[3]) / 2;
+//     return !hasROI || window.konvaManager.isInAnyPolygon(cx, cy);
+//   }).length);
+
+//   applyMetricToChart(barChart, counts);
+// }
 export function updateChart(bboxData, barChart) {
   const types = ['R','H','B','A','RD','HR'];
-  const hasROI = typeof window.konvaManager?.isInAnyPolygon === 'function' 
-                 && window.layerManagerApi?.getLayers?.().length > 0;
   const sel = $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
-                .map((i,el)=>el.id.split('_')[1]).get();
+    .map((i, el) => el.id.split('_')[1])
+    .get();
 
-  const counts = types.map(t => bboxData.filter(d => {
-    if (!sel.includes(t) || d.type !== t) return false;
-    const cx = (d.coords[0] + d.coords[2]) / 2;
-    const cy = (d.coords[1] + d.coords[3]) / 2;
-    return !hasROI || window.konvaManager.isInAnyPolygon(cx, cy);
-  }).length);
+  const counts = types.map(t =>
+    bboxData.filter(d => sel.includes(t) && d.type === t).length
+  );
 
   applyMetricToChart(barChart, counts);
 }
