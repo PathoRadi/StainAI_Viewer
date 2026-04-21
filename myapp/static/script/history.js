@@ -120,12 +120,18 @@ export function initHistoryHandlers(historyStack) {
     // 4) Clear ROI / Konva
     try {
       // If you have a single/central method to clear ROIs, call it here
-      if (window.layerManagerApi?.clearAll) window.layerManagerApi.clearAll();
-      if (window.layerManagerApi?.removeAll) window.layerManagerApi.removeAll();
-      if (window.konvaStage) {
-      window.konvaStage.destroyChildren();
-      window.konvaStage.draw();
-      }
+      // if (window.layerManagerApi?.clearAll) window.layerManagerApi.clearAll();
+      // if (window.layerManagerApi?.removeAll) window.layerManagerApi.removeAll();
+      // if (window.konvaStage) {
+      //   window.konvaStage.destroyChildren();
+      //   window.konvaStage.draw();
+      // }
+      const roiLayers = window.layerManagerApi?.getLayers?.() || [];
+      roiLayers.forEach(layer => {
+        window.layerManagerApi.removeLayer(layer.id);
+      });
+
+      window.konvaManager?.redrawPolygons?.();
     } catch(e) {}
 
     // 5) Clear charts to zero (avoid ghost)

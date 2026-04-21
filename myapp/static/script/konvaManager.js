@@ -380,6 +380,14 @@ export function initKonvaManager({
   });
   viewer.addHandler('viewport-change', redrawPolygons);
 
+  window.addEventListener('resize', () => {
+    stage.size({
+      width: wrapEl.clientWidth,
+      height: wrapEl.clientHeight
+    });
+    redrawPolygons();
+  });
+
   /* Group drag (move the entire polygon) */
   function attachGroupDragEvents(group, idx) {
     if (polygons[idx].locked) return;
