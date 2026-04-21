@@ -1586,6 +1586,30 @@ def rename_project(request):
         logger.exception("rename_project failed")
         return JsonResponse({"success": False, "message": "rename failed"}, status=500)
     
+# @csrf_exempt
+# @require_POST
+# def delete_project(request):
+#     try:
+#         user_id = _require_viewer_user(request)
+#     except PermissionError:
+#         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+#     try:
+#         body = json.loads(request.body or "{}")
+#         project_name = safe_filename((body.get("project_name") or "").strip())
+#         if not project_name:
+#             return JsonResponse({"success": False, "message": "project_name required"}, status=400)
+
+#         state = load_viewer_state_from_blob(user_id)
+#         if _find_project_entry(state, project_name) is None:
+#             return JsonResponse({"success": False, "message": "Project not found"}, status=404)
+
+#         state_delete_project(user_id, project_name)
+#         return JsonResponse({"success": True, "project_name": project_name})
+
+#     except Exception:
+#         logger.exception("delete_project failed")
+#         return JsonResponse({"success": False, "message": "delete failed"}, status=500)
 @csrf_exempt
 @require_POST
 def delete_project(request):
@@ -1601,11 +1625,40 @@ def delete_project(request):
             return JsonResponse({"success": False, "message": "project_name required"}, status=400)
 
         state = load_viewer_state_from_blob(user_id)
-        if _find_project_entry(state, project_name) is None:
+        proj = _find_project_entry(state, project_name)
+        if proj is None:
             return JsonResponse({"success": False, "message": "Project not found"}, status=404)
 
-        state_delete_project(user_id, project_name)
-        return JsonResponse({"success": True, "project_name": project_name})
+        image_names = list(proj.get("images", []))
+
+        # 先刪掉此 project 裡所有 image 的 blob/local/state
+        for image_name in image_names:
+            try:
+                _delete_blob_prefix(_blob_prefix_for_image(user_id, image_name))
+            except Exception:
+                logger.exception("Failed to delete blob prefix for image=%s in project=%s", image_name, project_name)
+                raise
+
+            try:
+                _delete_local_image_dir_by_userid(user_id, image_name)
+            except Exception:
+                logger.exception("Failed to delete local image dir for image=%s in project=%s", image_name, project_name)
+
+            state_delete_image(user_id, image_name)
+
+        # 再把空 project 從 state 移除
+        state = load_viewer_state_from_blob(user_id)
+        state["projects"] = [
+            p for p in state.get("projects", [])
+            if p.get("project_name") != project_name
+        ]
+        save_viewer_state_to_blob(user_id, state)
+
+        return JsonResponse({
+            "success": True,
+            "project_name": project_name,
+            "deleted_images": image_names,
+        })
 
     except Exception:
         logger.exception("delete_project failed")
