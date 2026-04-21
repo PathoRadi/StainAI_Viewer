@@ -411,14 +411,17 @@
     max-height: 810px;
     width: 675px;          
     overflow-y: auto;
-    padding-right: 5px;        
-    scroll-behavior: smooth;    
+    overflow-x: hidden;
+    padding-right: 0;        
+    scroll-behavior: smooth;
+    box-sizing: border-box;
 }
 .barChart-wrapper {
     display: flex;                  
     flex-direction: row;
     position: relative;
-    width: 645px;
+    /* width: 645px; */
+    width: calc(100% - 30px);
     height: 250px;
     margin: 10px 15px 10px 15px;
     border: var(--border-barchart-wrapper);
