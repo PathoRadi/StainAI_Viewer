@@ -44,7 +44,7 @@
     overflow-x: hidden;
     min-height: 177px;
 
-    background: var(--bg-left-middle)
+    background: var(--bg-left-middle);
 
     padding-top: 260px;   /* logo + upload button 高度 */
     padding-bottom: 80px; /* bottom toggle 高度 */
