@@ -462,9 +462,6 @@ export function initProjectHandlers(historyStack) {
 
     $btn.prop('disabled', true);
 
-
-    
-
     try {
       const data = await createProject(projectName);
 
@@ -732,6 +729,40 @@ export function initProjectHandlers(historyStack) {
   //  Project Menu
   // ######################
 
+  let pendingDeleteState = null;
+
+  function showDeleteModal({ type, idx = null, projectName = '' }) {
+    pendingDeleteState = { type, idx, projectName };
+
+    let message = 'Delete this item?';
+
+    if (type === 'project-image') {
+      const item = historyStack[idx];
+      message = `Delete image "${item?.name || item?.dir || ''}"?`;
+    } else if (type === 'project-folder') {
+      message = `Delete project "${projectName}"?`;
+    }
+
+    $('#delete-modal-message').text(message);
+
+    $('#delete-modal-overlay')
+      .css('z-index', 3000)
+      .show()
+      .prop('hidden', false);
+
+    $('#modal-delete').trigger('focus');
+  }
+
+  function closeDeleteModal() {
+    pendingDeleteState = null;
+    $('#delete-modal-overlay').hide();
+    $('.menu-click-shield').remove();
+    $('.project-history-action-menu').hide();
+    $('.project-action-menu').hide();
+    restoreProjectMenusToOrigin();
+    restoreProjectFolderMenusToOrigin();
+  }
+
   $(document).off('click.projectMenu').on('click.projectMenu', '.project-history-menu-btn', function (e) {
     e.stopPropagation();
 
@@ -961,68 +992,172 @@ export function initProjectHandlers(historyStack) {
       });
   });
 
-  $(document).on('click', '.project-folder-delete-btn', async function (e) {
+  // $(document).on('click', '.project-folder-delete-btn', async function (e) {
+  //   e.stopPropagation();
+
+  //   const projectName = normalizeProjectName($(this).data('project'));
+  //   if (!projectName) return;
+
+  //   // if (!confirm(`Delete project "${projectName}" and all images inside?`)) return;
+  //   for (let i = historyStack.length - 1; i >= 0; i--) {
+  //     if ((historyStack[i].projectName || '') === projectName) {
+  //       historyStack.splice(i, 1);
+  //     }
+  //   }
+
+  //   try {
+  //     const res = await fetch(DELETE_PROJECT_URL, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'X-CSRFToken': csrftoken
+  //       },
+  //       body: JSON.stringify({
+  //         project_name: projectName
+  //       })
+  //     });
+
+  //     const data = await res.json();
+
+  //     if (res.status === 401) {
+  //       handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+  //       return;
+  //     }
+
+  //     if (!res.ok || !data.success) {
+  //       alert('Delete failed: ' + (data.message || ''));
+  //       return;
+  //     }
+
+  //     for (let i = historyStack.length - 1; i >= 0; i--) {
+  //       if ((historyStack[i].projectName || '') === projectName) {
+  //         historyStack.splice(i, 1);
+  //       }
+  //     }
+
+  //     if (Array.isArray(window.viewerProjects)) {
+  //       window.viewerProjects = window.viewerProjects.filter(
+  //         p => normalizeProjectName(p.project_name) !== projectName
+  //       );
+  //     }
+
+  //     updateHistoryUI(historyStack);
+  //     await updateProjectsUI(historyStack);
+
+  //   } catch (err) {
+  //     console.error(err);
+  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
+  //   } finally {
+  //     $('.project-action-menu').hide();
+  //     $('.menu-click-shield').remove();
+  //     restoreProjectFolderMenusToOrigin();
+  //   }
+  // });
+
+  $(document).off('click.projectFolderDelete').on('click.projectFolderDelete', '.project-folder-delete-btn', function (e) {
     e.stopPropagation();
+
+    $('.project-action-menu').hide();
+    $('.menu-click-shield').remove();
+    restoreProjectFolderMenusToOrigin();
 
     const projectName = normalizeProjectName($(this).data('project'));
     if (!projectName) return;
 
-    // if (!confirm(`Delete project "${projectName}" and all images inside?`)) return;
-    for (let i = historyStack.length - 1; i >= 0; i--) {
-      if ((historyStack[i].projectName || '') === projectName) {
-        historyStack.splice(i, 1);
-      }
-    }
+    showDeleteModal({
+      type: 'project-folder',
+      projectName
+    });
+  });
+
+  $(document).off('click.projectDeleteModalCancel').on('click.projectDeleteModalCancel', '#modal-cancel', function () {
+    if (!pendingDeleteState) return;
+    closeDeleteModal();
+  });
+
+  $(document).off('click.projectDeleteModalConfirm').on('click.projectDeleteModalConfirm', '#modal-delete', async function () {
+    if (!pendingDeleteState) return;
 
     try {
-      const res = await fetch(DELETE_PROJECT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify({
-          project_name: projectName
-        })
-      });
+      if (pendingDeleteState.type === 'project-image') {
+        const idx = pendingDeleteState.idx;
+        const item = historyStack[idx];
+        if (!item) {
+          closeDeleteModal();
+          return;
+        }
 
-      const data = await res.json();
+        const data = await fetchJson(DELETE_IMAGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify({
+            image_name: item.dir,
+            project_name: item.projectName || ''
+          })
+        });
 
-      if (res.status === 401) {
-        handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-        return;
-      }
+        if (data.success) {
+          historyStack.splice(idx, 1);
+          updateHistoryUI(historyStack);
+          await updateProjectsUI(historyStack);
 
-      if (!res.ok || !data.success) {
-        alert('Delete failed: ' + (data.message || ''));
-        return;
-      }
-
-      for (let i = historyStack.length - 1; i >= 0; i--) {
-        if ((historyStack[i].projectName || '') === projectName) {
-          historyStack.splice(i, 1);
+          if (historyStack.length === 0) {
+            $('.main-container').prop('hidden', true);
+            $('#drop-zone').show();
+            try { window.viewer?.close(); } catch (e) {}
+          }
+        } else {
+          alert('Delete failed: ' + (data.message || ''));
         }
       }
 
-      if (Array.isArray(window.viewerProjects)) {
-        window.viewerProjects = window.viewerProjects.filter(
-          p => normalizeProjectName(p.project_name) !== projectName
-        );
+      else if (pendingDeleteState.type === 'project-folder') {
+        const projectName = pendingDeleteState.projectName;
+        if (!projectName) {
+          closeDeleteModal();
+          return;
+        }
+
+        const data = await fetchJson(DELETE_PROJECT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify({
+            project_name: projectName
+          })
+        });
+
+        if (data.success) {
+          for (let i = historyStack.length - 1; i >= 0; i--) {
+            if ((historyStack[i].projectName || '') === projectName) {
+              historyStack.splice(i, 1);
+            }
+          }
+
+          if (Array.isArray(window.viewerProjects)) {
+            window.viewerProjects = window.viewerProjects.filter(
+              p => normalizeProjectName(p.project_name) !== projectName
+            );
+          }
+
+          updateHistoryUI(historyStack);
+          await updateProjectsUI(historyStack);
+        } else {
+          alert('Delete failed: ' + (data.message || ''));
+        }
       }
-
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-
     } catch (err) {
       console.error(err);
       alert('Delete failed: ' + (err.message || 'Unknown error'));
     } finally {
-      $('.project-action-menu').hide();
-      $('.menu-click-shield').remove();
-      restoreProjectFolderMenusToOrigin();
+      closeDeleteModal();
     }
   });
-
   $(document).off('keydown.projectFolderMenuEsc').on('keydown.projectFolderMenuEsc', function (ev) {
     if (ev.key === 'Escape') {
       const $open = $('.project-action-menu:visible');
@@ -1214,49 +1349,65 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Delete
-  $(document).on('click', '.project-delete-btn', async function (e) {
+  // $(document).on('click', '.project-delete-btn', async function (e) {
+  //   e.stopPropagation();
+
+  //   const idx = $(this).data('idx');
+  //   const item = historyStack[idx];
+  //   if (!item) return;
+
+  //   try {
+  //     const res = await fetch(DELETE_IMAGE_URL, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'X-CSRFToken': csrftoken
+  //       },
+  //       body: JSON.stringify({
+  //         image_name: item.dir,
+  //         project_name: item.projectName || ''
+  //       })
+  //     });
+
+  //     const data = await res.json();
+
+  //     if (res.status === 401) {
+  //       handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
+  //       return;
+  //     }
+
+  //     if (!res.ok || !data.success) {
+  //       alert('Delete failed: ' + (data.message || ''));
+  //       return;
+  //     }
+
+  //     historyStack.splice(idx, 1);
+  //     updateHistoryUI(historyStack);
+  //     await updateProjectsUI(historyStack);
+  //   } catch (err) {
+  //     console.error(err);
+  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
+  //   } finally {
+  //     $('.project-history-action-menu').hide();
+  //     $('.menu-click-shield').remove();
+  //     restoreProjectMenusToOrigin();
+  //   }
+  // });
+  $(document).off('click.projectDelete').on('click.projectDelete', '.project-delete-btn', function (e) {
     e.stopPropagation();
 
-    const idx = $(this).data('idx');
+    $('.project-history-action-menu').hide();
+    $('.menu-click-shield').remove();
+    restoreProjectMenusToOrigin();
+
+    const idx = Number($(this).data('idx'));
     const item = historyStack[idx];
     if (!item) return;
 
-    try {
-      const res = await fetch(DELETE_IMAGE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify({
-          image_name: item.dir,
-          project_name: item.projectName || ''
-        })
-      });
-
-      const data = await res.json();
-
-      if (res.status === 401) {
-        handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-        return;
-      }
-
-      if (!res.ok || !data.success) {
-        alert('Delete failed: ' + (data.message || ''));
-        return;
-      }
-
-      historyStack.splice(idx, 1);
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-    } catch (err) {
-      console.error(err);
-      alert('Delete failed: ' + (err.message || 'Unknown error'));
-    } finally {
-      $('.project-history-action-menu').hide();
-      $('.menu-click-shield').remove();
-      restoreProjectMenusToOrigin();
-    }
+    showDeleteModal({
+      type: 'project-image',
+      idx
+    });
   });
 
   $(document).on('click', '.project-move-option', async function (e) {
