@@ -209,21 +209,25 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       .getPropertyValue('--chart-tick-color').trim();
 
       if (Array.isArray(window.chartRefs)) {
-      window.chartRefs.forEach(ch => {
-        if (!ch) return;
-        // Global text color
-        ch.options.color = tickColor;
+        window.chartRefs.forEach(ch => {
+          if (!ch) return;
 
-        // Axis and title colors
-        if (ch.options.scales?.x?.ticks) ch.options.scales.x.ticks.color = tickColor;
-        if (ch.options.scales?.y?.ticks) ch.options.scales.y.ticks.color = tickColor;
-        if (ch.options.scales?.y?.title) ch.options.scales.y.title.color = tickColor;
+          ch.options.color = tickColor;
 
-        // Legend (even though legend: false, set just in case)
-        if (ch.options.plugins?.legend?.labels) ch.options.plugins.legend.labels.color = tickColor;
+          if (ch.options.scales?.x?.ticks) ch.options.scales.x.ticks.color = tickColor;
+          if (ch.options.scales?.y?.ticks) ch.options.scales.y.ticks.color = tickColor;
+          if (ch.options.scales?.y?.title) ch.options.scales.y.title.color = tickColor;
 
-        ch.update('none'); // Update without animation
-      });
+          if (ch.options.plugins?.legend?.labels) {
+            ch.options.plugins.legend.labels.color = tickColor;
+          }
+
+          if (ch.options.plugins?.datalabels) {
+            ch.options.plugins.datalabels.color = tickColor;
+          }
+
+          ch.update('none');
+        });
       }
     }
 
