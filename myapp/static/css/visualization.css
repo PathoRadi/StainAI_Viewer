@@ -493,9 +493,11 @@
 }
 :root {
     --border-chart-pill: 1px solid rgba(255,255,255,0.45);
+    --bg-chart-mode-btn: rgba(255,255,255,0.45);
 }
 [data-theme="light"] {
     --border-chart-pill: 1px solid rgba(0,0,0,0.45);
+    --bg-chart-mode-btn: rgba(0,0,0,0.45);
 }
 .chart-pill-title {
     font-size: 10px;
@@ -531,7 +533,7 @@
     cursor: pointer;
 }
 .chart-mode-btn.active {
-    background: rgba(255,255,255,0.45);
+    background: var(--bg-chart-mode-btn);
     color: var(--chart-tick-color);
 }
 .barChart {
