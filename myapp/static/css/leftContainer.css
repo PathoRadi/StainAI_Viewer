@@ -26,7 +26,8 @@
     flex-direction: column;
     position: relative;
     z-index: 4000;
-    width: 190px;
+    /* width: 190px; */
+    width: 100%;
     background: var(--bg-left-header);
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
@@ -148,7 +149,8 @@
     flex-direction: column;
     position: relative;
     z-index: 4000;
-    width: 190px;
+    /* width: 190px; */
+    width: 100%;
     background: var(--bg-left-bottom);
     margin-top: auto;
     padding-bottom: 0;
