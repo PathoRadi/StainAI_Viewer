@@ -12,7 +12,7 @@
     overflow: hidden;
     min-height: 0;
 
-    /* background: var(--bg-left); */
+    background: none;
     border-top-left-radius: 0x;
     border-bottom-left-radius: 0px;
     border-top-right-radius: 0px;
