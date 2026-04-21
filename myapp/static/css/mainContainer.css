@@ -123,7 +123,7 @@
 [data-theme="light"] {
   /* Left Container */
   --bg-left:            linear-gradient(to bottom, rgb(74, 106, 118), rgb(40, 39, 40));
-  --bg-left-header:     linear-gradient(to bottom, rgb(74, 106, 118), rgb(69, 95, 106));
+  --bg-left-header:     linear-gradient(to bottom, rgb(74, 106, 118), rgb(64, 86, 95));
   --bg-left-middle:     linear-gradient(to bottom, rgb(69, 95, 106), rgb(43, 45, 47));
   --bg-left-bottom:     linear-gradient(to bottom, rgb(43, 45, 47), rgb(40, 39, 40));
   --text-app-title:      rgb(47, 47, 47);
