@@ -107,24 +107,4 @@ function triggerChartUpdate() {
 }
 window.triggerChartUpdate = triggerChartUpdate;
 
-
-
-
-// ──────── Chart update based on ROI ────────
-function triggerChartUpdate() {
-  if (!window.konvaManager || !window.barChart) return;
-  const types = ['R','H','B','A','RD','HR'];
-  const counts = types.map(t => {
-    return window.bboxData.filter(d => {
-      const cx = (d.coords[0] + d.coords[2]) / 2;
-      const cy = (d.coords[1] + d.coords[3]) / 2;
-      return d.type === t && window.konvaManager.isInAnyPolygon(cx, cy);
-    }).length;
-  });
-  window.barChart.data.datasets[0].data = counts;
-  window.barChart.update();
-}
-window.triggerChartUpdate = triggerChartUpdate;
-
-
 export { layerManagerApi, triggerChartUpdate };
