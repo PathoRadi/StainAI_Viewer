@@ -408,8 +408,48 @@ function updateROIChart(/*layerId*/) {
   updateAllPanelsCharts();
 }
 
+// async function saveGlobalROIs() {
+//   const layers = layerManagerApi.getLayers();
+
+//   const payload = {
+//     rois: layers.map(l => ({
+//       id: l.id,
+//       name: l.name || 'ROI',
+//       color: l.color,
+//       visible: l.visible !== false,
+//       locked: !!l.locked,
+//       zIndex: Number(l.zIndex) || 0,
+//       selected: !!l.selected,
+//       points: Array.isArray(l.points) ? l.points.map(p => ({
+//         x: Number(p.x) || 0,
+//         y: Number(p.y) || 0
+//       })) : []
+//     }))
+//   };
+
+//   const res = await fetch(SAVE_GLOBAL_ROIS_URL, {
+//     method: 'POST',
+//     credentials: 'same-origin',
+//     headers: {
+//       'Content-Type': 'application/json',
+//       'X-CSRFToken': csrftoken
+//     },
+//     body: JSON.stringify(payload)
+//   });
+
+//   const data = await res.json().catch(() => ({}));
+//   if (!res.ok || !data.success) {
+//     throw new Error(data?.message || 'Failed to save global ROIs');
+//   }
+
+//   return data;
+// }
 async function saveGlobalROIs() {
   const layers = layerManagerApi.getLayers();
+
+  const wrap = document.getElementById('displayedImage-wrapper');
+  const W = wrap?.clientWidth || 1;
+  const H = wrap?.clientHeight || 1;
 
   const payload = {
     rois: layers.map(l => ({
@@ -420,9 +460,9 @@ async function saveGlobalROIs() {
       locked: !!l.locked,
       zIndex: Number(l.zIndex) || 0,
       selected: !!l.selected,
-      points: Array.isArray(l.points) ? l.points.map(p => ({
-        x: Number(p.x) || 0,
-        y: Number(p.y) || 0
+      points_norm: Array.isArray(l.points) ? l.points.map(p => ({
+        x: (Number(p.x) || 0) / W,
+        y: (Number(p.y) || 0) / H
       })) : []
     }))
   };
