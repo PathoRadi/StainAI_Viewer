@@ -1939,14 +1939,19 @@ def download_project_with_rois(request):
                 roi_buf = BytesIO()
                 with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
                     for i, r in enumerate(rois, start=1):
-                        name = safe_filename(r.get("name") or f"ROI_{i}")
-                        pts = r.get("points") or []
+                        try:
+                            name = safe_filename(r.get("name") or f"ROI_{i}")
+                            pts = r.get("points") or []
 
-                        roi_bytes = make_imagej_roi_bytes(pts)
-                        if not roi_bytes:
+                            roi_bytes = make_imagej_roi_bytes(pts)
+                            if not roi_bytes:
+                                logger.warning("Skipping ROI %s because ROI bytes are empty/invalid", name)
+                                continue
+
+                            rz.writestr(f"{name}.roi", roi_bytes)
+                        except Exception:
+                            logger.exception("Failed to convert ROI #%s into .roi file", i)
                             continue
-
-                        rz.writestr(f"{name}.roi", roi_bytes)
 
                 roi_zip_bytes = roi_buf.getvalue()
                 if roi_zip_bytes:
@@ -1975,36 +1980,108 @@ def safe_filename(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]+', "_", name)
 
 # helper function
+# def make_imagej_roi_bytes(points):
+#     """
+#     Convert [{'x':..,'y':..}, ...] to ImageJ .roi (polygon) binary.
+#     Refer to ImageJ ROI format: 64 bytes header + relative coords
+#     """
+#     if not points:
+#         return b""
+
+#     xs = [int(round(p.get("x", 0))) for p in points]
+#     ys = [int(round(p.get("y", 0))) for p in points]
+#     if not xs or not ys:
+#         return b""
+
+#     top, left, bottom, right = min(ys), min(xs), max(ys), max(xs)
+#     n = len(xs)
+
+#     header = bytearray(64)
+#     header[0:4]  = b"Iout"                  # magic
+#     header[4:6]  = (218).to_bytes(2, "big") # version
+#     header[6:8]  = (0).to_bytes(2, "big")   # roiType=0 (polygon)
+#     header[8:10]  = top.to_bytes(2, "big")
+#     header[10:12] = left.to_bytes(2, "big")
+#     header[12:14] = bottom.to_bytes(2, "big")
+#     header[14:16] = right.to_bytes(2, "big")
+#     header[16:18] = n.to_bytes(2, "big")
+
+#     buf = bytearray(header)
+#     for x in xs:
+#         buf += (x - left).to_bytes(2, "big", signed=True)
+#     for y in ys:
+#         buf += (y - top).to_bytes(2, "big", signed=True)
+
+#     return bytes(buf)
+
 def make_imagej_roi_bytes(points):
     """
     Convert [{'x':..,'y':..}, ...] to ImageJ .roi (polygon) binary.
-    Refer to ImageJ ROI format: 64 bytes header + relative coords
+    Safer version: validates and clamps to ImageJ ROI 16-bit limits.
     """
-    if not points:
+    if not isinstance(points, list) or len(points) < 3:
         return b""
 
-    xs = [int(round(p.get("x", 0))) for p in points]
-    ys = [int(round(p.get("y", 0))) for p in points]
-    if not xs or not ys:
+    clean_points = []
+    for p in points:
+        try:
+            x = int(round(float(p.get("x", 0))))
+            y = int(round(float(p.get("y", 0))))
+            clean_points.append((x, y))
+        except Exception:
+            continue
+
+    if len(clean_points) < 3:
         return b""
 
-    top, left, bottom, right = min(ys), min(xs), max(ys), max(xs)
-    n = len(xs)
+    xs = [x for x, _ in clean_points]
+    ys = [y for _, y in clean_points]
+
+    top = min(ys)
+    left = min(xs)
+    bottom = max(ys)
+    right = max(xs)
+    n = len(clean_points)
+
+    # ImageJ polygon ROI header fields are 16-bit unsigned
+    # relative coords are 16-bit signed
+    if n > 65535:
+        clean_points = clean_points[:65535]
+        xs = [x for x, _ in clean_points]
+        ys = [y for _, y in clean_points]
+        top = min(ys)
+        left = min(xs)
+        bottom = max(ys)
+        right = max(xs)
+        n = len(clean_points)
+
+    # Reject impossible header bounds instead of crashing whole download
+    if not (0 <= top <= 65535 and 0 <= left <= 65535 and 0 <= bottom <= 65535 and 0 <= right <= 65535):
+        logger.warning("ROI bounds exceed ImageJ .roi 16-bit header limit: top=%s left=%s bottom=%s right=%s", top, left, bottom, right)
+        return b""
+
+    rel_xs = [x - left for x in xs]
+    rel_ys = [y - top for y in ys]
+
+    # Relative coordinates must fit signed 16-bit
+    if any(v < -32768 or v > 32767 for v in rel_xs + rel_ys):
+        logger.warning("ROI relative coordinates exceed ImageJ .roi signed 16-bit limit")
+        return b""
 
     header = bytearray(64)
-    header[0:4]  = b"Iout"                  # magic
-    header[4:6]  = (218).to_bytes(2, "big") # version
-    header[6:8]  = (0).to_bytes(2, "big")   # roiType=0 (polygon)
-    header[8:10]  = top.to_bytes(2, "big")
+    header[0:4] = b"Iout"
+    header[4:6] = (218).to_bytes(2, "big")
+    header[6:8] = (0).to_bytes(2, "big")   # polygon
+    header[8:10] = top.to_bytes(2, "big")
     header[10:12] = left.to_bytes(2, "big")
     header[12:14] = bottom.to_bytes(2, "big")
     header[14:16] = right.to_bytes(2, "big")
     header[16:18] = n.to_bytes(2, "big")
 
     buf = bytearray(header)
-    for x in xs:
-        buf += (x - left).to_bytes(2, "big", signed=True)
-    for y in ys:
-        buf += (y - top).to_bytes(2, "big", signed=True)
+    for v in rel_xs:
+        buf += int(v).to_bytes(2, "big", signed=True)
+    for v in rel_ys:
+        buf += int(v).to_bytes(2, "big", signed=True)
 
     return bytes(buf)
