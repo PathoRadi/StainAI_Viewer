@@ -175,19 +175,30 @@ export function initHistoryHandlers(historyStack) {
         }))
       );
 
-      window.konvaManager?.redrawPolygons?.();
-
       if (typeof window.renderROIList === 'function') {
         window.renderROIList();
       }
+
+      // 等 viewer / stage 穩一拍再重畫
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.konvaManager?.redrawPolygons?.();
+        });
+      });
+
     } catch (e) {
       console.warn('Failed to reload global ROIs:', e);
       window.layerManagerApi.clearLayers?.();
-      window.konvaManager?.redrawPolygons?.();
 
       if (typeof window.renderROIList === 'function') {
         window.renderROIList();
       }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.konvaManager?.redrawPolygons?.();
+        });
+      });
     }
   }
 
@@ -273,7 +284,7 @@ export function initHistoryHandlers(historyStack) {
         console.warn('Failed to clear ROI layers before loading history item:', e);
       }
 
-      stabilizeViewerAndRender(window.bboxData, () => {
+      stabilizeViewerAndRender(window.bboxData, async () => {
         if (window.chartRefs && window.chartRefs.length) {
           window.chartRefs.forEach((chart, i) => {
             initCheckboxes(window.bboxData, chart);
@@ -299,7 +310,7 @@ export function initHistoryHandlers(historyStack) {
           drawBbox(window.bboxData);
           showAllBoxes();
 
-          reloadGlobalROIsIntoViewer();
+          await reloadGlobalROIsIntoViewer();
         } else {
           document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
           window.chartRefs = [];
@@ -324,7 +335,7 @@ export function initHistoryHandlers(historyStack) {
           drawBbox(window.bboxData);
           showAllBoxes();
 
-          reloadGlobalROIsIntoViewer();
+          await reloadGlobalROIsIntoViewer();
         }
       });
     });
