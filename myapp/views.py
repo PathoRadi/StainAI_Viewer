@@ -252,6 +252,12 @@ def _blob_name_for_result(user_id: str, image_name: str, filename: str) -> str:
 def _blob_name_for_resized(user_id: str, image_name: str, filename: str) -> str:
     return f"{_blob_prefix_for_image(user_id, image_name)}/resized/{filename}"
 
+def _blob_prefix_for_global_roi(user_id: str) -> str:
+    return f"{user_id}/roi"
+
+def _blob_name_for_global_roi_state(user_id: str) -> str:
+    return f"{_blob_prefix_for_global_roi(user_id)}/roi_state.json"
+
 def _download_json_from_blob(blob_name: str) -> dict | None:
     client = _blob_service_client()
     if client is None:
@@ -715,6 +721,58 @@ def viewer_state(request):
         "history": hydrated_history,
         "projects": state.get("projects", []),
     })
+
+@csrf_exempt
+@require_POST
+def save_global_rois(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        body = json.loads(request.body or "{}")
+        rois = body.get("rois") or []
+
+        if not isinstance(rois, list):
+            return JsonResponse({"success": False, "message": "rois must be a list"}, status=400)
+
+        payload = {
+            "rois": rois,
+            "updated_at": datetime.utcnow().isoformat() + "Z"
+        }
+
+        _upload_json_to_blob(_blob_name_for_global_roi_state(user_id), payload)
+
+        return JsonResponse({
+            "success": True,
+            "roi_count": len(rois)
+        })
+    except Exception:
+        logger.exception("save_global_rois failed")
+        return JsonResponse({"success": False, "message": "save failed"}, status=500)
+    
+@require_GET
+def get_global_rois(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        data = _download_json_from_blob(_blob_name_for_global_roi_state(user_id)) or {}
+        rois = data.get("rois") if isinstance(data, dict) else []
+
+        if not isinstance(rois, list):
+            rois = []
+
+        return JsonResponse({
+            "success": True,
+            "rois": rois
+        })
+    except Exception:
+        logger.exception("get_global_rois failed")
+        return JsonResponse({"success": False, "message": "load failed"}, status=500)
 
 
 # ---------------------------
@@ -1835,14 +1893,13 @@ def download_project_with_rois(request):
         if request.content_type and request.content_type.startswith("application/json"):
             payload = json.loads(request.body or "{}")
             image_name = (payload.get("image_name") or "").strip()
-            rois = payload.get("rois") or []
         else:
             image_name = (request.POST.get("image_name") or "").strip()
-            rois_raw = request.POST.get("rois")
-            try:
-                rois = json.loads(rois_raw) if rois_raw else []
-            except Exception:
-                rois = []
+
+        global_roi_state = _download_json_from_blob(_blob_name_for_global_roi_state(user_id)) or {}
+        rois = global_roi_state.get("rois") if isinstance(global_roi_state, dict) else []
+        if not isinstance(rois, list):
+            rois = []
 
         if not image_name:
             return HttpResponseBadRequest("image_name required")
@@ -1881,16 +1938,23 @@ def download_project_with_rois(request):
             if rois:
                 roi_buf = BytesIO()
                 with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
-                    for r in rois:
-                        name = safe_filename(r.get("name") or "ROI")
+                    for i, r in enumerate(rois, start=1):
+                        name = safe_filename(r.get("name") or f"ROI_{i}")
                         pts = r.get("points") or []
-                        rz.writestr(f"{name}.roi", make_imagej_roi_bytes(pts))
 
-                main_zip.writestr(
-                    os.path.join(image_name, f"{image_name}_rois.zip"),
-                    roi_buf.getvalue(),
-                    compress_type=zipfile.ZIP_STORED
-                )
+                        roi_bytes = make_imagej_roi_bytes(pts)
+                        if not roi_bytes:
+                            continue
+
+                        rz.writestr(f"{name}.roi", roi_bytes)
+
+                roi_zip_bytes = roi_buf.getvalue()
+                if roi_zip_bytes:
+                    main_zip.writestr(
+                        os.path.join(image_name, f"{image_name}_rois.zip"),
+                        roi_zip_bytes,
+                        compress_type=zipfile.ZIP_STORED
+                    )
 
         tmpf.seek(0)
         return FileResponse(

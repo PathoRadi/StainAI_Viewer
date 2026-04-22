@@ -1235,23 +1235,6 @@ export function initProjectHandlers(historyStack) {
       return;
     }
 
-    const layers = window.layerManagerApi.getLayers();
-    const [oH, oW] = item.origSize || [];
-    const [dH, dW] = item.dispSize || [];
-    let sx = 1, sy = 1;
-    if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
-      sx = oW / dW;
-      sy = oH / dH;
-    }
-
-    const roisPayload = (layers || []).map(l => ({
-      name: l.name || 'ROI',
-      points: (l.points || []).map(p => ({
-        x: Math.round(p.x * sx),
-        y: Math.round(p.y * sy)
-      }))
-    }));
-
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = DOWNLOAD_WITH_ROIS_URL;
@@ -1272,12 +1255,7 @@ export function initProjectHandlers(historyStack) {
     pj.name = 'project_name';
     pj.value = item.projectName || '';
 
-    const r = document.createElement('input');
-    r.type = 'hidden';
-    r.name = 'rois';
-    r.value = JSON.stringify(roisPayload);
-
-    form.append(csrf, p, pj, r);
+    form.append(csrf, p, pj);
     document.body.appendChild(form);
     form.submit();
     form.remove();

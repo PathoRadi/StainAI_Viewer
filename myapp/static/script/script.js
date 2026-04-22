@@ -5,7 +5,7 @@ import { initKonvaManager } from './konvaManager.js';
 import { showAllBoxes, drawBbox } from './box.js';
 window.showAllBoxes = showAllBoxes;
 import { layerManagerApi } from './layerManager.js';
-import { initROI } from './roi.js';
+import { initROI, loadGlobalROIs} from './roi.js';
 import { updateProjectsUI, initProjectHandlers } from './project.js';
 import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
@@ -146,7 +146,34 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     });
 
     // ──────── Initialize ROI Stack ────────
-    initROI();
+    await initROI();
+
+    window.reloadGlobalROIs = async function () {
+      try {
+        const rois = await loadGlobalROIs();
+
+        window.layerManagerApi.clearLayers?.();
+        window.layerManagerApi.setLayers?.(
+          rois.map((r, idx) => ({
+            id: r.id || `layer-${Date.now()}-${idx}`,
+            points: Array.isArray(r.points) ? r.points : [],
+            color: r.color || '#ff8800',
+            visible: r.visible !== false,
+            locked: !!r.locked,
+            name: r.name || `ROI ${idx + 1}`,
+            zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
+            selected: !!r.selected
+          }))
+        );
+
+        window.konvaManager?.redrawPolygons?.();
+        if (typeof window.renderROIList === 'function') {
+          window.renderROIList();
+        }
+      } catch (err) {
+        console.warn('reloadGlobalROIs failed:', err);
+      }
+    };
 
     // ──────── Fetch Viewer State ────────
     function applyViewerState(state) {

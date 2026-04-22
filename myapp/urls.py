@@ -23,4 +23,6 @@ urlpatterns = [
     path('rename_project/', views.rename_project, name='rename_project'),
     path('delete_project/', views.delete_project, name='delete_project'),
     path("api/viewer-state/", views.viewer_state, name="viewer_state"),
+    path("api/save-global-rois/", views.save_global_rois, name="save_global_rois"),
+    path("api/get-global-rois/", views.get_global_rois, name="get_global_rois"),
 ]

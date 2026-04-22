@@ -4,6 +4,7 @@ import { updateChart, initCheckboxes } from './visualization.js';
 import { csrftoken } from './cookie.js';
 import { addBarChart } from './process.js';
 import { getMoveToProjectMenuHtml, moveImageToImages, updateProjectsUI } from './project.js';
+import { loadGlobalROIs } from './roi.js';
 
 
 function handleAuthExpired(message = 'Session expired. Please sign in again.') {
@@ -120,17 +121,7 @@ export function initHistoryHandlers(historyStack) {
     // 4) Clear ROI / Konva
     try {
       // If you have a single/central method to clear ROIs, call it here
-      // if (window.layerManagerApi?.clearAll) window.layerManagerApi.clearAll();
-      // if (window.layerManagerApi?.removeAll) window.layerManagerApi.removeAll();
-      // if (window.konvaStage) {
-      //   window.konvaStage.destroyChildren();
-      //   window.konvaStage.draw();
-      // }
-      const roiLayers = window.layerManagerApi?.getLayers?.() || [];
-      roiLayers.forEach(layer => {
-        window.layerManagerApi.removeLayer(layer.id);
-      });
-
+      window.layerManagerApi?.clearLayers?.();
       window.konvaManager?.redrawPolygons?.();
     } catch(e) {}
 
@@ -165,6 +156,40 @@ export function initHistoryHandlers(historyStack) {
   }
 
   window.hardResetToHomepage = hardResetToHomepage;
+
+  async function reloadGlobalROIsIntoViewer() {
+    try {
+      const rois = await loadGlobalROIs();
+
+      window.layerManagerApi.clearLayers?.();
+      window.layerManagerApi.setLayers?.(
+        rois.map((r, idx) => ({
+          id: r.id || `layer-${Date.now()}-${idx}`,
+          points: Array.isArray(r.points) ? r.points : [],
+          color: r.color || '#ff8800',
+          visible: r.visible !== false,
+          locked: !!r.locked,
+          name: r.name || `ROI ${idx + 1}`,
+          zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
+          selected: !!r.selected
+        }))
+      );
+
+      window.konvaManager?.redrawPolygons?.();
+
+      if (typeof window.renderROIList === 'function') {
+        window.renderROIList();
+      }
+    } catch (e) {
+      console.warn('Failed to reload global ROIs:', e);
+      window.layerManagerApi.clearLayers?.();
+      window.konvaManager?.redrawPolygons?.();
+
+      if (typeof window.renderROIList === 'function') {
+        window.renderROIList();
+      }
+    }
+  }
 
   function toDisplayScaleBoxes(item) {
     const boxes = Array.isArray(item?.boxes) ? item.boxes : [];
@@ -242,11 +267,8 @@ export function initHistoryHandlers(historyStack) {
       };
 
       try {
-        if (window.layerManagerApi?.getLayers?.().length) {
-          window.layerManagerApi.getLayers().forEach(layer => {
-            window.layerManagerApi.removeLayer(layer.id);
-          });
-        }
+        window.layerManagerApi.clearLayers?.();
+        window.konvaManager?.redrawPolygons?.();
       } catch (e) {
         console.warn('Failed to clear ROI layers before loading history item:', e);
       }
@@ -273,13 +295,11 @@ export function initHistoryHandlers(historyStack) {
             }
           });
 
-          if (typeof window.renderROIList === 'function') {
-            window.renderROIList();
-          }
-
           clearBoxes();
           drawBbox(window.bboxData);
           showAllBoxes();
+
+          reloadGlobalROIsIntoViewer();
         } else {
           document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
           window.chartRefs = [];
@@ -300,13 +320,11 @@ export function initHistoryHandlers(historyStack) {
           c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
           c2.update();
 
-          if (typeof window.renderROIList === 'function') {
-            window.renderROIList();
-          }
-
           clearBoxes();
           drawBbox(window.bboxData);
           showAllBoxes();
+
+          reloadGlobalROIsIntoViewer();
         }
       });
     });
@@ -700,25 +718,6 @@ export function initHistoryHandlers(historyStack) {
       return;
     }
     
-    // Let the browser handle download: use form POST to trigger download (Save As dialog appears immediately)
-    const layers = window.layerManagerApi.getLayers();
-    const [oH, oW] = item.origSize || [];
-    const [dH, dW] = item.dispSize || [];       // ★ Saved into history by 1)
-      let sx = 1, sy = 1;
-      if (oW && oH && dW && dH && (oW !== dW || oH !== dH)) {
-        sx = oW / dW;
-        sy = oH / dH;
-    }
-
-    // Scale ROI points from display back to original (rounded to integer, ImageJ ROI friendly)
-    const roisPayload = (layers || []).map(l => {
-      const scaled = (l.points || []).map(p => ({
-        x: Math.round(p.x * sx),
-        y: Math.round(p.y * sy)
-      }));
-      return { name: l.name || 'ROI', points: scaled };
-    });
-    
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = DOWNLOAD_WITH_ROIS_URL;
@@ -734,18 +733,13 @@ export function initHistoryHandlers(historyStack) {
     p.type = 'hidden';
     p.name = 'image_name';
     p.value = imageName;
-    
-    const r = document.createElement('input');
-    r.type = 'hidden';
-    r.name = 'rois';
-    r.value = JSON.stringify(roisPayload);
 
     const pj = document.createElement('input');
     pj.type = 'hidden';
     pj.name = 'project_name';
     pj.value = item.projectName || '';
     
-    form.append(csrf, p, r, pj);
+    form.append(csrf, p, pj);
     document.body.appendChild(form);
     form.submit();
     form.remove();

@@ -2,8 +2,14 @@
 const layerManagerApi = (() => {
   let layers = [];
   const listeners = [];
+
+  function emitChange() {
+    listeners.forEach(fn => fn(layers));
+  }
+
   return {
     getLayers: () => layers.slice(),
+
     addLayer: (points, color) => {
       const id = `layer-${Date.now()}-${Math.random().toString(36).substr(2,8)}`;
 
@@ -31,23 +37,51 @@ const layerManagerApi = (() => {
         zIndex: layers.length,
         selected: false
       };
+
       layers.push(newLayer);
-      listeners.forEach(fn => fn(layers));
+      emitChange();
       return id;
     },
 
     updateLayer: (id, props) => {
       layers = layers.map(l => l.id === id ? { ...l, ...props } : l);
-      listeners.forEach(fn => fn(layers));
+      emitChange();
     },
+
     removeLayer: id => {
       layers = layers.filter(l => l.id !== id);
-      listeners.forEach(fn => fn(layers));
+      emitChange();
     },
+
     selectLayer: id => {
       layers = layers.map(l => ({ ...l, selected: l.id === id }));
-      listeners.forEach(fn => fn(layers));
+      emitChange();
     },
+
+    // ✅ new: replace all layers at once
+    setLayers: (nextLayers) => {
+      layers = Array.isArray(nextLayers)
+        ? nextLayers.map((l, idx) => ({
+            id: l.id || `layer-${Date.now()}-${idx}`,
+            points: Array.isArray(l.points) ? l.points : [],
+            color: l.color || '#ff8800',
+            visible: l.visible !== false,
+            locked: !!l.locked,
+            name: l.name || `ROI ${idx + 1}`,
+            zIndex: Number.isFinite(Number(l.zIndex)) ? Number(l.zIndex) : idx,
+            selected: !!l.selected
+          }))
+        : [];
+
+      emitChange();
+    },
+
+    // ✅ new: remove all layers at once
+    clearLayers: () => {
+      layers = [];
+      emitChange();
+    },
+
     onChange: fn => {
       listeners.push(fn);
       fn(layers);
@@ -55,6 +89,25 @@ const layerManagerApi = (() => {
   };
 })();
 window.layerManagerApi = layerManagerApi;
+
+
+// ──────── Chart update based on ROI ────────
+function triggerChartUpdate() {
+  if (!window.konvaManager || !window.barChart) return;
+  const types = ['R','H','B','A','RD','HR'];
+  const counts = types.map(t => {
+    return window.bboxData.filter(d => {
+      const cx = (d.coords[0] + d.coords[2]) / 2;
+      const cy = (d.coords[1] + d.coords[3]) / 2;
+      return d.type === t && window.konvaManager.isInAnyPolygon(cx, cy);
+    }).length;
+  });
+  window.barChart.data.datasets[0].data = counts;
+  window.barChart.update();
+}
+window.triggerChartUpdate = triggerChartUpdate;
+
+
 
 
 // ──────── Chart update based on ROI ────────

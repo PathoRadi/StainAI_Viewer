@@ -1,6 +1,7 @@
 // static/script/roi.js
 import { layerManagerApi } from './layerManager.js';
 import { updateChartWithArea } from './visualization.js';
+import { csrftoken } from './cookie.js';
 
 // ────────────────────────────────────────────────────────────
 // Helpers
@@ -333,15 +334,57 @@ $(document).off('change.roiPanel').on('change.roiPanel', '.roi-container .roi-ch
 // ────────────────────────────────────────────────────────────
 // Public functions used elsewhere in the app
 // ────────────────────────────────────────────────────────────
+let saveTimer = null;
+let suppressAutoSave = false;
+
+function scheduleSaveGlobalROIs() {
+  if (suppressAutoSave) return;
+
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await saveGlobalROIs();
+    } catch (err) {
+      console.error('saveGlobalROIs failed:', err);
+    }
+  }, 300);
+}
+
 /** Initialize ROI side panel and hooks */
-function initROI() {
-  // When layer list changes (add/remove/rename), refresh the UI:
+async function initROI() {
+  // layer 改變時：重畫 ROI list + 自動存檔
   layerManagerApi.onChange?.(() => {
     renderROIList();
+    scheduleSaveGlobalROIs();
   });
 
-  // First render
+  // 啟動時先從 blob 載入 global ROI
+  try {
+    suppressAutoSave = true;
+
+    const rois = await loadGlobalROIs();
+
+    layerManagerApi.setLayers(
+      rois.map((r, idx) => ({
+        id: r.id || `layer-${Date.now()}-${idx}`,
+        points: Array.isArray(r.points) ? r.points : [],
+        color: r.color || '#ff8800',
+        visible: r.visible !== false,
+        locked: !!r.locked,
+        name: r.name || `ROI ${idx + 1}`,
+        zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
+        selected: !!r.selected
+      }))
+    );
+  } catch (err) {
+    console.warn('Initial global ROI load failed:', err);
+    layerManagerApi.clearLayers?.();
+  } finally {
+    suppressAutoSave = false;
+  }
+
   renderROIList();
+  window.konvaManager?.redrawPolygons?.();
 }
 
 /** Called by Konva interactions after geometry edits
@@ -365,6 +408,58 @@ function updateROIChart(/*layerId*/) {
   updateAllPanelsCharts();
 }
 
+async function saveGlobalROIs() {
+  const layers = layerManagerApi.getLayers();
+
+  const payload = {
+    rois: layers.map(l => ({
+      id: l.id,
+      name: l.name || 'ROI',
+      color: l.color,
+      visible: l.visible !== false,
+      locked: !!l.locked,
+      zIndex: Number(l.zIndex) || 0,
+      selected: !!l.selected,
+      points: Array.isArray(l.points) ? l.points.map(p => ({
+        x: Number(p.x) || 0,
+        y: Number(p.y) || 0
+      })) : []
+    }))
+  };
+
+  const res = await fetch(SAVE_GLOBAL_ROIS_URL, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': csrftoken
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data?.message || 'Failed to save global ROIs');
+  }
+
+  return data;
+}
+
+async function loadGlobalROIs() {
+  const res = await fetch(GET_GLOBAL_ROIS_URL, {
+    method: 'GET',
+    credentials: 'same-origin',
+    cache: 'no-store'
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    throw new Error(data?.message || 'Failed to load global ROIs');
+  }
+
+  return Array.isArray(data.rois) ? data.rois : [];
+}
+
 // Expose to window for legacy callers
 window.triggerROIChartUpdate = triggerROIChartUpdate;
 window.updateROIChart = updateROIChart;
@@ -374,5 +469,18 @@ window.updateSingleROIPanelChart = function(panelEl, chart) {
   updatePanelChart($panel, chart);
 };
 
-export { initROI, updateROIChart, triggerROIChartUpdate };
-export default { initROI, updateROIChart, triggerROIChartUpdate };
+export {
+  initROI,
+  updateROIChart,
+  triggerROIChartUpdate,
+  loadGlobalROIs,
+  saveGlobalROIs
+};
+
+export default {
+  initROI,
+  updateROIChart,
+  triggerROIChartUpdate,
+  loadGlobalROIs,
+  saveGlobalROIs
+};
