@@ -188,19 +188,32 @@ export function initKonvaManager({
 
   /* Sync polygons from layer manager */
   layerManagerApi.onChange(layers => {
-    polygons.forEach(p => {
-      const lay = layers.find(l => l.id === p.layerId);
-      if (!lay) return;
-      p.visible = lay.visible;
-      p.locked  = lay.locked;
-      p.name    = lay.name;
-      p.zIndex  = lay.zIndex;
-      if (lay.color) p.color = lay.color;
+    polygons = (layers || []).map((lay, idx) => {
+      const old = polygons.find(p => p.layerId === lay.id);
+
+      return {
+        layerId: lay.id,
+        points: Array.isArray(lay.points) ? lay.points.map(pt => ({
+          x: Number(pt.x) || 0,
+          y: Number(pt.y) || 0
+        })) : [],
+        color: lay.color || old?.color || randomROIColor(),
+        visible: lay.visible !== false,
+        locked: !!lay.locked,
+        name: lay.name || old?.name || `ROI ${idx + 1}`,
+        zIndex: Number.isFinite(Number(lay.zIndex)) ? Number(lay.zIndex) : idx,
+
+        // keep old canReshape if layer still exists and is boolean, otherwise default to true
+        canReshape: typeof old?.canReshape === 'boolean' ? old.canReshape : true
+      };
     });
-    polygons = polygons.filter(p => layers.some(l => l.id === p.layerId));
+
     polygons.sort((a, b) => a.zIndex - b.zIndex);
+
     const selLay = layers.find(l => l.selected);
-    selectedPolyIndex = selLay ? polygons.findIndex(p => p.layerId === selLay.id) : null;
+    selectedPolyIndex = selLay
+      ? polygons.findIndex(p => p.layerId === selLay.id)
+      : null;
 
     const allVisible = layers.length === 0 ? true : layers.every(l => l.visible !== false);
     updateShowAllIcon(allVisible);

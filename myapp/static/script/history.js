@@ -157,89 +157,29 @@ export function initHistoryHandlers(historyStack) {
 
   window.hardResetToHomepage = hardResetToHomepage;
 
-  // async function reloadGlobalROIsIntoViewer() {
-  //   try {
-  //     const rois = await loadGlobalROIs();
-
-  //     window.layerManagerApi.clearLayers?.();
-  //     window.layerManagerApi.setLayers?.(
-  //       rois.map((r, idx) => ({
-  //         id: r.id || `layer-${Date.now()}-${idx}`,
-  //         points: Array.isArray(r.points) ? r.points : [],
-  //         color: r.color || '#ff8800',
-  //         visible: r.visible !== false,
-  //         locked: !!r.locked,
-  //         name: r.name || `ROI ${idx + 1}`,
-  //         zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
-  //         selected: !!r.selected
-  //       }))
-  //     );
-
-  //     if (typeof window.renderROIList === 'function') {
-  //       window.renderROIList();
-  //     }
-
-  //     // 等 viewer / stage 穩一拍再重畫
-  //     requestAnimationFrame(() => {
-  //       requestAnimationFrame(() => {
-  //         window.konvaManager?.redrawPolygons?.();
-  //       });
-  //     });
-
-  //   } catch (e) {
-  //     console.warn('Failed to reload global ROIs:', e);
-  //     window.layerManagerApi.clearLayers?.();
-
-  //     if (typeof window.renderROIList === 'function') {
-  //       window.renderROIList();
-  //     }
-
-  //     requestAnimationFrame(() => {
-  //       requestAnimationFrame(() => {
-  //         window.konvaManager?.redrawPolygons?.();
-  //       });
-  //     });
-  //   }
-  // }
   async function reloadGlobalROIsIntoViewer() {
     try {
       const rois = await loadGlobalROIs();
 
-      const wrap = document.getElementById('displayedImage-wrapper');
-      const W = wrap?.clientWidth || 1;
-      const H = wrap?.clientHeight || 1;
-
       window.layerManagerApi.clearLayers?.();
       window.layerManagerApi.setLayers?.(
-        rois.map((r, idx) => {
-          let points = [];
-
-          if (Array.isArray(r.points_norm) && r.points_norm.length) {
-            points = r.points_norm.map(p => ({
-              x: (Number(p.x) || 0) * W,
-              y: (Number(p.y) || 0) * H
-            }));
-          } else if (Array.isArray(r.points)) {
-            points = r.points;
-          }
-
-          return {
-            id: r.id || `layer-${Date.now()}-${idx}`,
-            points,
-            color: r.color || '#ff8800',
-            visible: r.visible !== false,
-            locked: !!r.locked,
-            name: r.name || `ROI ${idx + 1}`,
-            zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
-            selected: !!r.selected
-          };
-        })
+        rois.map((r, idx) => ({
+          id: r.id || `layer-${Date.now()}-${idx}`,
+          points: Array.isArray(r.points) ? r.points : [],
+          color: r.color || '#ff8800',
+          visible: r.visible !== false,
+          locked: !!r.locked,
+          name: r.name || `ROI ${idx + 1}`,
+          zIndex: Number.isFinite(Number(r.zIndex)) ? Number(r.zIndex) : idx,
+          selected: !!r.selected
+        }))
       );
 
       if (typeof window.renderROIList === 'function') {
         window.renderROIList();
       }
 
+      // 等 viewer / stage 穩一拍再重畫
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           window.konvaManager?.redrawPolygons?.();
