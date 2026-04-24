@@ -193,6 +193,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             boxes: Array.isArray(item.boxes) ? item.boxes : [],
             origSize: item.orig_size || [],
             dispSize: item.display_size || [],
+            resolution: item.resolution ?? null,
             demo: false,
           }))
         );

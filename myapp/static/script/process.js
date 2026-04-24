@@ -10,7 +10,13 @@ window.currentImageMeta = {
   imageName: '',
   origSize: [0, 0],
   totalPixels: 0,
+  resolutionUmPerPx: null,
 };
+
+function parseResolution(value) {
+  const n = Number(String(value ?? '').trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 function getTotalCellCountFromChart(chart) {
   if (!chart?.data?.datasets?.length) return 0;
@@ -1300,6 +1306,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           imageName: d.image_name || '',
           origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
           totalPixels: Number(d.total_pixels) || 0,
+          resolutionUmPerPx: null,
         };
 
         const parts = (window.imgPath || '').split('/');
@@ -1371,6 +1378,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     const scaleX = dispW / origW;
     const scaleY = dispH / origH;
 
+    const resUmPerPx =
+      parseResolution(d.resolution) ??
+      parseResolution(pendingParams?.resolution);
+
     window.currentImageMeta = {
       imageName: imageDir || '',
       origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
@@ -1378,6 +1389,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         Array.isArray(d.orig_size) && d.orig_size.length >= 2
           ? (Number(d.orig_size[0]) || 0) * (Number(d.orig_size[1]) || 0)
           : 0,
+      resolutionUmPerPx: resUmPerPx,
     };
 
     // scale boxes for viewer display

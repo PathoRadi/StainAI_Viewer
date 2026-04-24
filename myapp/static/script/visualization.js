@@ -31,6 +31,11 @@ function getTotalFromDataset(barChart) {
   }, 0);
 }
 
+function getResolutionUmPerPx() {
+  const n = Number(window.currentImageMeta?.resolutionUmPerPx);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function getCurrentAreaPixels(barChart) {
   if (Number.isFinite(Number(barChart?.$areaPixels))) {
     return Number(barChart.$areaPixels) || 0;
@@ -40,6 +45,30 @@ function getCurrentAreaPixels(barChart) {
 
 function formatPixelArea(px) {
   return `${Number(px || 0).toLocaleString()} px²`;
+}
+
+function getAreaInfo(barChart) {
+  const areaPx = getCurrentAreaPixels(barChart);
+  const res = getResolutionUmPerPx();
+
+  if (res) {
+    const areaUm2 = areaPx * res * res;
+    const areaMm2 = areaUm2 / 1_000_000;
+
+    return {
+      area: areaMm2,
+      label: `${areaMm2.toLocaleString(undefined, { maximumFractionDigits: 4 })} mm²`,
+      densityUnit: 'cells/mm²',
+      yTitle: 'Density (cells/mm²)',
+    };
+  }
+
+  return {
+    area: areaPx,
+    label: `${Number(areaPx || 0).toLocaleString()} px²`,
+    densityUnit: 'cells/px²',
+    yTitle: 'Density (cells/px²)',
+  };
 }
 
 function getChartMode(barChart) {
@@ -58,16 +87,23 @@ function syncMainChartSummary(barChart) {
   const areaEl = document.getElementById(`chart-area-value${idx}`);
 
   const total = getTotalFromDataset(barChart);
-  const areaPx = getCurrentAreaPixels(barChart);
+  const areaInfo = getAreaInfo(barChart);
+
+  const values = (mode === 'density')
+    ? countsToDensity(counts, areaInfo.area)
+    : counts;
+
+  barChart.options.scales.y.title.text =
+    mode === 'density' ? areaInfo.yTitle : 'Count';
 
   if (totalEl) totalEl.textContent = total.toLocaleString();
-  if (areaEl) areaEl.textContent = formatPixelArea(areaPx);
+  if (areaEl) areaEl.textContent = areaInfo.label;
 }
 
-function countsToDensity(counts, areaPx) {
-  const area = Number(areaPx) || 0;
-  if (!area) return counts.map(() => 0);
-  return counts.map(v => Number(v) / area);
+function countsToDensity(counts, area) {
+  const a = Number(area) || 0;
+  if (!a) return counts.map(() => 0);
+  return counts.map(v => Number(v) / a);
 }
 
 function formatScientific1(value) {
@@ -142,7 +178,7 @@ function applyMetricToChart(barChart, counts, areaOverridePx = null) {
   // tooltip format
   barChart.options.plugins.tooltip.callbacks.label = (item) => {
     if (mode === 'density') {
-      return `Density: ${formatScientific1(item.parsed.y)} cells/px²`;
+      return `Density: ${formatScientific1(item.parsed.y)} ${areaInfo.densityUnit}`;
     }
     return `Count: ${item.parsed.y}`;
   };
