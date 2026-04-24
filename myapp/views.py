@@ -30,7 +30,6 @@ from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPerm
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
-# from .method.image_resizer import ImageResizer
 from .method.grayscale import GrayscaleConverter
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
