@@ -423,7 +423,6 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
         "orig_size": payload.get("orig_size", []),
         "display_size": payload.get("display_size", []),
         "original_filename": original_filename,
-        "resolution": payload.get("resolution", None),
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -1211,7 +1210,6 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             "orig_size": [ow, oh],
             "display_size": [dw, dh],
             "original_filename": orig_name,
-            "resolution": current_res,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:

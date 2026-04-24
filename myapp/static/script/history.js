@@ -275,10 +275,6 @@ export function initHistoryHandlers(historyStack) {
           Array.isArray(item.origSize) && item.origSize.length >= 2
             ? (Number(item.origSize[0]) || 0) * (Number(item.origSize[1]) || 0)
             : 0,
-        resolutionUmPerPx:
-          Number.isFinite(Number(item.resolution)) && Number(item.resolution) > 0
-            ? Number(item.resolution)
-            : null,
       };
 
       try {
