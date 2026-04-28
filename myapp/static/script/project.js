@@ -214,6 +214,7 @@ function renderProjectEntry(project, historyStack) {
       </button>
 
        <div class="project-action-menu">
+          <button class="project-folder-download-btn" data-project="${safeProjectName}">Download</button>
          <button class="project-folder-rename-btn" data-project="${safeProjectName}">Rename</button>
          <button class="project-folder-delete-btn" data-project="${safeProjectName}">Delete</button>
        </div>
@@ -882,6 +883,40 @@ export function initProjectHandlers(historyStack) {
     restoreProjectFolderMenusToOrigin();
   });
 
+  $(document).off('click.projectFolderDownload').on('click.projectFolderDownload', '.project-folder-download-btn', function (e) {
+    e.stopPropagation();
+
+    $('.project-action-menu').hide();
+    $('.menu-click-shield').remove();
+    restoreProjectFolderMenusToOrigin();
+
+    const projectName = normalizeProjectName($(this).data('project'));
+    if (!projectName) {
+      alert('Download failed: project name missing');
+      return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = DOWNLOAD_PROJECT_FOLDER_URL;
+    form.target = '_blank';
+
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = csrftoken;
+
+    const p = document.createElement('input');
+    p.type = 'hidden';
+    p.name = 'project_name';
+    p.value = projectName;
+
+    form.append(csrf, p);
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  });
+
   $(document).on('click', '.project-folder-rename-btn', async function (e) {
     e.stopPropagation();
 
@@ -1265,50 +1300,6 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Delete
-  // $(document).on('click', '.project-delete-btn', async function (e) {
-  //   e.stopPropagation();
-
-  //   const idx = $(this).data('idx');
-  //   const item = historyStack[idx];
-  //   if (!item) return;
-
-  //   try {
-  //     const res = await fetch(DELETE_IMAGE_URL, {
-  //       method: 'POST',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //         'X-CSRFToken': csrftoken
-  //       },
-  //       body: JSON.stringify({
-  //         image_name: item.dir,
-  //         project_name: item.projectName || ''
-  //       })
-  //     });
-
-  //     const data = await res.json();
-
-  //     if (res.status === 401) {
-  //       handleAuthExpired(data?.message || 'Session expired. Please sign in again.');
-  //       return;
-  //     }
-
-  //     if (!res.ok || !data.success) {
-  //       alert('Delete failed: ' + (data.message || ''));
-  //       return;
-  //     }
-
-  //     historyStack.splice(idx, 1);
-  //     updateHistoryUI(historyStack);
-  //     await updateProjectsUI(historyStack);
-  //   } catch (err) {
-  //     console.error(err);
-  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
-  //   } finally {
-  //     $('.project-history-action-menu').hide();
-  //     $('.menu-click-shield').remove();
-  //     restoreProjectMenusToOrigin();
-  //   }
-  // });
   $(document).off('click.projectDelete').on('click.projectDelete', '.project-delete-btn', function (e) {
     e.stopPropagation();
 

@@ -1972,46 +1972,144 @@ def download_project_with_rois(request):
         logger.exception("download_project_with_rois failed")
         return HttpResponseServerError("download failed")
 
+@csrf_exempt
+@require_POST
+def download_project_folder(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            payload = json.loads(request.body or "{}")
+            project_name = safe_filename((payload.get("project_name") or "").strip())
+        else:
+            project_name = safe_filename((request.POST.get("project_name") or "").strip())
+
+        if not project_name:
+            return HttpResponseBadRequest("project_name required")
+
+        state = load_viewer_state_from_blob(user_id)
+        proj = _find_project_entry(state, project_name)
+
+        if proj is None:
+            return HttpResponseNotFound("Project not found")
+
+        image_names = [
+            name for name in proj.get("images", [])
+            if isinstance(name, str) and name.strip()
+        ]
+
+        if not image_names:
+            return HttpResponseNotFound("No images in this project")
+
+        global_roi_state = _download_json_from_blob(_blob_name_for_global_roi_state(user_id)) or {}
+        rois = global_roi_state.get("rois") if isinstance(global_roi_state, dict) else []
+        if not isinstance(rois, list):
+            rois = []
+
+        def _compress_type_for(fn: str):
+            return zipfile.ZIP_STORED if fn.lower().endswith((".tif", ".tiff", ".nii", ".zip")) else zipfile.ZIP_DEFLATED
+
+        tmpf = tempfile.TemporaryFile()
+
+        with zipfile.ZipFile(tmpf, "w") as project_zip:
+            found_any = False
+
+            for image_name in image_names:
+                image_name = safe_filename(image_name)
+
+                wanted_files = [
+                    f"{image_name}_chart.png",
+                    f"{image_name}_mmap.tif",
+                    f"{image_name}_results.json",
+                ]
+
+                for fn in wanted_files:
+                    blob_name = _blob_name_for_result(user_id, image_name, fn)
+
+                    if not _blob_exists(blob_name):
+                        continue
+
+                    file_bytes = _download_blob_bytes(blob_name)
+
+                    arcname = os.path.join(
+                        project_name,
+                        image_name,
+                        "result",
+                        fn
+                    )
+
+                    ctype = _compress_type_for(fn)
+
+                    if ctype == zipfile.ZIP_DEFLATED:
+                        project_zip.writestr(
+                            arcname,
+                            file_bytes,
+                            compress_type=ctype,
+                            compresslevel=0
+                        )
+                    else:
+                        project_zip.writestr(
+                            arcname,
+                            file_bytes,
+                            compress_type=ctype
+                        )
+
+                    found_any = True
+
+                if rois:
+                    roi_buf = BytesIO()
+
+                    with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
+                        for i, r in enumerate(rois, start=1):
+                            try:
+                                name = safe_filename(r.get("name") or f"ROI_{i}")
+                                pts = r.get("points") or []
+
+                                roi_bytes = make_imagej_roi_bytes(pts)
+                                if not roi_bytes:
+                                    continue
+
+                                rz.writestr(f"{name}.roi", roi_bytes)
+                            except Exception:
+                                logger.exception("Failed to convert ROI #%s into .roi file", i)
+                                continue
+
+                    roi_zip_bytes = roi_buf.getvalue()
+                    if roi_zip_bytes:
+                        project_zip.writestr(
+                            os.path.join(
+                                project_name,
+                                image_name,
+                                f"{image_name}_rois.zip"
+                            ),
+                            roi_zip_bytes,
+                            compress_type=zipfile.ZIP_STORED
+                        )
+
+            if not found_any:
+                return HttpResponseNotFound("No result files found for this project")
+
+        tmpf.seek(0)
+
+        return FileResponse(
+            tmpf,
+            as_attachment=True,
+            filename=f"{project_name}.zip",
+            content_type="application/zip"
+        )
+
+    except Exception:
+        logger.exception("download_project_folder failed")
+        return HttpResponseServerError("download failed")
+
 # helper function
 def safe_filename(name: str) -> str:
     """Remove illegal characters to avoid filename errors"""
     name = (name or "ROI").strip() or "ROI"
     return re.sub(r'[\\/:*?"<>|]+', "_", name)
-
-# helper function
-# def make_imagej_roi_bytes(points):
-#     """
-#     Convert [{'x':..,'y':..}, ...] to ImageJ .roi (polygon) binary.
-#     Refer to ImageJ ROI format: 64 bytes header + relative coords
-#     """
-#     if not points:
-#         return b""
-
-#     xs = [int(round(p.get("x", 0))) for p in points]
-#     ys = [int(round(p.get("y", 0))) for p in points]
-#     if not xs or not ys:
-#         return b""
-
-#     top, left, bottom, right = min(ys), min(xs), max(ys), max(xs)
-#     n = len(xs)
-
-#     header = bytearray(64)
-#     header[0:4]  = b"Iout"                  # magic
-#     header[4:6]  = (218).to_bytes(2, "big") # version
-#     header[6:8]  = (0).to_bytes(2, "big")   # roiType=0 (polygon)
-#     header[8:10]  = top.to_bytes(2, "big")
-#     header[10:12] = left.to_bytes(2, "big")
-#     header[12:14] = bottom.to_bytes(2, "big")
-#     header[14:16] = right.to_bytes(2, "big")
-#     header[16:18] = n.to_bytes(2, "big")
-
-#     buf = bytearray(header)
-#     for x in xs:
-#         buf += (x - left).to_bytes(2, "big", signed=True)
-#     for y in ys:
-#         buf += (y - top).to_bytes(2, "big", signed=True)
-
-#     return bytes(buf)
 
 def make_imagej_roi_bytes(points):
     """
