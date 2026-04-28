@@ -342,10 +342,14 @@ export function initCheckboxes(bboxData, barChart) {
       $(classSelector).prop('checked', false);
       showAllBoxesAsCellCount();
     } else {
-      setAllCheckedState();
+      $(allSelector).prop('checked', true);
+      $(classSelector).prop('checked', true);
+
+      // 只切回 morphology classification 顏色
+      showAllBoxes();
     }
 
-    updateChartForCurrentSelection();
+    // updateChartForCurrentSelection();
   });
 
   $(allSelector).off('change').on('change', function () {
