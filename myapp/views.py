@@ -422,6 +422,7 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
         "orig_size": payload.get("orig_size", []),
         "display_size": payload.get("display_size", []),
         "original_filename": original_filename,
+        "resolution": payload.get("resolution", None),
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -713,6 +714,7 @@ def viewer_state(request):
             "boxes": result_data.get("boxes", []),
             "orig_size": result_data.get("orig_size", []),
             "display_size": result_data.get("display_size", []),
+            "resolution": result_data.get("resolution", None),
         })
 
     return JsonResponse({
@@ -1059,8 +1061,16 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         orig_path = os.path.join(orig_dir, orig_name)
 
         # Generate resized image from original image (make its scale 0.464, which is the same as the train set)
-        current_res = params.get("resolution")
-        current_res = float(current_res) if current_res not in (None, "", "null") else None
+        # current_res = params.get("resolution")
+        # current_res = float(current_res) if current_res not in (None, "", "null") else None
+        raw_resolution = params.get("resolution")
+        try:
+            current_res = float(raw_resolution) if raw_resolution not in (None, "", "null") else None
+        except (TypeError, ValueError):
+            current_res = None
+
+        if current_res is not None and current_res <= 0:
+            current_res = None
 
         # --- training-scale resize ---
         if current_res is not None:
@@ -1209,6 +1219,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             "orig_size": [ow, oh],
             "display_size": [dw, dh],
             "original_filename": orig_name,
+            "resolution": current_res,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:

@@ -10,6 +10,7 @@ window.currentImageMeta = {
   imageName: '',
   origSize: [0, 0],
   totalPixels: 0,
+  resolution: null,
 };
 
 function getTotalCellCountFromChart(chart) {
@@ -585,6 +586,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (iGain)  iGain.value  = fmt(pendingParams.gain, 0.01);
     if (iPLow)  iPLow.value  = fmt(pendingParams.p_low, 1);
     if (iPHigh) iPHigh.value = fmt(pendingParams.p_high, 1);
+
+    // resolution (special handling since it can be empty or invalid)
+    const resolutionRaw = inpResolution ? String(inpResolution.value || '').trim() : '';
+    const resolutionVal = parseFloat(resolutionRaw.replace(',', '.'));
+
+    pendingParams.resolution =
+      Number.isFinite(resolutionVal) && resolutionVal > 0
+        ? resolutionVal
+        : '';
 
     // update slider fill
     syncAllRangeFills();
@@ -1296,10 +1306,18 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.displayUrl = d.display_url || '';
         window.previewUrl = d.preview_url || '';
 
+        // window.currentImageMeta = {
+        //   imageName: d.image_name || '',
+        //   origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
+        //   totalPixels: Number(d.total_pixels) || 0,
+        // };
+        const origSize = Array.isArray(d.orig_size) ? d.orig_size : [0, 0];
+
         window.currentImageMeta = {
           imageName: d.image_name || '',
-          origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
+          origSize: origSize,
           totalPixels: Number(d.total_pixels) || 0,
+          resolution: null,
         };
 
         const parts = (window.imgPath || '').split('/');
@@ -1378,6 +1396,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         Array.isArray(d.orig_size) && d.orig_size.length >= 2
           ? (Number(d.orig_size[0]) || 0) * (Number(d.orig_size[1]) || 0)
           : 0,
+      resolution:
+        Number.isFinite(Number(d.resolution)) && Number(d.resolution) > 0
+          ? Number(d.resolution)
+          : null,
     };
 
     // scale boxes for viewer display
@@ -1458,7 +1480,11 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       boxes: window.bboxData.slice(),
       origSize: d.orig_size,
       dispSize: d.display_size,
-      demo: !!window.isDemoUpload
+      demo: !!window.isDemoUpload,
+      resolution:
+        Number.isFinite(Number(d.resolution)) && Number(d.resolution) > 0
+          ? Number(d.resolution)
+          : null,
     });
     window.isDemoUpload = false;
 
