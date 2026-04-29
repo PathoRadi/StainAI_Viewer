@@ -138,9 +138,8 @@
     max-width: 260px;
     padding: 7px 10px;
 
-    background: rgba(20, 20, 20, 0.95);
+    background: var(--bg-history-item-hover);
     color: #fff;
-    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.45);
 
@@ -155,7 +154,6 @@
     z-index: 6000;
     transform: translateY(-50%);
 }
-
 .project-item:hover::after,
 .project-history-item:hover::after {
     opacity: 1;
@@ -263,7 +261,7 @@ body.dragging-history-item .project-item{
     width: 100%;
     min-height: 33px;
     padding: 8px 12px;
-    background: rgba(255,255,255,0.04);
+    background: var(--bg-history-item);
     border: none;
     border-radius: 12px;
     color: var(--text-history-item);
@@ -275,11 +273,11 @@ body.dragging-history-item .project-item{
 }
 
 .project-history-item:hover{
-    background: rgba(255,255,255,0.08);
+    background: var(--bg-history-item-hover);
 }
 
 .project-history-item.selected{
-    background: rgba(255,255,255,0.12);
+    background: var(--bg-history-item-hover);
 }
 
 .project-history-item{
