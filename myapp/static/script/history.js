@@ -378,6 +378,9 @@ export function initHistoryHandlers(historyStack) {
   // click on an entry → load that image and its boxes/chart
   $(document).on('click', '.history-item', function() {
     $('.history-item').removeClass('selected');
+    $('.project-history-item').removeClass('selected');
+    $('.project-item').removeClass('selected');
+
     $(this).addClass('selected');
 
     const idx = $(this).data('idx');
