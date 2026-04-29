@@ -61,9 +61,8 @@
     max-width: 260px;
     padding: 7px 10px;
 
-    background: rgba(20, 20, 20, 0.95);
+    background: var(--bg-history-item-hover);
     color: #fff;
-    border: 1px solid rgba(255,255,255,0.18);
     border-radius: 8px;
     box-shadow: 0 6px 18px rgba(0,0,0,0.45);
 
@@ -78,10 +77,29 @@
     z-index: 6000;
     transform: translateY(-50%);
 }
-
 .history-item:hover::after {
     opacity: 1;
 }
+
+::root {
+    --bg-history-item: none;
+    --bg-history-item-hover: rgb(100,100,100);
+    --text-history-item: rgb(255,255,255);
+    --bg-history-menu-btn: rgb(255,255,255);
+    --bg-history-action-menu: rgb(47,47,47);
+    --text-history-action-menu-button:rgb(255,255,255);
+    --bg-history-action-menu-button-hover: rgb(80,80,80);
+}
+[data-theme="light"] {
+    --bg-history-item: none;
+    --bg-history-item-hover: rgb(97, 136, 155);
+    --text-history-item: rgb(255,255,255);
+    --bg-history-menu-btn: rgb(255,255,255);
+    --bg-history-action-menu: rgb(74, 106, 118);
+    --text-history-action-menu-button:rgb(255,255,255);
+    --bg-history-action-menu-button-hover: rgb(97, 136, 155);
+}
+
 .history-filename {
   flex: 1 1 auto;       
   min-width: 0;         
