@@ -52,6 +52,36 @@
 .history-item.is-demo.selected {
     background: linear-gradient(90deg, rgb(233, 121, 189) 0%, rgb(194, 106, 189) 50%, rgb(150, 89, 189) 100%);  
 }
+.history-item::after {
+    content: attr(data-tooltip);
+    position: fixed;
+    left: 190px;
+    top: var(--tooltip-y, 0px);
+
+    max-width: 260px;
+    padding: 7px 10px;
+
+    background: rgba(20, 20, 20, 0.95);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+    line-height: 1.3;
+    white-space: normal;
+    word-break: break-word;
+
+    opacity: 0;
+    pointer-events: none;
+    z-index: 6000;
+    transform: translateY(-50%);
+}
+
+.history-item:hover::after {
+    opacity: 1;
+}
 .history-filename {
   flex: 1 1 auto;       
   min-width: 0;         

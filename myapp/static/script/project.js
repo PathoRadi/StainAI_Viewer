@@ -165,7 +165,14 @@ function renderProjectImageItem(item, idx) {
 
   return `
     <div class="project-history-entry">
-      <button class="project-history-item" data-idx="${idx}" type="button" draggable="true">
+      <button 
+        class="project-history-item" 
+        data-idx="${idx}" 
+        type="button" 
+        draggable="true"
+        data-tooltip="${safeName}"
+        title="${safeName}"
+      >
         <div class="project-history-left">
           <img class="file_icon" src="/static/logo/file_icon.png" alt="">
           <span class="history-filename">${safeName}</span>
@@ -205,7 +212,13 @@ function renderProjectEntry(project, historyStack) {
 
   return `
     <div class="project-entry" data-project="${safeProjectName}">
-      <button class="project-item${isExpanded ? ' expanded' : ''}" data-project="${safeProjectName}" type="button">
+      <button 
+        class="project-item${isExpanded ? ' expanded' : ''}" 
+        data-project="${safeProjectName}" 
+        type="button"
+        data-tooltip="${safeProjectName}"
+        title="${safeProjectName}"
+      >
         <div class="project-item-left">
           <img class="folder_icon" src="/static/logo/folder_icon.png" alt="">
           <span class="project-filename">${safeProjectName}</span>

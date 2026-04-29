@@ -221,6 +221,11 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     updateProjectsUI(historyStack);
     initProjectHandlers(historyStack);
 
+    $(document).on('mouseenter mousemove', '.history-item, .project-item, .project-history-item', function () {
+      const rect = this.getBoundingClientRect();
+      this.style.setProperty('--tooltip-y', `${rect.top + rect.height / 2}px`);
+    });
+
     // Theme toggle
     const toggle = document.getElementById('theme-toggle');
     const modeText = document.getElementById('theme-mode-text');

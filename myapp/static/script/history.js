@@ -45,7 +45,13 @@ export function updateHistoryUI(historyStack) {
     const demoClass = item.demo ? ' is-demo' : '';
     const entry = $(`
       <div class="history-entry">
-        <button class="history-item${demoClass}" data-idx="${idx}" draggable="true">
+        <button 
+          class="history-item${demoClass}" 
+          data-idx="${idx}" 
+          draggable="true"
+          data-tooltip="${item.name || item.dir || ''}"
+          title="${item.name || item.dir || ''}"
+        >
           <img class="file_icon" src="/static/logo/file_icon.png">
           <span class="history-filename">${item.name}</span>
           <span class="history-menu-btn">⋯</span>
@@ -268,14 +274,6 @@ export function initHistoryHandlers(historyStack) {
 
       window.bboxData = toDisplayScaleBoxes(item);
 
-      // window.currentImageMeta = {
-      //   imageName: item.imageName || item.name || item.dir || '',
-      //   origSize: Array.isArray(item.origSize) ? item.origSize : [0, 0],
-      //   totalPixels:
-      //     Array.isArray(item.origSize) && item.origSize.length >= 2
-      //       ? (Number(item.origSize[0]) || 0) * (Number(item.origSize[1]) || 0)
-      //       : 0,
-      // };
       window.currentImageMeta = {
         imageName: item.imageName || item.name || item.dir || '',
         origSize: Array.isArray(item.origSize) ? item.origSize : [0, 0],
