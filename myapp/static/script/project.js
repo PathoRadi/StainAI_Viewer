@@ -326,41 +326,41 @@ export async function moveImageToImages(imageName, sourceProjectName = '') {
 /**
  * Fill submenu with all projects
  */
-async function populateMoveSubmenu($submenu, idx, historyStack) {
-  $submenu.empty();
+// async function populateMoveSubmenu($submenu, idx, historyStack) {
+//   $submenu.empty();
 
-  const projects = deriveProjectsFromHistory(historyStack);
+//   const projects = deriveProjectsFromHistory(historyStack);
 
-  const currentItem = historyStack[idx];
-  const currentProjectName = currentItem?.projectName || '';
+//   const currentItem = historyStack[idx];
+//   const currentProjectName = currentItem?.projectName || '';
 
-  if (!projects.length) {
-    $submenu.append(`
-      <button class="move-project-empty" type="button" disabled>
-        No projects
-      </button>
-    `);
-    return;
-  }
+//   if (!projects.length) {
+//     $submenu.append(`
+//       <button class="move-project-empty" type="button" disabled>
+//         No projects
+//       </button>
+//     `);
+//     return;
+//   }
 
-  projects.forEach(project => {
-    const projectName = normalizeProjectName(project.project_name);
-    const safeProjectName = escapeHtml(projectName);
-    const disabled = currentProjectName === projectName ? 'disabled' : '';
+//   projects.forEach(project => {
+//     const projectName = normalizeProjectName(project.project_name);
+//     const safeProjectName = escapeHtml(projectName);
+//     const disabled = currentProjectName === projectName ? 'disabled' : '';
 
-    $submenu.append(`
-      <button
-        class="move-project-option"
-        type="button"
-        data-idx="${idx}"
-        data-project="${safeProjectName}"
-        ${disabled}
-      >
-        ${safeProjectName}
-      </button>
-    `);
-  });
-}
+//     $submenu.append(`
+//       <button
+//         class="move-project-option"
+//         type="button"
+//         data-idx="${idx}"
+//         data-project="${safeProjectName}"
+//         ${disabled}
+//       >
+//         ${safeProjectName}
+//       </button>
+//     `);
+//   });
+// }
 
 /* =========================================================
  * Public helper for history.js
@@ -372,11 +372,11 @@ async function populateMoveSubmenu($submenu, idx, historyStack) {
  */
 export function getMoveToProjectMenuHtml(idx) {
   return `
-    <div class="history-move-wrapper" data-idx="${idx}">
-      <button class="history-move-btn" data-idx="${idx}" type="button">
+    <div class="project-image-move-wrapper" data-idx="${idx}">
+      <button class="project-image-move-btn" data-idx="${idx}" type="button">
         Move to Project
       </button>
-      <div class="history-move-submenu" data-idx="${idx}"></div>
+      <div class="project-image-move-submenu" data-idx="${idx}"></div>
     </div>
   `;
 }
@@ -565,26 +565,17 @@ export function initProjectHandlers(historyStack) {
     $submenu.toggleClass('visible');
   });
 
-  // when hovering/clicking move wrapper, fill submenu
-  $(document).on('mouseenter', '.history-move-wrapper', async function () {
-    const idx = Number($(this).data('idx'));
-    if (Number.isNaN(idx)) return;
-
-    const $submenu = $(this).find('.history-move-submenu');
-    await populateMoveSubmenu($submenu, idx, historyStack);
-  });
-
   // support click open too, in case hover not enough
-  $(document).on('click', '.history-move-btn', async function (e) {
+  $(document).on('click', '.project-image-move-btn', async function (e) {
     e.stopPropagation();
 
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
 
-    const $wrapper = $(this).closest('.history-move-wrapper');
-    const $submenu = $wrapper.find('.history-move-submenu');
+    const $wrapper = $(this).closest('.project-image-move-wrapper');
+    const $submenu = $wrapper.find('.project-image-move-submenu');
 
-    await populateMoveSubmenu($submenu, idx, historyStack);
+    await populateProjectMoveSubmenu($submenu, idx, historyStack);
     $submenu.toggleClass('visible');
   });
 
@@ -610,7 +601,7 @@ export function initProjectHandlers(historyStack) {
 
       // hide menus
       $('.history-action-menu').hide();
-      $('.history-move-submenu').removeClass('visible');
+      $('.project-image-move-submenu').removeClass('visible');
       $('.menu-click-shield').remove();
 
       // refresh both sections
@@ -674,8 +665,6 @@ export function initProjectHandlers(historyStack) {
     if (sourceProjectName === targetProjectName) return;
 
     try {
-      await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
-
       const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
 
       item.projectName = data.project_name || targetProjectName;

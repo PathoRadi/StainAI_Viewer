@@ -3,6 +3,8 @@
 /* ###########################
       Add Project Button
 ########################### */ 
+
+/* Main Settings */
 .new-project-row{
     display: flex;
     width: 100%;
@@ -27,12 +29,69 @@
     font-size: 15px;
     cursor: pointer;
 }
+/* Create Project modal */
+#project-modal-overlay[hidden]{
+    display: none !important;
+}
+.project-modal-box,
+#project-modal-overlay .modal-box{
+    position: relative;
+    min-width: 320px;
+    max-width: 420px;
+    padding: 22px 20px 18px 20px;
+}
+#project-name-input{
+    width: 100%;
+    height: 38px;
+    margin: 10px 0 14px 0;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px;
+    outline: none;
+    color: var(--text-modal-box);
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+}
+#project-name-input:focus{
+    border-color: rgba(255,255,255,0.35);
+}
+#project-modal-create{
+    background: rgb(60, 179, 113);
+}
+#project-modal-create:hover{
+    background: rgb(76, 199, 127);
+}
+#project-modal-cancel{
+    background: rgb(100,100,100);
+}
+#project-modal-close{
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-modal-box);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+#project-modal-close:hover{
+    background: rgba(255,255,255,0.08);
+}
 
 
 
 
 
-/* ===== Projects container ===== */
+/* ###########################
+        Project Folder
+########################### */ 
+
+/* Main Settings */
 #projects-container{
     margin: 0;
     padding: 4px 20px 20px 20px;
@@ -76,10 +135,70 @@
 .project-folder:hover{
     background: var(--bg-history-item-hover);
 }
+.project-folder-left{
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    margin: 0 0 0 0 !important;
+}
+.folder_icon{
+    width: 16px;
+    height: 16px;
+    margin: 0 8px 0 0;
+    object-fit: contain;
+}
+.project-folder-name{
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+/* Project Folder Menu */
+.project-folder-menu-btn{
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--bg-history-menu-btn);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
 .project-folder:hover .project-folder-menu-btn{
     display: block;
 }
-/* project folder rename input */
+.project-folder-action-menu{
+    position: absolute;
+    transform: none !important;
+    margin: 0 !important;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    min-width: 140px;
+    width: auto;
+    height: auto;
+    display: none;
+    overflow: visible;
+    z-index: 3000;
+}
+.project-folder-action-menu button{
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+}
+.project-folder-action-menu button:hover{
+    background: var(--bg-history-action-menu-button-hover);
+}
 .project-folder .history-rename-input{
     flex: 1 1 auto;
     min-width: 0;
@@ -106,26 +225,7 @@
 .project-folder .history-rename-input:focus{
     border-color: rgba(255,255,255,0.35);
 }
-.project-folder-menu-btn{
-    position: absolute;
-    top: 50%;
-    right: 8px;
-    transform: translateY(-50%);
-    display: none;
-    background: transparent;
-    border: none;
-    color: var(--bg-history-menu-btn);
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0;
-}
-.project-folder-left{
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    margin: 0 0 0 0 !important;
-}
+/* Project Folder Name Tooltip */
 .project-folder::after,
 .project-image-item::after {
     content: attr(data-tooltip);
@@ -156,69 +256,22 @@
 .project-image-item:hover::after {
     opacity: 1;
 }
-.folder_icon{
-    width: 16px;
-    height: 16px;
-    margin: 0 8px 0 0;
-    object-fit: contain;
-}
-.project-folder-name{
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-
-/* ###########################
-             Drag
-########################### */ 
+/* Drag and Drop */
 .project-folder.drag-over{
     background: rgba(255,255,255,0.16);
     outline: 1px dashed rgba(255,255,255,0.45);
 }
-body.dragging-history-item .project-folder{
+body.dragging-image-item .project-folder{
     transition: background 0.12s ease, outline 0.12s ease;
 }
 
 
 
 
-/* ##########################
-    Project Menu Button
-###########################*/ 
-.project-folder-action-menu{
-    position: absolute;
-    transform: none !important;
-    margin: 0 !important;
-    background: var(--bg-history-action-menu);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-    padding: 4px 0;
-    min-width: 140px;
-    width: auto;
-    height: auto;
-    display: none;
-    overflow: visible;
-    z-index: 3000;
-}
 
-.project-folder-action-menu button{
-    width: 100%;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    color: var(--text-history-action-menu-button);
-    text-align: left;
-    cursor: pointer;
-}
-
-.project-folder-action-menu button:hover{
-    background: var(--bg-history-action-menu-button-hover);
-}
-
-/* ===== Images under project ===== */
+/* ###########################
+        Project Images
+########################### */ 
 .project-images-list{
     display: flex;
     flex-direction: column;
@@ -229,19 +282,16 @@ body.dragging-history-item .project-folder{
     opacity: 1;
     transition: max-height 0.22s ease, opacity 0.18s ease, padding-top 0.18s ease;
 }
-
 .project-images-list.collapsed{
     max-height: 0;
     opacity: 0;
     padding-top: 0;
     gap: 0;
 }
-
 .project-image-entry{
     display: flex;
     flex-direction: column;
 }
-
 .project-image-item{
     position: relative;
     display: flex;
@@ -258,21 +308,22 @@ body.dragging-history-item .project-folder{
     text-align: left;
     cursor: pointer;
     transition: background 0.18s ease;
-}
-
-.project-image-item:hover{
-    background: var(--bg-history-item-hover);
-}
-
-.project-image-item.selected{
-    background: var(--bg-history-item-hover);
-}
-
-.project-image-item{
     position: relative;
     padding-right: 34px;
 }
-
+.project-image-item:hover{
+    background: var(--bg-history-item-hover);
+}
+.project-image-item.selected{
+    background: var(--bg-history-item-hover);
+}
+.project-image-left{
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+}
+/* Project Image Menu */
 .project-image-menu-btn{
     position: absolute;
     top: 50%;
@@ -287,11 +338,9 @@ body.dragging-history-item .project-folder{
     cursor: pointer;
     padding: 0;
 }
-
 .project-image-item:hover .project-image-menu-btn{
     display: block;
 }
-
 .project-image-action-menu{
     position: absolute;
     transform: none !important;
@@ -322,6 +371,7 @@ body.dragging-history-item .project-folder{
 .project-image-move-wrapper{
     position: relative;
 }
+
 .project-image-move-btn{
     width: 100%;
 }
@@ -344,48 +394,9 @@ body.dragging-history-item .project-folder{
 .project-image-move-wrapper:hover .project-image-move-submenu{
     display: block;
 }
-
-
-
-
-.project-image-left{
-    display: flex;
-    align-items: center;
-    min-width: 0;
+.project-image-move-btn{
     width: 100%;
 }
-
-/* ===== Move to Project submenu ===== */
-.history-move-wrapper{
-    position: relative;
-}
-
-.history-move-btn{
-    width: 100%;
-}
-
-.history-move-submenu{
-    position: absolute;
-    top: 0;
-    left: calc(100% - 4px);
-    min-width: 160px;
-    max-width: 220px;
-    background: var(--bg-history-action-menu);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
-    padding: 4px 0;
-    display: none;
-    z-index: 3100;
-}
-
-.history-move-submenu.visible{
-    display: block;
-}
-
-.history-move-wrapper:hover .history-move-submenu{
-    display: block;
-}
-
 .move-project-option,
 .move-project-empty{
     width: 100%;
@@ -398,75 +409,11 @@ body.dragging-history-item .project-folder{
     font-family: 'PingFangHKWeb', sans-serif;
     font-size: 13px;
 }
-
 .move-project-option:hover{
     background: var(--bg-history-action-menu-button-hover);
 }
-
 .move-project-option:disabled,
 .move-project-empty:disabled{
     opacity: 0.5;
     cursor: default;
-}
-
-/* ===== Project modal ===== */
-#project-modal-overlay[hidden]{
-    display: none !important;
-}
-
-.project-modal-box,
-#project-modal-overlay .modal-box{
-    position: relative;
-    min-width: 320px;
-    max-width: 420px;
-    padding: 22px 20px 18px 20px;
-}
-
-#project-name-input{
-    width: 100%;
-    height: 38px;
-    margin: 10px 0 14px 0;
-    padding: 8px 12px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 10px;
-    outline: none;
-    color: var(--text-modal-box);
-    font-family: 'PingFangHKWeb', sans-serif;
-    font-size: 14px;
-}
-
-#project-name-input:focus{
-    border-color: rgba(255,255,255,0.35);
-}
-
-#project-modal-create{
-    background: rgb(60, 179, 113);
-}
-
-#project-modal-create:hover{
-    background: rgb(76, 199, 127);
-}
-
-#project-modal-cancel{
-    background: rgb(100,100,100);
-}
-
-#project-modal-close{
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 26px;
-    height: 26px;
-    border: none;
-    border-radius: 50%;
-    background: transparent;
-    color: var(--text-modal-box);
-    cursor: pointer;
-    font-size: 14px;
-    line-height: 1;
-}
-
-#project-modal-close:hover{
-    background: rgba(255,255,255,0.08);
 }
