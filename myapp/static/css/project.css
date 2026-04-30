@@ -92,6 +92,18 @@
 ########################### */ 
 
 /* Main Settings */
+#projects-container-wrapper{
+    overflow: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, margin-top 0.18s ease;
+    max-height: 2000px;
+    opacity: 1;
+    margin-top: 0;
+}
+#projects-container-wrapper.collapsed{
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
 #projects-container{
     margin: 0;
     padding: 4px 20px 20px 20px;

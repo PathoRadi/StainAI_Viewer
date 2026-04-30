@@ -2,21 +2,6 @@
 
 /* Dark Mode */
 :root {
-  /* ----- Left Container ----- */
-  --bg-left:             rgb(23,23,23);
-  --bg-left-header:      rgb(23,23,23);
-  --bg-left-middle:      rgb(23,23,23);
-  --bg-left-bottom:      rgb(23,23,23);
-  --text-app-title:      rgb(255, 255, 255);
-  --bg-upload-new-img-btn: rgb(23,23,23);
-  --text-upload-new-img-btn: rgb(255, 255, 255);
-  --border-upload-new-img-btn: 1px solid rgb(255, 255, 255);
-  /* Model Box */
-  --bg-modal-box: rgb(34,34,34);
-  --text-modal-box: rgb(255,255,255);
-
-
-
   /* Drop Zone */
   --bg-drop-zone:        rgb(34,34,34);
   --bg-drop-zone-hover: rgb(51,51,51);
@@ -113,24 +98,6 @@
 }
 /* ----- Light mode ----- */
 [data-theme="light"] {
-  /* Left Container */
-  --bg-left:            linear-gradient(to bottom, rgb(74, 106, 118), rgb(40, 39, 40));
-  /* --bg-left-header:     linear-gradient(to bottom, rgb(74, 106, 118), rgb(69, 95, 106));
-  --bg-left-middle:     linear-gradient(to bottom, rgb(69, 95, 106), rgb(43, 45, 47));
-  --bg-left-bottom:     linear-gradient(to bottom, rgb(43, 45, 47), rgb(40, 39, 40)); */
-  --bg-left-header: transparent;
-  --bg-left-middle: transparent;
-  --bg-left-bottom: transparent;
-  --text-app-title:      rgb(47, 47, 47);
-  --bg-upload-new-img-btn: rgb(97, 136, 155);
-  --text-upload-new-img-btn: rgb(255, 255, 255);
-  --border-upload-new-img-btn: none;
-  /* Model Box */
-  --bg-modal-box: rgb(190,190,190);
-  --text-modal-box: rgb(0,0,0);
-
-
-
   /* Drop Zone */
   --bg-drop-zone:        rgb(255,255,255);
   --bg-drop-zone-hover: rgb(200,200,200);

@@ -29,6 +29,45 @@
 ######################### */ 
 
 /* Main Settings */
+#upload-new-img-btn {
+    display: flex;
+    position: relative;
+    z-index: 4000;
+    justify-content: flex-start;
+    align-items: center;
+    width: 160px;
+    height: 35px;
+    margin: 0px 15px 15px 15px;
+    background: var(--bg-upload-new-img-btn);
+    color: var(--text-upload-new-img-btn);
+    border: var(--border-upload-new-img-btn);
+    border-radius: 15px;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+}
+.btn-icon {
+    width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    object-fit: contain;
+}
+.btn-plus {
+    margin-left: 10px;
+    margin-right: 25px;
+}
+#history-container-wrapper{
+    overflow: hidden;
+    transition: max-height 0.22s ease, opacity 0.18s ease, margin-top 0.18s ease;
+    max-height: 2000px;
+    opacity: 1;
+    margin-top: 0;
+}
+#history-container-wrapper.collapsed{
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
 #history-container {
     margin: 0;
     padding: 8px 20px 20px 20px;
