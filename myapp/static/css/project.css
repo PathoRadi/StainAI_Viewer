@@ -218,16 +218,6 @@ body.dragging-history-item .project-folder{
     background: var(--bg-history-action-menu-button-hover);
 }
 
-.project-chevron{
-    font-size: 14px;
-    line-height: 1;
-    transition: transform 0.2s ease;
-    flex: 0 0 auto;
-}
-.project-folder.expanded .project-chevron{
-    transform: rotate(90deg);
-}
-
 /* ===== Images under project ===== */
 .project-images-list{
     display: flex;

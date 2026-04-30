@@ -378,8 +378,8 @@ export function initHistoryHandlers(historyStack) {
   // click on an entry → load that image and its boxes/chart
   $(document).on('click', '.history-item', function() {
     $('.history-item').removeClass('selected');
-    $('.project-history-item').removeClass('selected');
-    $('.project-item').removeClass('selected');
+    $('.project-image-item').removeClass('selected');
+    $('.project-folder').removeClass('selected');
 
     $(this).addClass('selected');
 
@@ -409,7 +409,7 @@ export function initHistoryHandlers(historyStack) {
   });
   $(document).on('dragend', '.history-item', function () {
     $('body').removeClass('dragging-history-item');
-    $('.project-item').removeClass('drag-over');
+    $('.project-folder').removeClass('drag-over');
   });
   $(document).on('dragover', '#history-container', function (e) {
     e.preventDefault();
