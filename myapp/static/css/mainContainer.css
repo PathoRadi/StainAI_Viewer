@@ -11,14 +11,6 @@
   --bg-upload-new-img-btn: rgb(23,23,23);
   --text-upload-new-img-btn: rgb(255, 255, 255);
   --border-upload-new-img-btn: 1px solid rgb(255, 255, 255);
-  /* History Item */
-  --bg-history-item: none;
-  --bg-history-item-hover: rgb(100,100,100);
-  --text-history-item: rgb(255,255,255);
-  --bg-history-menu-btn: rgb(255,255,255);
-  --bg-history-action-menu: rgb(47,47,47);
-  --text-history-action-menu-button:rgb(255,255,255);
-  --bg-history-action-menu-button-hover: rgb(80,80,80);
   /* Model Box */
   --bg-modal-box: rgb(34,34,34);
   --text-modal-box: rgb(255,255,255);
@@ -133,14 +125,6 @@
   --bg-upload-new-img-btn: rgb(97, 136, 155);
   --text-upload-new-img-btn: rgb(255, 255, 255);
   --border-upload-new-img-btn: none;
-  /* History Item */
-  --bg-history-item: none;
-  --bg-history-item-hover: rgb(97, 136, 155);
-  --text-history-item: rgb(255,255,255);
-  --bg-history-menu-btn: rgb(255,255,255);
-  --bg-history-action-menu: rgb(74, 106, 118);
-  --text-history-action-menu-button:rgb(255,255,255);
-  --bg-history-action-menu-button-hover: rgb(97, 136, 155);
   /* Model Box */
   --bg-modal-box: rgb(190,190,190);
   --text-modal-box: rgb(0,0,0);

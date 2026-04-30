@@ -1,6 +1,34 @@
 /* static/css/history.css */
 
-/* ------- History Stack ------- */
+/* ##########################
+        Color Setting
+########################## */ 
+::root {
+    --bg-history-item: none;
+    --bg-history-item-hover: rgb(100,100,100);
+    --text-history-item: rgb(255,255,255);
+    --bg-history-menu-btn: rgb(255,255,255);
+    --bg-history-action-menu: rgb(47,47,47);
+    --bg-history-action-menu-button-hover: rgb(80,80,80);
+    --text-history-action-menu-button:rgb(255,255,255);
+}
+[data-theme="light"] {
+    --bg-history-item: none;
+    --bg-history-item-hover: rgb(97, 136, 155);
+    --text-history-item: rgb(255,255,255);
+    --bg-history-menu-btn: rgb(255,255,255);
+    --bg-history-action-menu: rgb(74, 106, 118);
+    --bg-history-action-menu-button-hover: rgb(97, 136, 155);
+    --text-history-action-menu-button:rgb(255,255,255);
+}
+
+
+
+/* #########################
+        History Item
+######################### */ 
+
+/* Main Settings */
 #history-container {
     margin: 0;
     padding: 8px 20px 20px 20px;
@@ -44,14 +72,8 @@
 .history-item:hover .history-menu-btn {
     display: block;
 }
-.history-item.is-demo {
-    background: var(--bg-history-item);   
-    color: var(--text-history-item);
-}
-.history-item.is-demo:hover,
-.history-item.is-demo.selected {
-    background: linear-gradient(90deg, rgb(233, 121, 189) 0%, rgb(194, 106, 189) 50%, rgb(150, 89, 189) 100%);  
-}
+
+/* File Name Tooltip */
 .history-item::after {
     content: attr(data-tooltip);
     position: fixed;
@@ -80,26 +102,6 @@
 .history-item:hover::after {
     opacity: 1;
 }
-
-::root {
-    --bg-history-item: none;
-    --bg-history-item-hover: rgb(100,100,100);
-    --text-history-item: rgb(255,255,255);
-    --bg-history-menu-btn: rgb(255,255,255);
-    --bg-history-action-menu: rgb(47,47,47);
-    --text-history-action-menu-button:rgb(255,255,255);
-    --bg-history-action-menu-button-hover: rgb(80,80,80);
-}
-[data-theme="light"] {
-    --bg-history-item: none;
-    --bg-history-item-hover: rgb(97, 136, 155);
-    --text-history-item: rgb(255,255,255);
-    --bg-history-menu-btn: rgb(255,255,255);
-    --bg-history-action-menu: rgb(74, 106, 118);
-    --text-history-action-menu-button:rgb(255,255,255);
-    --bg-history-action-menu-button-hover: rgb(97, 136, 155);
-}
-
 .history-filename {
   flex: 1 1 auto;       
   min-width: 0;         
@@ -108,9 +110,7 @@
   text-overflow: ellipsis;
 }
 
-/* ##########################
-            Drag
-###########################*/ 
+/* Drag and Drop */
 .history-item[draggable="true"]{
     cursor: grab;
 }
@@ -123,9 +123,12 @@
 }
 
 
-/* ##########################
+
+/* ###########################
     History Menu Button
-###########################*/ 
+########################### */ 
+
+/* Main Settings */
 .history-menu-btn {
     position: absolute;
     top: 50%;
@@ -166,8 +169,7 @@
     background: var(--bg-history-action-menu-button-hover);
 }
 
-
-/* Page That Shows If Deleting History Item */
+/* History Delete Modal (Whether to Delete History Item) */
 .modal-overlay {
     position: fixed;
     top: 0; left: 0;
@@ -197,12 +199,31 @@
     cursor: pointer;
     color: #fff;
 }
-#modal-cancel {
-    background: rgb(100,100,100);
-}
 #modal-delete {
     background: rgb(204,0,0);
 }
 #modal-delete:hover {
     background: rgb(255,0,0);
+}
+#modal-cancel {
+    background: rgb(100,100,100);
+}
+
+
+
+
+
+
+
+
+
+
+/* Demo History Items (Currently unavailable) */
+.history-item.is-demo {
+    background: var(--bg-history-item);   
+    color: var(--text-history-item);
+}
+.history-item.is-demo:hover,
+.history-item.is-demo.selected {
+    background: linear-gradient(90deg, rgb(233, 121, 189) 0%, rgb(194, 106, 189) 50%, rgb(150, 89, 189) 100%);  
 }

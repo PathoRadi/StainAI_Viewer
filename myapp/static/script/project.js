@@ -111,7 +111,7 @@ function deriveProjectsFromHistory(historyStack) {
 /** remove selected class from all sidebar image items */
 function clearSidebarSelection() {
   $('.history-item').removeClass('selected');
-  $('.project-history-item').removeClass('selected');
+  $('.project-image-item').removeClass('selected');
 }
 
 /* =========================================================
@@ -160,44 +160,6 @@ function closeProjectModal() {
 /* =========================================================
  * Project Rendering
  * ========================================================= */
-function renderProjectImageItem(item, idx) {
-  const safeName = escapeHtml(item.name || item.dir || 'Untitled');
-
-  return `
-    <div class="project-history-entry">
-      <button 
-        class="project-history-item" 
-        data-idx="${idx}" 
-        type="button" 
-        draggable="true"
-        data-tooltip="${safeName}"
-        title="${safeName}"
-      >
-        <div class="project-history-left">
-          <img class="file_icon" src="/static/logo/file_icon.png" alt="">
-          <span class="history-filename">${safeName}</span>
-        </div>
-        <span class="project-history-menu-btn">⋯</span>
-      </button>
-
-      <div class="project-history-action-menu">
-        <button class="project-download-btn" data-idx="${idx}">Download</button>
-        <button class="project-rename-btn" data-idx="${idx}">Rename</button>
-
-        <div class="project-move-wrapper" data-idx="${idx}">
-          <button class="project-move-btn" data-idx="${idx}" type="button">
-            Move to Other Project
-          </button>
-          <div class="project-move-submenu" data-idx="${idx}"></div>
-        </div>
-
-        <button class="project-delete-btn" data-idx="${idx}">Delete</button>
-      </div>
-    </div>
-  `;
-}
-// <span class="project-chevron">⌄</span>
-
 function renderProjectEntry(project, historyStack) {
   const projectName = normalizeProjectName(project.project_name);
   const safeProjectName = escapeHtml(projectName);
@@ -213,20 +175,20 @@ function renderProjectEntry(project, historyStack) {
   return `
     <div class="project-entry" data-project="${safeProjectName}">
       <button 
-        class="project-item${isExpanded ? ' expanded' : ''}" 
+        class="project-folder${isExpanded ? ' expanded' : ''}" 
         data-project="${safeProjectName}" 
         type="button"
         data-tooltip="${safeProjectName}"
         title="${safeProjectName}"
       >
-        <div class="project-item-left">
+        <div class="project-folder-left">
           <img class="folder_icon" src="/static/logo/folder_icon.png" alt="">
-          <span class="project-filename">${safeProjectName}</span>
+          <span class="project-folder-name">${safeProjectName}</span>
         </div>
-        <span class="project-item-menu-btn">⋯</span>
+        <span class="project-folder-menu-btn">⋯</span>
       </button>
 
-       <div class="project-action-menu">
+       <div class="project-folder-action-menu">
           <button class="project-folder-download-btn" data-project="${safeProjectName}">Download</button>
          <button class="project-folder-rename-btn" data-project="${safeProjectName}">Rename</button>
          <button class="project-folder-delete-btn" data-project="${safeProjectName}">Delete</button>
@@ -234,6 +196,41 @@ function renderProjectEntry(project, historyStack) {
 
       <div class="project-images-list${isExpanded ? '' : ' collapsed'}" data-project="${safeProjectName}">
         ${imageHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderProjectImageItem(item, idx) {
+  const safeName = escapeHtml(item.name || item.dir || 'Untitled');
+
+  return `
+    <div class="project-image-entry">
+      <button 
+        class="project-image-item" 
+        data-idx="${idx}" 
+        type="button" 
+        draggable="true"
+        data-tooltip="${safeName}"
+        title="${safeName}"
+      >
+        <div class="project-image-left">
+          <img class="file_icon" src="/static/logo/file_icon.png" alt="">
+          <span class="project-image-name">${safeName}</span>
+        </div>
+        <span class="project-image-menu-btn">⋯</span>
+      </button>
+
+      <div class="project-image-action-menu">
+        <button class="project-image-download-btn" data-idx="${idx}">Download</button>
+        <button class="project-image-rename-btn" data-idx="${idx}">Rename</button>
+        <div class="project-image-move-wrapper" data-idx="${idx}">
+          <button class="project-image-move-btn" data-idx="${idx}" type="button">
+            Move to Other Project
+          </button>
+          <div class="project-image-move-submenu" data-idx="${idx}"></div>
+        </div>
+        <button class="project-image-delete-btn" data-idx="${idx}">Delete</button>
       </div>
     </div>
   `;
@@ -509,7 +506,7 @@ export function initProjectHandlers(historyStack) {
 
 
   // expand / collapse one project
-  $(document).on('click', '.project-item', function (e) {
+  $(document).on('click', '.project-folder', function (e) {
     e.stopPropagation();
 
     const projectName = normalizeProjectName($(this).data('project'));
@@ -527,13 +524,13 @@ export function initProjectHandlers(historyStack) {
     }
   });
 
-  $(document).on('click', '.project-item-menu-btn', function (e) {
+  $(document).on('click', '.project-folder-menu-btn', function (e) {
     e.stopPropagation();
     e.preventDefault();
   });
 
   // click project image item -> use existing history loader
-  $(document).on('click', '.project-history-item', function () {
+  $(document).on('click', '.project-image-item', function () {
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
 
@@ -546,23 +543,23 @@ export function initProjectHandlers(historyStack) {
   });
 
   // when hovering/clicking project move wrapper, fill submenu
-  $(document).on('mouseenter', '.project-move-wrapper', async function () {
+  $(document).on('mouseenter', '.project-image-move-wrapper', async function () {
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
 
-    const $submenu = $(this).find('.project-move-submenu');
+    const $submenu = $(this).find('.project-image-move-submenu');
     await populateProjectMoveSubmenu($submenu, idx, historyStack);
   });
 
   // support click open too, in case hover not enough
-  $(document).on('click', '.project-move-btn', async function (e) {
+  $(document).on('click', '.project-image-move-btn', async function (e) {
     e.stopPropagation();
 
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
 
-    const $wrapper = $(this).closest('.project-move-wrapper');
-    const $submenu = $wrapper.find('.project-move-submenu');
+    const $wrapper = $(this).closest('.project-image-move-wrapper');
+    const $submenu = $wrapper.find('.project-image-move-submenu');
 
     await populateProjectMoveSubmenu($submenu, idx, historyStack);
     $submenu.toggleClass('visible');
@@ -642,19 +639,19 @@ export function initProjectHandlers(historyStack) {
   // #####################################
   //  Drag and Drop (for move to project)
   // #####################################
-  $(document).on('dragover', '.project-item', function (e) {
+  $(document).on('dragover', '.project-folder', function (e) {
     e.preventDefault();
     e.originalEvent.dataTransfer.dropEffect = 'move';
-    $('.project-item').removeClass('drag-over');
+    $('.project-folder').removeClass('drag-over');
     $(this).addClass('drag-over');
   });
-  $(document).on('dragleave', '.project-item', function () {
+  $(document).on('dragleave', '.project-folder', function () {
     $(this).removeClass('drag-over');
   });
-  $(document).on('drop', '.project-item', async function (e) {
+  $(document).on('drop', '.project-folder', async function (e) {
     e.preventDefault();
 
-    $('.project-item').removeClass('drag-over');
+    $('.project-folder').removeClass('drag-over');
     $('body').removeClass('dragging-image-item');
 
     const targetProjectName = normalizeProjectName($(this).data('project'));
@@ -698,7 +695,7 @@ export function initProjectHandlers(historyStack) {
       alert(`Move failed: ${err.message}`);
     }
   });
-  $(document).on('dragstart', '.history-item, .project-history-item', function (e) {
+  $(document).on('dragstart', '.history-item, .project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     const item = historyStack[idx];
     if (!item) return;
@@ -714,9 +711,9 @@ export function initProjectHandlers(historyStack) {
 
     $('body').addClass('dragging-image-item');
   });
-  $(document).on('dragend', '.history-item, .project-history-item', function () {
+  $(document).on('dragend', '.history-item, .project-image-item', function () {
     $('body').removeClass('dragging-image-item');
-    $('.project-item').removeClass('drag-over');
+    $('.project-folder').removeClass('drag-over');
     $('#history-container').removeClass('drag-over-images');
   });
   
@@ -724,7 +721,7 @@ export function initProjectHandlers(historyStack) {
 
 
   function restoreProjectMenusToOrigin() {
-    $('.project-history-action-menu').each(function () {
+    $('.project-image-action-menu').each(function () {
       const $m = $(this);
       const $origin = $m.data('originEntry');
       if ($origin && $origin.length) $m.appendTo($origin);
@@ -732,7 +729,7 @@ export function initProjectHandlers(historyStack) {
   }
 
   function restoreProjectFolderMenusToOrigin() {
-    $('.project-action-menu').each(function () {
+    $('.project-folder-action-menu').each(function () {
       const $m = $(this);
       const $origin = $m.data('originEntry');
       if ($origin && $origin.length) $m.appendTo($origin);
@@ -771,21 +768,21 @@ export function initProjectHandlers(historyStack) {
     pendingDeleteState = null;
     $('#delete-modal-overlay').hide();
     $('.menu-click-shield').remove();
-    $('.project-history-action-menu').hide();
-    $('.project-action-menu').hide();
+    $('.project-image-action-menu').hide();
+    $('.project-folder-action-menu').hide();
     restoreProjectMenusToOrigin();
     restoreProjectFolderMenusToOrigin();
   }
 
-  $(document).off('click.projectMenu').on('click.projectMenu', '.project-history-menu-btn', function (e) {
+  $(document).off('click.projectMenu').on('click.projectMenu', '.project-image-menu-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-history-action-menu').hide();
+    $('.project-image-action-menu').hide();
     $('.menu-click-shield').remove();
 
-    const $entry = $(this).closest('.project-history-entry');
-    const $item  = $entry.find('.project-history-item');
-    const $menu  = $entry.find('.project-history-action-menu');
+    const $entry = $(this).closest('.project-image-entry');
+    const $item  = $entry.find('.project-image-item');
+    const $menu  = $entry.find('.project-image-action-menu');
 
     $menu.data('originEntry', $entry);
     $menu.appendTo('body');
@@ -832,15 +829,15 @@ export function initProjectHandlers(historyStack) {
     });
   });
 
-  $(document).off('click.projectFolderMenu').on('click.projectFolderMenu', '.project-item-menu-btn', function (e) {
+  $(document).off('click.projectFolderMenu').on('click.projectFolderMenu', '.project-folder-menu-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-action-menu').hide();
+    $('.project-folder-action-menu').hide();
     $('.menu-click-shield').remove();
 
     const $entry = $(this).closest('.project-entry');
-    const $item  = $entry.find('.project-item');
-    const $menu  = $entry.find('.project-action-menu');
+    const $item  = $entry.find('.project-folder');
+    const $menu  = $entry.find('.project-folder-action-menu');
 
     $menu.data('originEntry', $entry);
     $menu.appendTo('body');
@@ -890,7 +887,7 @@ export function initProjectHandlers(historyStack) {
   $(document).off('click.projectFolderMenuClose').on('click.projectFolderMenuClose', function (e) {
     if ($(e.target).closest('#project-modal-overlay').length) return;
 
-    const $open = $('.project-action-menu:visible');
+    const $open = $('.project-folder-action-menu:visible');
     if ($open.length) $open.hide();
     $('.menu-click-shield').remove();
     restoreProjectFolderMenusToOrigin();
@@ -899,7 +896,7 @@ export function initProjectHandlers(historyStack) {
   $(document).off('click.projectFolderDownload').on('click.projectFolderDownload', '.project-folder-download-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-action-menu').hide();
+    $('.project-folder-action-menu').hide();
     $('.menu-click-shield').remove();
     restoreProjectFolderMenusToOrigin();
 
@@ -933,15 +930,15 @@ export function initProjectHandlers(historyStack) {
   $(document).on('click', '.project-folder-rename-btn', async function (e) {
     e.stopPropagation();
 
-    $('.project-action-menu').hide();
+    $('.project-folder-action-menu').hide();
     $('.menu-click-shield').remove();
     restoreProjectFolderMenusToOrigin();
 
     const oldProjectName = normalizeProjectName($(this).data('project'));
-    const $entry = $(`.project-item[data-project="${oldProjectName}"]`);
+    const $entry = $(`.project-folder[data-project="${oldProjectName}"]`);
     if (!$entry.length) return;
 
-    const $textSpan = $entry.find('.project-filename');
+    const $textSpan = $entry.find('.project-folder-name');
     const oldText = $textSpan.text();
 
     if ($entry.data('editing')) {
@@ -1044,7 +1041,7 @@ export function initProjectHandlers(historyStack) {
   $(document).off('click.projectFolderDelete').on('click.projectFolderDelete', '.project-folder-delete-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-action-menu').hide();
+    $('.project-folder-action-menu').hide();
     $('.menu-click-shield').remove();
     restoreProjectFolderMenusToOrigin();
 
@@ -1146,7 +1143,7 @@ export function initProjectHandlers(historyStack) {
   });
   $(document).off('keydown.projectFolderMenuEsc').on('keydown.projectFolderMenuEsc', function (ev) {
     if (ev.key === 'Escape') {
-      const $open = $('.project-action-menu:visible');
+      const $open = $('.project-folder-action-menu:visible');
       if ($open.length) $open.hide();
       $('.menu-click-shield').remove();
       restoreProjectFolderMenusToOrigin();
@@ -1156,7 +1153,7 @@ export function initProjectHandlers(historyStack) {
   $(document).off('click.projectMenuClose').on('click.projectMenuClose', function (e) {
     if ($(e.target).closest('#project-modal-overlay').length) return;
 
-    const $open = $('.project-history-action-menu:visible');
+    const $open = $('.project-image-action-menu:visible');
     if ($open.length) $open.hide();
     $('.menu-click-shield').remove();
     restoreProjectMenusToOrigin();
@@ -1164,7 +1161,7 @@ export function initProjectHandlers(historyStack) {
 
   $(document).off('keydown.projectMenuEsc').on('keydown.projectMenuEsc', function (ev) {
     if (ev.key === 'Escape') {
-      const $open = $('.project-history-action-menu:visible');
+      const $open = $('.project-image-action-menu:visible');
       if ($open.length) $open.hide();
       $('.menu-click-shield').remove();
       restoreProjectMenusToOrigin();
@@ -1172,10 +1169,10 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Rename
-  $(document).on('click', '.project-rename-btn', function (e) {
+  $(document).on('click', '.project-image-rename-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-history-action-menu').hide();
+    $('.project-image-action-menu').hide();
     $('.menu-click-shield').remove();
     restoreProjectMenusToOrigin();
     document.activeElement?.blur?.();
@@ -1186,10 +1183,10 @@ export function initProjectHandlers(historyStack) {
 
 
 
-    const $entry = $(`.project-history-item[data-idx="${idx}"]`);
+    const $entry = $(`.project-image-item[data-idx="${idx}"]`);
     if (!$entry.length) return;
 
-    const $textSpan = $entry.find('.history-filename');
+    const $textSpan = $entry.find('.project-image-name');
     const oldText = $textSpan.text();
     const oldDir = item.dir;
 
@@ -1269,9 +1266,9 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Download
-  $(document).on('click', '.project-download-btn', function (e) {
+  $(document).on('click', '.project-image-download-btn', function (e) {
     e.stopPropagation();
-    $('.project-history-action-menu').hide();
+    $('.project-image-action-menu').hide();
 
     const idx = $(this).data('idx');
     const item = historyStack[idx];
@@ -1313,10 +1310,10 @@ export function initProjectHandlers(historyStack) {
   });
 
   // Delete
-  $(document).off('click.projectDelete').on('click.projectDelete', '.project-delete-btn', function (e) {
+  $(document).off('click.projectDelete').on('click.projectDelete', '.project-image-delete-btn', function (e) {
     e.stopPropagation();
 
-    $('.project-history-action-menu').hide();
+    $('.project-image-action-menu').hide();
     $('.menu-click-shield').remove();
     restoreProjectMenusToOrigin();
 
@@ -1348,8 +1345,8 @@ export function initProjectHandlers(historyStack) {
         item.displayUrl = data.display_url;
       }
 
-      $('.project-history-action-menu').hide();
-      $('.project-move-submenu').removeClass('visible');
+      $('.project-image-action-menu').hide();
+      $('.project-image-move-submenu').removeClass('visible');
       $('.menu-click-shield').remove();
 
       updateHistoryUI(historyStack);
