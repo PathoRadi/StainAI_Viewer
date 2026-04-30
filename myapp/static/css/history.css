@@ -3,7 +3,7 @@
 /* ##########################
         Color Setting
 ########################## */ 
-::root {
+:root {
     --bg-history-item: none;
     --bg-history-item-hover: rgb(100,100,100);
     --text-history-item: rgb(255,255,255);
