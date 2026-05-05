@@ -1,6 +1,8 @@
 /* static/css/progress.css */
 
-/* ----- Progress Overlays ----- */
+/* ##########################
+      Progress Overlays
+########################## */ 
 #progress-overlay,
 #progress-overlay1 {
   display: none;            
@@ -46,15 +48,6 @@
   animation: neonGlow 1.5s ease-in-out infinite alternate;
   text-align: center;
 }
-
-
-
-
-
-
-
-
-/* ===== 只作用於 #progress-overlay 的三/四段式時間軸 ===== */
 #progress-overlay .stage-timeline {
   --track-h: 10px;
   --node-size: 30px;
@@ -79,7 +72,6 @@
   border-radius: 999px;
   transition: width var(--travel-ms) cubic-bezier(.22,.61,.36,1);
 }
-
 #progress-overlay .stage-node {
   position: absolute;
   top: calc(var(--track-h) / -2 + 1px);
@@ -109,8 +101,6 @@
   background: #5b8cff;
   border-color: #fff;
 }
-
-
 #progress-overlay .stage-icon {
   position: absolute;
   top: calc(var(--track-h) / 2);

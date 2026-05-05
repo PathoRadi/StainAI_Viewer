@@ -3,6 +3,85 @@
 html, body { height: 100%; margin: 0; }
 * { box-sizing: border-box; }
 
+/* ##########################
+        Color Setting
+########################## */ 
+:root {
+  /* Drop Zone */
+  --bg-drop-zone:        rgb(34,34,34);
+  --bg-drop-zone-hover: rgb(51,51,51);
+  --text-drop-zone:     rgb(255,255,255);
+  --bg-drop-upload-btn: rgb(23,23,23);
+  --text-drop-upload-btn: rgb(255, 255, 255);
+  --border-drop-upload-btn: 1px solid rgb(255, 255, 255);
+  --bg-start-detect-btn: rgb(23,23,23);
+  --text-start-detect-btn: rgb(255,255,255);
+  --border-start-detect-btn: 1px solid rgb(255, 255, 255);
+
+  /* Grayscale Setting Modal */
+  --bg-settings-modal: rgb(0,0,0);
+  --bg-settings-close-btn: rgb(0,0,0);
+  --border-settings-close-btn: 2px solid rgb(255,255,255);
+  --cross-settings-close-btn: rgb(255,255,255);
+  --text-settings-title: rgb(255,255,255);
+  --text-settings-row-label: rgb(255,255,255);
+  --bg-mode-btn: rgb(0,0,0);
+  --border-mode-btn: 2px solid rgb(0,0,0);
+  --text-mode-btn: rgb(255,255,255);
+  --bg-mode-btn-active: rgb(0,0,0);
+  --border-mode-btn-active: 2px solid rgb(255,255,255);
+  --text-mode-btn-active: rgb(255,255,255);
+  --bg-inp-resolution: rgb(0,0,0);
+  --border-inp-resolution: 2px solid rgb(255,255,255);
+  --text-inp-resolution: rgb(255,255,255);
+  --text-unit: rgb(255,255,255);
+  --bg-grayscale-parameter-wrapper: rgb(0,0,0,0.78);
+  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
+  --bg-scrollbar: rgba(255,255,255,0.25);
+  --border-scrollbar: 1px solid rgba(255,255,255,0.25);
+  --bg-settings-start-btn: rgb(0,0,0);
+  --border-settings-start-btn: 2px solid rgb(255,255,255);
+  --text-settings-start-btn: rgb(255,255,255);
+}
+
+[data-theme="light"] {
+  /* Drop Zone */
+  --bg-drop-zone:        rgb(255,255,255);
+  --bg-drop-zone-hover: rgb(200,200,200);
+  --text-drop-zone:     rgb(0,0,0);
+  --bg-drop-upload-btn: rgb(97, 136, 155);
+  --text-drop-upload-btn: rgb(255, 255, 255);
+  --border-drop-upload-btn: none;
+  --bg-start-detect-btn: rgb(97, 136, 155);
+  --text-start-detect-btn: rgb(255, 255, 255);
+  --border-start-detect-btn: none;
+
+  /* Grayscale Setting Modal */
+  --bg-settings-modal: rgb(255,255,255);
+  --bg-settings-close-btn: rgb(255,255,255);
+  --border-settings-close-btn: 2px solid rgb(209,209,209);
+  --cross-settings-close-btn: rgb(209,209,209);
+  --text-settings-title: rgb(110,156,176);
+  --text-settings-row-label: rgb(110,156,176);
+  --bg-mode-btn: rgb(255,255,255);
+  --border-mode-btn: 2px solid rgb(187,187,187);
+  --text-mode-btn: rgb(75,75,75);
+  --bg-mode-btn-active: rgb(110,156,176);
+  --border-mode-btn-active: 2px solid rgb(110,156,176);
+  --text-mode-btn-active: rgb(255,255,255);
+  --bg-inp-resolution: rgb(255,255,255);
+  --border-inp-resolution: 2px solid rgb(187,187,187);
+  --text-inp-resolution: rgb(75,75,75);
+  --text-unit: rgb(110,156,176);
+  --bg-grayscale-parameter-wrapper: rgb(255,255,255);
+  --border-grayscale-parameter-wrapper: 1px solid rgba(255,255,255,0.18);
+  --bg-scrollbar: rgb(255,255,255);
+  --border-scrollbar: 1px solid rgb(187,187,187);
+  --bg-settings-start-btn: rgb(255,255,255);
+  --border-settings-start-btn: 2px solid rgb(209,209,209);
+  --text-settings-start-btn: rgb(110,156,176);
+}
+
 /* #########################
          Drop Zone
 ######################### */
@@ -48,49 +127,6 @@ html, body { height: 100%; margin: 0; }
     font-size: 20px;
     font-family: 'PingFangHKWeb', sans-serif;
 }
-
-
-
-
-
-/* #########################
-         Preview
-######################### */
-/* #preview-container {
-    display: none;              
-    margin-top: 1rem;
-    text-align: center;
-}
-#preview-img {
-    max-width: 600px;           
-    max-height: 400px;
-    min-height: 120px;
-    border: 1px solid #444;
-    border-radius: 4px;
-    object-fit: contain;
-} */
-
-
-
-/* Start Detection Button */
-/* #start-detect-btn {
-    display: block; 
-    justify-content: center;
-    align-items: center;
-    width: 200px;
-    height: 35px;
-    margin: 20px;            
-    margin: 20px auto;
-    background: var(--bg-drop-upload-btn);
-    color: var(--text-drop-upload-btn);
-    border: var(--border-drop-upload-btn);
-    border-radius: 15px;
-    font-weight: 500;
-    font-size: 20px;
-    font-family: 'PingFangHKWeb', sans-serif;
-} */
-
-
 
 
 
@@ -313,34 +349,6 @@ Right Side
 .value-input:focus{
   box-shadow: 0 0 0 2px rgba(120,220,220,0.25);
 }
-
-
-/* .settings-mode {
-  display: flex;
-  gap: 10px;
-}
-.mode-btn {
-  flex: 1;
-  height: 30px;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  background-color: var(--bg-mode-btn);
-  border: var(--border-mode-btn);
-  color: var(--text-mode-btn);
-  border-radius: 10px;
-}
-.mode-btn.active {
-  background-color: var(--bg-mode-btn-active);
-  border: var(--border-mode-btn-active);
-  color: var(--text-mode-btn-active);
-} */
-
-
-
-
-
-
 
 
 /* grayscale parameter slider settings */
