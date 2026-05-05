@@ -1,5 +1,65 @@
 /* static/css/visualization.css */
 
+/* ##########################
+        Color Setting
+########################## */ 
+:root {
+  /* Display Image */
+  --bg-display-wrapper:  rgb(23,23,23);
+  --icon-inactive-filter: grayscale(1) contrast(.42) brightness(1.2);
+  --text-screenshot-menu-btn: rgb(255,255,255);
+  --bg-screenshot-dropdown: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn-hover: rgba(200, 200, 200, 0.95);
+  --text-take-screenshot-btn: rgb(0,0,0);
+
+  /* Bar Chart buttons */
+  --bg-btn-container:    none;
+  --bg-addChartBtn:      rgb(23,23,23);
+  --text-addChartBtn:    rgb(255,255,255);
+  --border-addChartBtn: 1px solid rgb(255, 255, 255);
+  --bg-filterBtn:      rgb(47,47,47);
+  --text-filterBtn:    rgb(255,255,255);
+  --bg-filterMenu:    rgb(47,47,47);
+  --checkbox-label: rgb(255,255,255);
+  --bg-checkbox-label-before: rgb(60,60,60);
+  --bg-checkbox-checked-label-before: rgb(255,255,255);
+  --border-chart-pill: 1px solid rgba(255,255,255,0.45);
+  --bg-chart-mode-btn: rgba(255,255,255,0.45);
+}
+
+[data-theme="light"] {
+  /* Display Image */
+  --bg-display-wrapper:  rgb(255,255,255);
+  --icon-inactive-filter: grayscale(1) contrast(2) brightness(1);
+  --text-screenshot-menu-btn: rgb(0,0,0);
+  --bg-screenshot-dropdown: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn: rgba(255, 255, 255, 0.95);
+  --bg-take-screenshot-btn-hover: rgba(200, 200, 200, 0.95);
+  --text-take-screenshot-btn: rgb(0,0,0);
+
+  /* Bar Chart buttons */
+  --bg-btn-container:    none;
+  --bg-addChartBtn:      rgb(97, 136, 155);
+  --text-addChartBtn:    rgb(255,255,255);
+  --border-addChartBtn: none;
+  --bg-filterBtn:      rgb(230,230,230);
+  --text-filterBtn:    rgb(0,0,0);
+  --bg-filterMenu:    rgb(230,230,230);
+  --checkbox-label: rgb(97, 136, 155);
+  --bg-checkbox-label-before: rgb(255,255,255);
+  --bg-checkbox-checked-label-before: rgb(60,60,60);
+  --border-chart-pill: 1px solid rgba(0,0,0,0.45);
+  --bg-chart-mode-btn: rgba(0,0,0,0.45);
+}
+
+
+
+
+
+/* ############################
+    Visualization Container
+############################ */ 
 #konva-container {
     position: absolute;
     top: 0;
@@ -31,8 +91,6 @@
     border-radius: 15px;
     background: var(--bg-btn-container);
 }
-
-
 /* ------- image ------- */
 #image-container {
     width: 1000px;
@@ -53,7 +111,7 @@
     height: 100%;
     overflow: visible;
 }
-/* ROI Toolbox */
+/* ------- ROI Toolbox ------- */
 .roi-toolbar-container {
     display: flex;
     flex-direction: row;
@@ -301,8 +359,6 @@
 .hidden-checkbox:checked + .cell-count-checkbox-label .cellcount-icon {
     filter: none;
 }
-
-
 /* Screen Shot */
 .screenshot-menu-wrapper {
     width: 30px;
@@ -362,6 +418,24 @@
 
 
 
+
+
+/* ################################
+          Chart Container
+#################################*/
+#chart-container {
+    display: flex;
+    flex-direction: column;
+    width: 675px;
+    height: 881px;
+    margin: 15px 15px 15px 15px;
+    border: none;
+    border-radius: 15px;
+    box-shadow: none;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none; 
+}
 /* addChartBtn */
 #addChartBtn {
     position: relative;
@@ -376,26 +450,6 @@
     color: var(--text-addChartBtn);
     cursor: pointer;
     font-family: 'PingFangHKWeb', sans-serif;
-}
-
-
-
-
-/* ##############################
-#######  Chart Container ########
-#################################*/
-#chart-container {
-    display: flex;
-    flex-direction: column;
-    width: 675px;
-    height: 881px;
-    margin: 15px 15px 15px 15px;
-    border: none;
-    border-radius: 15px;
-    box-shadow: none;
-    background: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none; 
 }
 /* -----------------
 --- 1st barchart ---
@@ -420,7 +474,6 @@
     display: flex;                  
     flex-direction: row;
     position: relative;
-    /* width: 645px; */
     width: calc(100% - 30px);
     height: 250px;
     margin: 10px 15px 10px 15px;
@@ -494,14 +547,6 @@
     align-items: center;
     justify-content: center;
 }
-:root {
-    --border-chart-pill: 1px solid rgba(255,255,255,0.45);
-    --bg-chart-mode-btn: rgba(255,255,255,0.45);
-}
-[data-theme="light"] {
-    --border-chart-pill: 1px solid rgba(0,0,0,0.45);
-    --bg-chart-mode-btn: rgba(0,0,0,0.45);
-}
 .chart-pill-title {
     font-size: 10px;
     line-height: 1.1;
@@ -544,12 +589,8 @@
     height: 200px !important;
     margin: 5px 15px 15px 15px;
 }
-
-
-
-
-/* Chrome / Edge / Safari */
 #barChart-wrappers1::-webkit-scrollbar {
+    /* barchart-wrapper scrollbar - (Chrome / Edge / Safari)  */
     width: 5px;
     height: 5px;
 }
@@ -561,13 +602,11 @@
 #barChart-wrappers1::-webkit-scrollbar-track {
     background: var(--scrollbar-track);
 }
-/* Firefox */
 #barChart-wrappers1 {
+    /* barchart-wrapper scrollbar - (Firefox)  */
     scrollbar-width: thin;                       /* thin / auto / none */
     scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
-
-
 /* Transparent click shield used to close menus without interacting with canvas */
 .menu-click-shield {
     position: fixed;
@@ -575,8 +614,3 @@
     background: transparent;
     z-index: 1500;       /* Lower than menu's z-index, but higher than Konva/OSD */
 }
-
-
-
-
-

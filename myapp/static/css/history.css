@@ -12,6 +12,7 @@
     --bg-history-action-menu-button-hover: rgb(80,80,80);
     --text-history-action-menu-button:rgb(255,255,255);
 }
+
 [data-theme="light"] {
     --bg-history-item: none;
     --bg-history-item-hover: rgb(97, 136, 155);
