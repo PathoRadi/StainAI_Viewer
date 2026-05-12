@@ -40,7 +40,6 @@ async function fetchJson(url, options = {}) {
 export function updateHistoryUI(historyStack) {
   const container = $('#history-container');
   container.empty();
-
   historyStack.forEach((item, idx) => {
     if (item.projectName) return; // Skip project items in history list (they are shown in the Projects section)
     const demoClass = item.demo ? ' is-demo' : '';
@@ -68,17 +67,6 @@ export function updateHistoryUI(historyStack) {
       </div>`);
     container.append(entry);
   });
-
-  if ($('#history-bulk-menu').length === 0) {
-    $('body').append(`
-      <div id="history-bulk-menu" class="history-bulk-menu">
-        <div class="history-bulk-menu-title">0 selected</div>
-        <button id="history-bulk-download-btn" type="button">Download All</button>
-        <button id="history-bulk-move-btn" type="button">Move All to Project</button>
-        <button id="history-bulk-delete-btn" type="button">Delete All</button>
-      </div>
-    `);
-  }
 }
 
 function stabilizeViewerAndRender(bboxData, afterRender) {
@@ -172,6 +160,7 @@ export function initHistoryHandlers(historyStack) {
     const startBtn = document.getElementById('start-detect-btn');
     if (startBtn) startBtn.disabled = true;
   }
+
   window.hardResetToHomepage = hardResetToHomepage;
 
   async function reloadGlobalROIsIntoViewer() {
@@ -361,168 +350,9 @@ export function initHistoryHandlers(historyStack) {
       });
     });
   }
+
+  // expose for other modules (e.g., demo thumbnail click)
   window.loadHistoryItemByIndex = loadHistoryItemByIndex;
-
-  const selectedHistoryIdxSet = new Set();
-
-  function getSelectedHistoryIndices() {
-    return Array.from(selectedHistoryIdxSet)
-      .map(Number)
-      .filter(idx => historyStack[idx] && !historyStack[idx].projectName);
-  }
-
-  function clearMultiSelection() {
-    selectedHistoryIdxSet.clear();
-    $('.history-item').removeClass('multi-selected');
-    updateBulkHistoryMenu();
-  }
-
-  function syncMultiSelectionUI() {
-    $('.history-item').removeClass('multi-selected');
-
-    selectedHistoryIdxSet.forEach(idx => {
-      $(`.history-item[data-idx="${idx}"]`).addClass('multi-selected');
-    });
-
-    updateBulkHistoryMenu();
-  }
-
-  function updateBulkHistoryMenu() {
-    const count = getSelectedHistoryIndices().length;
-    const $menu = $('#history-bulk-menu');
-
-    if (!$menu.length) return;
-
-    if (count > 1) {
-      $menu.addClass('visible');
-      $menu.find('.history-bulk-menu-title').text(`${count} selected`);
-    } else {
-      $menu.removeClass('visible');
-    }
-  }
-
-  $(document).on('click', '#history-bulk-move-btn', async function(e) {
-    e.stopPropagation();
-
-    const indices = getSelectedHistoryIndices();
-    if (indices.length <= 1) return;
-
-    const projectName = prompt('Move selected images to which project?');
-    if (!projectName) return;
-
-    try {
-      for (const idx of indices) {
-        const item = historyStack[idx];
-        if (!item) continue;
-
-        const data = await fetchJson(MOVE_IMAGE_TO_PROJECT_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken,
-          },
-          body: JSON.stringify({
-            image_name: item.dir,
-            project_name: projectName,
-            source_project_name: item.projectName || '',
-          }),
-        });
-
-        item.projectName = data.project_name || projectName;
-        item.location = data.project_name || projectName;
-
-        if (data.display_url) {
-          item.displayUrl = data.display_url;
-        }
-      }
-
-      clearMultiSelection();
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-
-    } catch (err) {
-      console.error('Bulk move failed:', err);
-      alert(`Move failed: ${err.message}`);
-    }
-  });
-
-  $(document).on('click', '#history-bulk-delete-btn', async function(e) {
-    e.stopPropagation();
-
-    const indices = getSelectedHistoryIndices();
-    if (indices.length <= 1) return;
-
-    const ok = confirm(`Delete ${indices.length} selected images?`);
-    if (!ok) return;
-
-    try {
-      const sorted = indices.slice().sort((a, b) => b - a);
-
-      for (const idx of sorted) {
-        const item = historyStack[idx];
-        if (!item) continue;
-
-        const data = await fetchJson(DELETE_IMAGE_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken,
-          },
-          body: JSON.stringify({
-            image_name: item.dir,
-            project_name: item.projectName || '',
-          }),
-        });
-
-        if (data.success) {
-          historyStack.splice(idx, 1);
-        }
-      }
-
-      clearMultiSelection();
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-      window.hardResetToHomepage?.();
-
-    } catch (err) {
-      console.error('Bulk delete failed:', err);
-      alert(`Delete failed: ${err.message}`);
-    }
-  });
-
-  $(document).on('click', '#history-bulk-download-btn', function(e) {
-    e.stopPropagation();
-
-    const indices = getSelectedHistoryIndices();
-    const imageNames = indices
-      .map(idx => historyStack[idx]?.dir)
-      .filter(Boolean);
-
-    if (imageNames.length <= 1) return;
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = DOWNLOAD_SELECTED_IMAGES_WITH_ROIS_URL;
-    form.target = '_blank';
-
-    const csrf = document.createElement('input');
-    csrf.type = 'hidden';
-    csrf.name = 'csrfmiddlewaretoken';
-    csrf.value = csrftoken;
-
-    const p = document.createElement('input');
-    p.type = 'hidden';
-    p.name = 'image_names';
-    p.value = JSON.stringify(imageNames);
-
-    form.append(csrf, p);
-    document.body.appendChild(form);
-    form.submit();
-    form.remove();
-
-    $('.history-action-menu').hide();
-    $('.menu-click-shield').remove();
-  });
 
   // ===== Your Images collapse / expand =====
   const toggleBtn = document.getElementById('your-images-toggle');
@@ -546,64 +376,18 @@ export function initHistoryHandlers(historyStack) {
   });
   
   // click on an entry → load that image and its boxes/chart
-  $(document).on('click', '.history-item', function(e) {
-    const idx = Number($(this).data('idx'));
-    if (Number.isNaN(idx)) return;
-
-    const item = historyStack[idx];
-    if (!item || item.projectName) return;
-
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      e.stopPropagation();
-
-      $('.history-action-menu').hide();
-      $('.menu-click-shield').remove();
-
-      if (selectedHistoryIdxSet.has(idx)) {
-        selectedHistoryIdxSet.delete(idx);
-      } else {
-        selectedHistoryIdxSet.add(idx);
-      }
-
-      $('.history-item').removeClass('selected');
-      $('.project-image-item').removeClass('selected');
-      $('.project-folder').removeClass('selected');
-
-      syncMultiSelectionUI();
-      return;
-    }
-
-    clearMultiSelection();
-
+  $(document).on('click', '.history-item', function() {
     $('.history-item').removeClass('selected');
     $('.project-image-item').removeClass('selected');
     $('.project-folder').removeClass('selected');
 
     $(this).addClass('selected');
 
+    const idx = $(this).data('idx');
     loadHistoryItemByIndex(idx);
   });
 
   // Drag and Drop support for history items (drag to canvas to load)
-  // $(document).on('dragstart', '.history-item', function (e) {
-  //   const idx = Number($(this).data('idx'));
-  //   const item = historyStack[idx];
-  //   if (!item) return;
-
-  //   if (item.projectName) {
-  //     e.preventDefault();
-  //     return;
-  //   }
-
-  //   e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
-  //     idx,
-  //     image_name: item.dir
-  //   }));
-  //   e.originalEvent.dataTransfer.effectAllowed = 'move';
-
-  //   $('body').addClass('dragging-history-item');
-  // });
   $(document).on('dragstart', '.history-item', function (e) {
     const idx = Number($(this).data('idx'));
     const item = historyStack[idx];
@@ -614,22 +398,13 @@ export function initHistoryHandlers(historyStack) {
       return;
     }
 
-    let indices = getSelectedHistoryIndices();
-
-    if (!selectedHistoryIdxSet.has(idx)) {
-      indices = [idx];
-    }
-
     e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
       idx,
-      indices,
-      image_names: indices.map(i => historyStack[i]?.dir).filter(Boolean),
-      source_project_name: ''
+      image_name: item.dir
     }));
-
     e.originalEvent.dataTransfer.effectAllowed = 'move';
 
-    $('body').addClass('dragging-history-item dragging-image-item');
+    $('body').addClass('dragging-history-item');
   });
   $(document).on('dragend', '.history-item', function () {
     $('body').removeClass('dragging-history-item');
@@ -666,6 +441,8 @@ export function initHistoryHandlers(historyStack) {
     if (!sourceProjectName) return;
 
     try {
+      await moveImageToImages(item.dir, sourceProjectName);
+
       const data = await moveImageToImages(item.dir, sourceProjectName);
 
       item.projectName = '';
@@ -698,10 +475,6 @@ export function initHistoryHandlers(historyStack) {
 
   /** Open: precisely align menu's top-left to item's bottom-right (use offset to adjust for border-radius/shadow) */
   $(document).off('click.histMenu').on('click.histMenu', '.history-menu-btn', function (e) {
-    if (selectedHistoryIdxSet.size > 1) {
-      clearMultiSelection();
-    }
-
     e.stopPropagation();
 
     // Close other menus and remove old shields

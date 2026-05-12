@@ -616,28 +616,17 @@ export function initProjectHandlers(historyStack) {
       return;
     }
 
-  const indices = Array.isArray(payload?.indices)
-  ? payload.indices.map(Number).filter(i => !Number.isNaN(i))
-  : [Number(payload?.idx)].filter(i => !Number.isNaN(i));
+    const idx = Number(payload?.idx);
+    const item = historyStack[idx];
+    if (!item) return;
 
-  const uniqueIndices = Array.from(new Set(indices));
+    const sourceProjectName = item.projectName || '';
 
-  if (!uniqueIndices.length) return;
+    // do not allow dropping to the same project
+    if (sourceProjectName === targetProjectName) return;
 
-  try {
-    for (const idx of uniqueIndices) {
-      const item = historyStack[idx];
-      if (!item) continue;
-
-      const sourceProjectName = item.projectName || '';
-
-      if (sourceProjectName === targetProjectName) continue;
-
-      const data = await moveImageToProject(
-        item.dir,
-        targetProjectName,
-        sourceProjectName
-      );
+    try {
+      const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
 
       item.projectName = data.project_name || targetProjectName;
       item.location = data.project_name || targetProjectName;
@@ -645,25 +634,17 @@ export function initProjectHandlers(historyStack) {
       if (data.display_url) {
         item.displayUrl = data.display_url;
       }
+
+      _expandedProjects.add(targetProjectName);
+
+      updateHistoryUI(historyStack);
+      await updateProjectsUI(historyStack);
+
+    } catch (err) {
+      console.error('Drag move to project failed:', err);
+      alert(`Move failed: ${err.message}`);
     }
-
-    _expandedProjects.add(targetProjectName);
-
-    updateHistoryUI(historyStack);
-    await updateProjectsUI(historyStack);
-
-    if (typeof window.clearHistoryMultiSelection === 'function') {
-      window.clearHistoryMultiSelection();
-    }
-
-  } catch (err) {
-    console.error('Drag move to project failed:', err);
-    alert(`Move failed: ${err.message}`);
-  }
   });
-
-  window.clearHistoryMultiSelection = clearMultiSelection;
-  
   $(document).on('dragstart', '.history-item, .project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     const item = historyStack[idx];
