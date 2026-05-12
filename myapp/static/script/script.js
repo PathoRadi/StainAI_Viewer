@@ -318,13 +318,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       CELLCOUNT: 'rgba(142, 68, 173, 0.30)'
     };
     // Check what cell types are selected (determine what boxes should be drawn on the screenshot)
-    // function getSelectedTypes() {
-    //   return new Set(
-    //     $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
-    //       .map((_, el) => el.id.split('_')[1])
-    //       .get()
-    //   );
-    // }
     function getSelectedTypes() {
       const isCellCount = $('#Checkbox_CellCount').is(':checked');
 

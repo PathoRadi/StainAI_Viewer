@@ -207,9 +207,8 @@ export function addBarChart(barChartWrappers) {
     .prop('checked', true);
   showAllBoxes();
   if (idx === 1) {
-    // First chart shows full image data
-    // updateChart(window.bboxData, chart);
-    // updateChartTotalText(chart, idx);
+    // First chart shows full image data by default, so update it immediately with the full bboxData 
+    // (which should already be in the correct format for the chart)
     updateChart(window.bboxData, chart);
   } else {
     // Other charts start empty
@@ -298,7 +297,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   const settingsPanZoom = settingsLeft
     ? makePanZoomController(settingsLeft, () => {
-        // 優先用 canvas（realtime preview 時它是可見的）
+        // Use canvas if visible, since it has better performance and can show processing results; fallback to img if canvas is hidden (e.g. during loading or error)
         const canvasVisible = settingsCanvas && settingsCanvas.style.display !== 'none';
         if (canvasVisible) return settingsCanvas;
 
@@ -306,7 +305,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         const imgVisible = settingsPreviewImg && settingsPreviewImg.style.visibility !== 'hidden';
         if (imgVisible) return settingsPreviewImg;
 
-        // 都看不到就回傳 canvas（避免 null）
+        // none visible (e.g. loading or error), return canvas if exists to at least allow pan/zoom on the placeholder/error state; otherwise return img (which may also be invisible, but it's the last fallback)
         return settingsCanvas || settingsPreviewImg;
       })
     : null;
@@ -369,7 +368,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     applyParamsToUI(pendingParams);
     syncAllRangeFills();
 
-    // 方法二：一律用 backend 回傳的小圖 / display 圖
+    // Method 2: use global variables set by Django template (previewUrl, displayUrl, imgPath) to determine the image source for preview (which may be the original image or a placeholder/error image depending on the state)
     const serverUrl = window.previewUrl || window.displayUrl || window.imgPath || '';
 
     if (settingsPreviewImg) {
@@ -498,21 +497,21 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     const val = parseFloat(el.value || 0);
     const pct = ((val - min) / (max - min)) * 100;
 
-    // 用 CSS 變數控制填滿
+    // use CSS variable to paint the fill (see CSS for details)
     el.style.setProperty('--pct', `${pct}%`);
   }
 
-  // 把所有 slider 記下來（避免每次都 query）
+  // Initialize all range inputs and bind event listeners
   const rangeEls = Array.from(document.querySelectorAll('input.scrollbar[type="range"]'));
 
   function syncAllRangeFills(){
     rangeEls.forEach(paintRangeFill);
   }
 
-  // 一開始先畫一次
+  // draw initial fills based on default values
   syncAllRangeFills();
 
-  // 使用者拖動時即時更新
+  // users can change values by dragging sliders or typing in inputs, so listen to both changes and keep them in sync
   rangeEls.forEach(el => {
     el.addEventListener('input', () => paintRangeFill(el));
   });
@@ -607,7 +606,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (sPLow)  sPLow.value  = pendingParams.p_low;
     if (sPHigh) sPHigh.value = pendingParams.p_high;
 
-    // params -> value input (不要在使用者打字時覆蓋)
+    // params -> value input (do not overwrite when user is typing to avoid bad UX; use pretty formatting)
     const setIfNotTyping = (el, v) => {
       if (!el) return;
       if (document.activeElement === el) return; // ✅ typing: skip overwrite
@@ -653,7 +652,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           resizeQuality: 'high'
         });
       } catch (e) {
-        // 某些瀏覽器如果不支援 resize 參數，就 fallback
+        // if the browser doesn't support createImageBitmap with resizing options, 
+        // fallback to manual resizing (less efficient)
         bmp = await createImageBitmap(blob);
       }
 
@@ -848,7 +848,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   }
 
   function scheduleRealtimePreview() {
-    // debounce：滑動時不要每一個 input 都 full compute
+    // debounce：only render after user stops changing parameters for 120ms, to 
+    // avoid excessive rendering during slider drags or rapid input changes
     clearTimeout(previewTimer);
     previewTimer = setTimeout(() => {
       renderRealtimePreview();
@@ -877,7 +878,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const n = w * h;
       const x01 = new Float32Array(n);
 
-      // 先做 backend 同款 x01
+      // Compute fluorescence channel only in fluorescence mode; 
+      // reuse result for subsequent renders to save time (channel fixed per image).
       let fluoChannelInfo = null;
       if (mode === 'fluorescence') {
         // fluoChannelInfo = selectFluorescenceChannelFromPreviewBase(previewBase);
@@ -908,10 +910,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         }
       }
 
-      // 跟 backend 對齊：先背景校正
+      // background correction only for fluorescence; brightfield uses percentile stretch
       const corrected01 = backgroundCorrect01(x01, w, h, 101, 'subtract');
 
-      // 再 percentile
       let lo = Infinity;
       let hi = -Infinity;
       for (let i = 0; i < n; i++) {
@@ -996,7 +997,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const el = e.target;
       const raw = String(el.value ?? '');
 
-      // 使用者正在清空 / 編輯時，不要強制改值、不要更新 preview
+      // do not update params or preview while user is typing an empty value, 
+      // to avoid bad UX (jumping back and forth); 
+      // only update when they commit the change (blur/change/Enter)
       if (raw.trim() === '') {
         return;
       }
@@ -1009,7 +1012,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
       const raw = String(el.value ?? '').trim().replace(',', '.');
 
-      // 若使用者清空後直接離開，恢復目前已 commit 的值，不重算
+      // if input is empty or invalid, reset to current params value (do not update params or preview), 
+      // to avoid bad UX; user can then type again with correct value
       if (raw === '') {
         syncUIFromParams();
         return;
@@ -1032,14 +1036,14 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     };
 
     [iGamma, iGain, iPLow, iPHigh].filter(Boolean).forEach(el => {
-      // typing 中不更新 preview
+      // do not update params or preview while user is typing
       el.addEventListener('input', onValueTyping);
 
-      // 離開欄位 / change 時才 commit
+      // commit on blur / change
       el.addEventListener('change', () => commitValueInput(el));
       el.addEventListener('blur', () => commitValueInput(el));
 
-      // Enter 時立即 commit
+      // commit on Enter key
       el.addEventListener('keydown', (e) => {
         e.stopPropagation();
 
@@ -1050,13 +1054,12 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         }
       });
 
-      // 其他事件照樣 stopPropagation，避免干擾 pan/zoom
       ['keypress', 'keyup', 'mousedown', 'click'].forEach(evt => {
         el.addEventListener(evt, (e) => e.stopPropagation());
       });
     });
 
-    // resolution 不影響 preview
+    // resolution does not affect preview
     if (inpResolution) {
       inpResolution.addEventListener('input', () => {
         if (!pendingParams) pendingParams = defaultParams();
@@ -1080,7 +1083,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   if (settingsCloseBtn) {
     settingsCloseBtn.addEventListener('click', () => {
-      // 若已 detection 完（在 history）不能刪，只關 modal
+      // If already detected and stored in history, do not delete; just close modal
       const imageDir = pendingImageDir || getImageDirFromPath(window.imgPath);
 
       const histIdx = historyStack.findIndex(item => item.dir === imageDir);
@@ -1089,7 +1092,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         return;
       }
 
-      // 未 detection：刪掉這次上傳 image（回到未上傳狀態）
+      // if no detection result yet (e.g. user opens settings but then decides to cancel), 
+      // also just close modal without deleting, to avoid accidental loss of original image for pending upload
       if (!imageDir) {
         closeSettingsModal();
         resetPendingUpload();
@@ -1306,11 +1310,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         window.displayUrl = d.display_url || '';
         window.previewUrl = d.preview_url || '';
 
-        // window.currentImageMeta = {
-        //   imageName: d.image_name || '',
-        //   origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
-        //   totalPixels: Number(d.total_pixels) || 0,
-        // };
         const origSize = Array.isArray(d.orig_size) ? d.orig_size : [0, 0];
 
         window.currentImageMeta = {
@@ -1334,7 +1333,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         openSettingsModal(file?.name || '');
 
         if (ok) {
-          // renderRealtimePreview();
           const mode = detectModeFromPreviewBase(previewBase, 110);
           previewFluoChannelInfo = (mode === 'fluorescence')
             ? selectFluorescenceChannelFromPreviewBase(previewBase)
@@ -1431,7 +1429,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     window.viewer.addOnceHandler('open', () => {
       const viewer = window.viewer;
 
-      // 先等 browser/layout 與 OSD 第一輪狀態穩定
+      // Wait for browser layout and OSD initial state to stabilize
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (!viewer || !viewer.viewport) return;
@@ -1514,10 +1512,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       return;
     }
 
-    // 如果在 history，沿用舊結果（跟你原本邏輯一樣）
-    // const histIdx = historyStack.findIndex(item =>
-    //   item.dir === imageDir && (item.projectName || '') === ''
-    // );
     const histIdx = historyStack.findIndex(item =>
       (item.imageName || item.dir) === imageDir
     );
@@ -1552,7 +1546,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       return;
     }
 
-    // 新偵測：關 modal → 進度條 → call backend
+    // New detection flow: close modal → show progress → call backend
     closeSettingsModal();
 
     window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });

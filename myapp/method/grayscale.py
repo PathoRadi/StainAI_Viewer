@@ -180,8 +180,6 @@ class GrayscaleConverter:
         lo = np.percentile(x, self.p_low)
         hi = np.percentile(x, self.p_high)
 
-        # lo = np.percentile(x01, self.p_low)
-        # hi = np.percentile(x01, self.p_high)
         if hi <= lo:
             hi = lo + 1e-6
         y = (x01 - lo) / (hi - lo)

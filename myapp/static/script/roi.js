@@ -352,13 +352,13 @@ function scheduleSaveGlobalROIs() {
 
 /** Initialize ROI side panel and hooks */
 async function initROI() {
-  // layer 改變時：重畫 ROI list + 自動存檔
+  // redraw ROI lists whenever layers change, and schedule saving to backend
   layerManagerApi.onChange?.(() => {
     renderROIList();
     scheduleSaveGlobalROIs();
   });
 
-  // 啟動時先從 blob 載入 global ROI
+  // load existing ROIs from backend and populate layer manager
   try {
     suppressAutoSave = true;
 

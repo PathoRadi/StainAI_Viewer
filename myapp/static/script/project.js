@@ -323,45 +323,6 @@ export async function moveImageToImages(imageName, sourceProjectName = '') {
   return data;
 }
 
-/**
- * Fill submenu with all projects
- */
-// async function populateMoveSubmenu($submenu, idx, historyStack) {
-//   $submenu.empty();
-
-//   const projects = deriveProjectsFromHistory(historyStack);
-
-//   const currentItem = historyStack[idx];
-//   const currentProjectName = currentItem?.projectName || '';
-
-//   if (!projects.length) {
-//     $submenu.append(`
-//       <button class="move-project-empty" type="button" disabled>
-//         No projects
-//       </button>
-//     `);
-//     return;
-//   }
-
-//   projects.forEach(project => {
-//     const projectName = normalizeProjectName(project.project_name);
-//     const safeProjectName = escapeHtml(projectName);
-//     const disabled = currentProjectName === projectName ? 'disabled' : '';
-
-//     $submenu.append(`
-//       <button
-//         class="move-project-option"
-//         type="button"
-//         data-idx="${idx}"
-//         data-project="${safeProjectName}"
-//         ${disabled}
-//       >
-//         ${safeProjectName}
-//       </button>
-//     `);
-//   });
-// }
-
 /* =========================================================
  * Public helper for history.js
  * ========================================================= */
@@ -655,17 +616,28 @@ export function initProjectHandlers(historyStack) {
       return;
     }
 
-    const idx = Number(payload?.idx);
-    const item = historyStack[idx];
-    if (!item) return;
+  const indices = Array.isArray(payload?.indices)
+  ? payload.indices.map(Number).filter(i => !Number.isNaN(i))
+  : [Number(payload?.idx)].filter(i => !Number.isNaN(i));
 
-    const sourceProjectName = item.projectName || '';
+  const uniqueIndices = Array.from(new Set(indices));
 
-    // 同一個 project 不動作
-    if (sourceProjectName === targetProjectName) return;
+  if (!uniqueIndices.length) return;
 
-    try {
-      const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
+  try {
+    for (const idx of uniqueIndices) {
+      const item = historyStack[idx];
+      if (!item) continue;
+
+      const sourceProjectName = item.projectName || '';
+
+      if (sourceProjectName === targetProjectName) continue;
+
+      const data = await moveImageToProject(
+        item.dir,
+        targetProjectName,
+        sourceProjectName
+      );
 
       item.projectName = data.project_name || targetProjectName;
       item.location = data.project_name || targetProjectName;
@@ -673,17 +645,25 @@ export function initProjectHandlers(historyStack) {
       if (data.display_url) {
         item.displayUrl = data.display_url;
       }
-
-      _expandedProjects.add(targetProjectName);
-
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-
-    } catch (err) {
-      console.error('Drag move to project failed:', err);
-      alert(`Move failed: ${err.message}`);
     }
+
+    _expandedProjects.add(targetProjectName);
+
+    updateHistoryUI(historyStack);
+    await updateProjectsUI(historyStack);
+
+    if (typeof window.clearHistoryMultiSelection === 'function') {
+      window.clearHistoryMultiSelection();
+    }
+
+  } catch (err) {
+    console.error('Drag move to project failed:', err);
+    alert(`Move failed: ${err.message}`);
+  }
   });
+
+  window.clearHistoryMultiSelection = clearMultiSelection;
+  
   $(document).on('dragstart', '.history-item, .project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     const item = historyStack[idx];

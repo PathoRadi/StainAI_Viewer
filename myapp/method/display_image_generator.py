@@ -21,43 +21,43 @@ class DisplayImageGenerator:
         self.output_dir = output_dir
         self.resize_factor = resize_factor
 
-    # -------- vips 優先路徑（快＆省記憶體）--------
+    # -------- vips --------
     def _generate_with_vips(self, src_path, dst_path):
-        # 目標是「等比縮放」，維持你原本以 factor 計算新尺寸的邏輯
-        # 若 factor < 1，採用 thumbnail 路徑（不解整張大圖，最省資源）
-        # 若 factor >= 1，讀圖後用 resize（仍是串流）
-        # 輸出：JPEG(Q=90, progressive)
-        # 注意：如果有 alpha，先 flatten 到白底，保持和你原本 JPEG 的效果一致
-        # 同時確保最後是 8-bit uchar
+        # Validate resize factor
+        # For factor < 1: use thumbnail (efficient, avoids full image decode)
+        # For factor >= 1: read and resize (maintains aspect ratio)
+        # Output: JPEG with Q=90, progressive encoding
+        # Handle alpha channel by flattening to white background
+        # Ensure final output is 8-bit uchar format
         if self.resize_factor <= 0:
             raise ValueError("resize_factor must be > 0")
 
-        # 先試著只讀 header 拿原始尺寸（更省）
+        # try to read image header first to get dimensions without full decode
         header = pyvips.Image.new_from_file(src_path, access="sequential", memory=False, fail=False)
         orig_w, orig_h = int(header.width), int(header.height)
         new_w = max(int(orig_w * self.resize_factor), 1)
         new_h = max(int(orig_h * self.resize_factor), 1)
 
-        # factor < 1 用 thumbnail：一次性下採樣，避免全圖解碼
+        # factor < 1 use thumbnail for efficient downscaling; factor >= 1 read and resize
         if self.resize_factor < 1.0:
-            # thumbnail_filename 在 libvips 內會做最佳化縮圖（含快速整數縮放 + 重採樣）
-            # 為保比例，指定較小邊的目標，以免變形
-            # 取決於原圖寬高比，vips 會等比縮放，之後若邊長有 1~2px 差距，一般可接受
-            # 若你嚴格要 (new_w, new_h) 精準像素，可改走一般 resize 分支
+            # libvips thumbnail optimizes downscaling with fast integer scaling and resampling
+            # To maintain aspect ratio, target the smaller side to avoid distortion
+            # vips scales proportionally based on original aspect ratio; minor 1-2px side differences are acceptable
+            # For exact (new_w, new_h) pixels, use the general resize branch instead
             shrink_w = new_w
             shrink_h = new_h
-            # 直接寫檔，不建大中間圖
-            # 先生成到暫存，再後處理 alpha/色彩
+            # Write directly to file, avoid creating large intermediate images
+            # Generate to temp first, then post-process alpha and color
             thumb = pyvips.Image.thumbnail(src_path, shrink_w, height=shrink_h, auto_rotate=True)
-            # 若含 alpha，先白底合成
+            # use thumbnail's auto_rotate to handle EXIF orientation; if it fails, fallback to normal read and resize
             if thumb.hasalpha():
                 thumb = thumb.flatten(background=[255, 255, 255])
 
-            # 轉 8-bit
+            # convert to 8-bit
             if thumb.format != "uchar":
                 thumb = thumb.cast("uchar")
 
-            # 轉到 sRGB（有些相片是帶 ICC 的，寫 JPEG 前轉到標準色域較穩）
+            # Convert to sRGB (some images have ICC profiles; converting to standard color space before JPEG save is more stable)
             if thumb.interpretation not in (pyvips.Interpretation.srgb, pyvips.Interpretation.B_W):
                 try:
                     thumb = thumb.colourspace(pyvips.Interpretation.srgb)
@@ -67,20 +67,21 @@ class DisplayImageGenerator:
             thumb.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
             return dst_path
 
-        # factor >= 1：需要放大（或等比=1）
+        # factor >= 1： read full image and resize (maintains aspect ratio)
         im = pyvips.Image.new_from_file(src_path, access="sequential")
-        # 有 alpha 先白底 flatten
+        # white background for alpha
         if im.hasalpha():
             im = im.flatten(background=[255, 255, 255])
 
-        # 以縮放倍數處理（vips 的 resize 參數是「倍數」）
+        # scale to new size; vips maintains aspect ratio
         im = im.resize(self.resize_factor)
 
-        # 轉 8-bit
+        # convert to 8-bit
         if im.format != "uchar":
             im = im.cast("uchar")
 
-        # 色彩到 sRGB（避免轉 JPEG 時出現怪色）
+        # convert to sRGB (some images have ICC profiles; 
+        # converting to standard color space before JPEG save is more stable)
         if im.interpretation not in (pyvips.Interpretation.srgb, pyvips.Interpretation.B_W):
             try:
                 im = im.colourspace(pyvips.Interpretation.srgb)
@@ -90,18 +91,33 @@ class DisplayImageGenerator:
         im.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
         return dst_path
 
-    # -------- PIL 後援（保持你原來的行為）--------
+    # -------- PIL --------
     def _generate_with_pil(self, src_path, dst_path):
+        """
+        Generate a JPEG image from the source path using PIL.
+
+        Resizes the image by self.resize_factor, chooses LANCZOS for normal sizes
+        and BILINEAR for extremely large images, and ensures the saved output is
+        RGB with a white background for images that have transparency.
+
+        Parameters:
+            src_path (str): Path to the source image.
+            dst_path (str): Path where the generated JPEG will be saved.
+
+        Returns:
+            str: The destination path.
+        """
         with Image.open(src_path) as im:
             orig_w, orig_h = im.size
             new_w = max(int(orig_w * self.resize_factor), 1)
             new_h = max(int(orig_h * self.resize_factor), 1)
 
-            # 和你原本一致：小圖走 LANCZOS，大到超巨才退而求其次
+            # For very large images, LANCZOS can be extremely slow; 
+            # BILINEAR is faster and still decent quality for large downscaling
             resample = Image.LANCZOS if max(orig_w, orig_h) <= 20000 else Image.BILINEAR
             im_resized = im.resize((new_w, new_h), resample=resample)
 
-            # JPEG 必須是 RGB；若有 alpha 一樣合成白底
+            # JPEG must be RGB; if image has alpha, composite onto white background
             if im_resized.mode in ("RGBA", "LA", "P"):
                 bg = Image.new("RGB", im_resized.size, (255, 255, 255))
                 if im_resized.mode in ("RGBA", "LA"):
@@ -119,7 +135,6 @@ class DisplayImageGenerator:
     def generate_display_image(self):
         """
         Resize the image by resize_factor and save to the output directory.
-        優先 pyvips；若失敗，回退至 PIL。
         """
         resized_dir = os.path.join(self.output_dir, "resized")
         os.makedirs(resized_dir, exist_ok=True)
@@ -131,7 +146,7 @@ class DisplayImageGenerator:
             try:
                 return self._generate_with_vips(self.image_path, out_path)
             except Exception:
-                # 某些編碼或奇怪 ICC/alpha 情況下，回退 PIL 以求穩
+                # In case of any error with vips (e.g., unsupported format, memory issues), fallback to PIL
                 pass
 
         return self._generate_with_pil(self.image_path, out_path)

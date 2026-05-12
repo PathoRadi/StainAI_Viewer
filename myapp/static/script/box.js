@@ -62,7 +62,7 @@ function getSvgOverlayNode() {
     const overlayObj = viewer.__stainSvgOverlay;
     if (!overlayObj) return null;
 
-    // 常見 plugin 介面
+    // plugin ui may evolve, try multiple ways to get the SVG root
     if (typeof overlayObj.node === 'function') {
       return overlayObj.node();
     }
@@ -182,7 +182,7 @@ function rerenderBoxes() {
 
   const mode = getOverlayMode();
 
-  // 如果 mode 改了，整批重畫，避免 svg/html 混在一起
+  // if mode changed or mixed modes exist, do a full redraw to switch mode
   const mixed =
     boxRecords.some(r => r.mode !== mode);
 
@@ -232,7 +232,7 @@ export function clearBoxes() {
 
   boxRecords = [];
 
-  // 清空 SVG layer
+  // clear SVG layer
   try {
     const svg = getSvgOverlayNode();
     const layer = svg?.querySelector?.('#bbox-svg-layer');
@@ -241,7 +241,7 @@ export function clearBoxes() {
     console.warn('clear svg bbox layer failed:', err);
   }
 
-  // 清空 HTML layer
+  // clear HTML layer
   try {
     const html = document.getElementById('bbox-html-overlay');
     if (html) html.innerHTML = '';

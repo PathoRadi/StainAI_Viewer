@@ -6,7 +6,7 @@ import gc
 import glob
 import numpy as np
 from natsort import natsorted
-from PIL import Image, ImageFile, ImageDraw
+from PIL import Image, ImageFile
 from torchvision.ops import nms
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed

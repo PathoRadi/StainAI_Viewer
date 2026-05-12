@@ -728,7 +728,7 @@ export function initKonvaManager({
   window.addEventListener('resize', () => {
     const wrapEl = document.getElementById('displayedImage-wrapper');
     stage.size({ width: wrapEl.clientWidth, height: wrapEl.clientHeight });
-    redrawPolygons(); // 重新投影 ROI 點
+    redrawPolygons(); // Redraw on resize to adjust to new viewport/image size
   });
 
   return { stage, redrawPolygons, isInAnyPolygon };

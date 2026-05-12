@@ -38,9 +38,6 @@ function getCurrentAreaPixels(barChart) {
   return Number(window.currentImageMeta?.totalPixels) || 0;
 }
 
-// function formatPixelArea(px) {
-//   return `${Number(px || 0).toLocaleString()} px²`;
-// }
 function getResolution() {
   const r = Number(window.currentImageMeta?.resolution);
   return Number.isFinite(r) && r > 0 ? r : null;
@@ -94,11 +91,6 @@ function syncMainChartSummary(barChart) {
   if (areaEl) areaEl.textContent = formatArea(areaPx);
 }
 
-// function countsToDensity(counts, areaPx) {
-//   const area = Number(areaPx) || 0;
-//   if (!area) return counts.map(() => 0);
-//   return counts.map(v => Number(v) / area);
-// }
 function countsToDensity(counts, areaPx) {
   const info = getAreaInfo(areaPx);
   const area = Number(info.value) || 0;
@@ -163,8 +155,6 @@ function applyMetricToChart(barChart, counts, areaOverridePx = null) {
   barChart.data.datasets[0].label = mode === 'density' ? 'Density' : 'Count';
   barChart.data.datasets[0].data = values;
 
-  // barChart.options.scales.y.title.text =
-  //   mode === 'density' ? 'Density (cells/px²)' : 'Count';
   const areaInfo = getAreaInfo(areaPx);
 
   barChart.options.scales.y.title.text =
@@ -311,35 +301,6 @@ export function updateChartAll(bboxData, barChart) {
   const counts = types.map(t => bboxData.filter(d => d.type === t).length);
   applyMetricToChart(barChart, counts);
 }
-
-// export function initCheckboxes(bboxData, barChart) {
-//   $('#checkbox_All').prop('checked', false);
-//   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-//     .prop('checked', false);
-//   hideAllBoxes();
-
-//   $('#checkbox_All').off('change').on('change', function(){
-//     const on = this.checked;
-//     $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-//       .prop('checked', on);
-//     on ? showAllBoxes() : hideAllBoxes();
-//   });
-
-//   $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-//     .off('change').on('change', function(){
-//       const sel = $('#Checkbox_R:checked, #Checkbox_H:checked, #Checkbox_B:checked, #Checkbox_A:checked, #Checkbox_RD:checked, #Checkbox_HR:checked')
-//         .map((i,el)=>el.id.split('_')[1]).get();
-//       $('#checkbox_All').prop('checked', sel.length === 6);
-//       showBoxesByType(sel);
-//   });
-
-//   const $menu = $('#filter-menu');
-//   $('#filter-btn').off('click').on('click', e => {
-//     e.stopPropagation(); $menu.toggleClass('show');
-//   });
-//   $(document).off('click.filterClose').on('click.filterClose', () => $menu.removeClass('show'));
-//   $menu.off('click').on('click', e => e.stopPropagation());
-// }
 
 export function initCheckboxes(bboxData, barChart) {
   const classSelector = '#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR';
