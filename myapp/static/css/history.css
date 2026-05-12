@@ -101,7 +101,7 @@
     text-align: left;
     cursor: pointer;
     margin-bottom: 8px;
-    overflow: hidden;
+    overflow: visible;
 }
 .history-item:hover {
     background: var(--bg-history-item-hover);
@@ -116,10 +116,10 @@
 /* File Name Tooltip */
 .history-item::after {
     content: attr(data-tooltip);
-    position: absolute;
+    position: fixed;
 
-    left: calc(100% + 10px);
-    top: 50%;
+    left: var(--tooltip-x, 205px);
+    top: var(--tooltip-y, 50vh);
     transform: translateY(-50%);
 
     max-width: 260px;
@@ -143,13 +143,6 @@
 }
 .history-item:hover::after {
     opacity: 1;
-}
-.history-filename {
-  flex: 1 1 auto;       
-  min-width: 0;         
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* Drag and Drop */

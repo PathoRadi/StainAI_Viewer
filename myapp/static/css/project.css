@@ -237,14 +237,14 @@
 .project-folder .history-rename-input:focus{
     border-color: rgba(255,255,255,0.35);
 }
-/* Project Folder Name Tooltip */
+/* Project Folder / Project Image Tooltip */
 .project-folder::after,
 .project-image-item::after {
     content: attr(data-tooltip);
-    position: absolute;
+    position: fixed;
 
-    left: calc(100% + 10px);
-    top: 50%;
+    left: var(--tooltip-x, 205px);
+    top: var(--tooltip-y, 50vh);
     transform: translateY(-50%);
 
     max-width: 260px;
@@ -324,6 +324,7 @@ body.dragging-image-item .project-folder{
     transition: background 0.18s ease;
     position: relative;
     padding-right: 34px;
+    overflow: visible;
 }
 .project-image-item:hover{
     background: var(--bg-history-item-hover);
