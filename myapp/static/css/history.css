@@ -101,7 +101,7 @@
     text-align: left;
     cursor: pointer;
     margin-bottom: 8px;
-    overflow: visible;
+    overflow: hidden;
 }
 .history-item:hover {
     background: var(--bg-history-item-hover);
@@ -116,14 +116,11 @@
 /* File Name Tooltip */
 .history-item::after {
     content: attr(data-tooltip);
-    position: absolute;
-
-    left: calc(100% + 10px);
-    top: 50%;
-    transform: translateY(-50%);
+    position: fixed;
+    left: 190px;
+    top: var(--tooltip-y, 0px);
 
     max-width: 260px;
-    min-width: 120px;
     padding: 7px 10px;
 
     background: var(--bg-history-item-hover);
@@ -139,11 +136,18 @@
 
     opacity: 0;
     pointer-events: none;
-    z-index: 7000;
+    z-index: 6000;
+    transform: translateY(-50%);
 }
-
 .history-item:hover::after {
     opacity: 1;
+}
+.history-filename {
+  flex: 1 1 auto;       
+  min-width: 0;         
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Drag and Drop */
@@ -156,47 +160,6 @@
 #history-container.drag-over-images{
     outline: 1px dashed rgba(255,255,255,0.4);
     border-radius: 12px;
-}
-
-/* history-item multi selection */
-.history-item.multi-selected {
-    border: 3px solid rgb(120, 210, 255);
-    box-shadow: 0 0 8px rgba(120, 210, 255, 0.65);
-    background: rgba(120, 210, 255, 0.12);
-}
-.history-bulk-menu {
-    position: fixed;
-    left: 205px;
-    top: 160px;
-    width: 180px;
-    background: var(--bg-history-action-menu);
-    border-radius: 10px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.55);
-    padding: 8px 0;
-    z-index: 3500;
-    display: none;
-}
-.history-bulk-menu.visible {
-    display: block;
-}
-.history-bulk-menu-title {
-    padding: 8px 12px;
-    color: rgba(255,255,255,0.75);
-    font-size: 13px;
-    border-bottom: 1px solid rgba(255,255,255,0.12);
-}
-.history-bulk-menu button {
-    width: 100%;
-    padding: 9px 12px;
-    background: none;
-    border: none;
-    color: var(--text-history-action-menu-button);
-    text-align: left;
-    cursor: pointer;
-    font-family: 'PingFangHKWeb', sans-serif;
-}
-.history-bulk-menu button:hover {
-    background: var(--bg-history-action-menu-button-hover);
 }
 
 
