@@ -221,16 +221,16 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     updateProjectsUI(historyStack);
     initProjectHandlers(historyStack);
 
-    $(document).on(
-      'mouseenter mousemove',
-      '.history-item, .project-folder, .project-image-item',
-      function () {
-        const rect = this.getBoundingClientRect();
+    // $(document).on(
+    //   'mouseenter mousemove',
+    //   '.history-item, .project-folder, .project-image-item',
+    //   function () {
+    //     const rect = this.getBoundingClientRect();
 
-        this.style.setProperty('--tooltip-x', `${rect.right + 10}px`);
-        this.style.setProperty('--tooltip-y', `${rect.top + rect.height / 2}px`);
-      }
-    );
+    //     this.style.setProperty('--tooltip-x', `${rect.right + 10}px`);
+    //     this.style.setProperty('--tooltip-y', `${rect.top + rect.height / 2}px`);
+    //   }
+    // );
 
     // Theme toggle
     const toggle = document.getElementById('theme-toggle');

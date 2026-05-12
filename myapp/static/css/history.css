@@ -116,10 +116,10 @@
 /* File Name Tooltip */
 .history-item::after {
     content: attr(data-tooltip);
-    position: fixed;
+    position: absolute;
 
-    left: var(--tooltip-x, 205px);
-    top: var(--tooltip-y, 50vh);
+    left: calc(100% + 10px);
+    top: 50%;
     transform: translateY(-50%);
 
     max-width: 260px;
@@ -141,6 +141,7 @@
     pointer-events: none;
     z-index: 7000;
 }
+
 .history-item:hover::after {
     opacity: 1;
 }

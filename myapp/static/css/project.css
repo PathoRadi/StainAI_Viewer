@@ -143,6 +143,7 @@
     text-align: left;
     transition: background 0.18s ease;
     padding-right: 34px;
+    overflow: visible;
 }
 .project-folder:hover{
     background: var(--bg-history-item-hover);
@@ -241,10 +242,10 @@
 .project-folder::after,
 .project-image-item::after {
     content: attr(data-tooltip);
-    position: fixed;
+    position: absolute;
 
-    left: var(--tooltip-x, 205px);
-    top: var(--tooltip-y, 50vh);
+    left: calc(100% + 10px);
+    top: 50%;
     transform: translateY(-50%);
 
     max-width: 260px;
