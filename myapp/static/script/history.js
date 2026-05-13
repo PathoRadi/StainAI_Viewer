@@ -413,6 +413,7 @@ export function initHistoryHandlers(historyStack) {
         </div>
 
         <button class="multi-delete-btn" type="button">Delete</button>
+        <button class="multi-cancel-btn" type="button">Cancel</button>
       </div>
     `);
 
@@ -473,7 +474,7 @@ export function initHistoryHandlers(historyStack) {
   function showMultiActionMenu(anchorEl) {
     const count = selectedIdxs.size;
 
-    if (count < 2) {
+    if (count < 1) {
       $('#multi-action-menu').hide();
       $('#multi-action-menu .multi-move-submenu').removeClass('visible');
       $('.multi-menu-shield').remove();
@@ -563,7 +564,7 @@ export function initHistoryHandlers(historyStack) {
 
     applyMultiSelectedClass();
 
-    if (selectedIdxs.size >= 2) {
+    if (selectedIdxs.size >= 1) {
       showMultiActionMenu(anchorEl);
     } else {
       $('#multi-action-menu').hide();
@@ -577,8 +578,8 @@ export function initHistoryHandlers(historyStack) {
       .map(item => item.dir || item.imageName || item.name)
       .filter(Boolean);
 
-    if (imageNames.length < 2) {
-      alert('Please select at least 2 images.');
+    if (imageNames.length < 1) {
+      alert('Please select at least 1 image.');
       return;
     }
 
@@ -648,8 +649,12 @@ export function initHistoryHandlers(historyStack) {
 
     if (!indices.length) return;
 
-    const ok = confirm(`Delete ${indices.length} selected images?`);
-    if (!ok) return;
+    const ok = confirm(`Delete ${indices.length} selected image${indices.length > 1 ? 's' : ''}?`);
+
+    if (!ok) {
+      clearMultiSelection();
+      return;
+    }
 
     const imageNamesToDelete = new Set();
 
@@ -743,6 +748,13 @@ export function initHistoryHandlers(historyStack) {
   $(document).off('click.multiDelete').on('click.multiDelete', '.multi-delete-btn', async function (e) {
     e.stopPropagation();
     await deleteSelectedImages();
+  });
+
+  $(document).off('click.multiCancel').on('click.multiCancel', '.multi-cancel-btn', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    clearMultiSelection();
   });
 
   $(document).off('keydown.multiSelectEsc').on('keydown.multiSelectEsc', function (e) {

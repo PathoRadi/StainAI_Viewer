@@ -335,6 +335,13 @@
     opacity: 0.5;
     cursor: default;
 }
+.multi-cancel-btn {
+    border-top: 1px solid rgba(255,255,255,0.14) !important;
+    margin-top: 4px;
+}
+.multi-cancel-btn:hover {
+    background: rgba(120,120,120,0.55) !important;
+}
 
 
 
