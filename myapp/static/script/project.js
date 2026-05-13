@@ -350,18 +350,22 @@ async function populateProjectMoveSubmenu($submenu, idx, historyStack) {
   const currentItem = historyStack[idx];
   const currentProjectName = currentItem?.projectName || '';
 
+  // if currently in a project, also offer move to Images (no project) option
+  if (currentProjectName) {
+    $submenu.append(`
+      <button
+        class="move-to-images-option"
+        type="button"
+        data-idx="${idx}"
+      >
+        Images
+      </button>
+    `);
+  }
+
   const filtered = projects.filter(
     p => normalizeProjectName(p.project_name) !== currentProjectName
   );
-
-  if (!filtered.length) {
-    $submenu.append(`
-      <button class="project-move-empty" type="button" disabled>
-        No other projects
-      </button>
-    `);
-    return;
-  }
 
   filtered.forEach(project => {
     const projectName = normalizeProjectName(project.project_name);
@@ -378,6 +382,14 @@ async function populateProjectMoveSubmenu($submenu, idx, historyStack) {
       </button>
     `);
   });
+
+  if (!currentProjectName && !filtered.length) {
+    $submenu.append(`
+      <button class="project-move-empty" type="button" disabled>
+        No other projects
+      </button>
+    `);
+  }
 }
 
 /* =========================================================
@@ -549,6 +561,50 @@ export function initProjectHandlers(historyStack) {
 
     await populateProjectMoveSubmenu($submenu, idx, historyStack);
     $submenu.toggleClass('visible');
+  });
+
+  $(document).on('click', '.move-to-images-option', async function (e) {
+    e.stopPropagation();
+
+    const idx = Number($(this).data('idx'));
+    const item = historyStack[idx];
+
+    if (!item) return;
+
+    const sourceProjectName = item.projectName || '';
+
+    if (!sourceProjectName) {
+      $('.history-action-menu').hide();
+      $('.project-image-action-menu').hide();
+      $('.project-image-move-submenu').removeClass('visible');
+      $('.menu-click-shield').remove();
+      restoreProjectMenusToOrigin();
+      return;
+    }
+
+    try {
+      const data = await moveImageToImages(item.dir, sourceProjectName);
+
+      item.projectName = '';
+      item.location = 'images';
+
+      if (data?.display_url) {
+        item.displayUrl = data.display_url;
+      }
+
+      $('.history-action-menu').hide();
+      $('.project-image-action-menu').hide();
+      $('.project-image-move-submenu').removeClass('visible');
+      $('.menu-click-shield').remove();
+      restoreProjectMenusToOrigin();
+
+      updateHistoryUI(historyStack);
+      await updateProjectsUI(historyStack);
+
+    } catch (err) {
+      console.error('Move back to Images failed:', err);
+      alert(`Move failed: ${err.message}`);
+    }
   });
 
   // select one project from submenu

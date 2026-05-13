@@ -410,6 +410,7 @@ body.dragging-image-item .project-folder{
     width: 100%;
 }
 .move-project-option,
+.move-to-images-option,
 .move-project-empty{
     width: 100%;
     padding: 8px 12px;
@@ -421,7 +422,8 @@ body.dragging-image-item .project-folder{
     font-family: 'PingFangHKWeb', sans-serif;
     font-size: 13px;
 }
-.move-project-option:hover{
+.move-project-option:hover,
+.move-to-images-option:hover{
     background: var(--bg-history-action-menu-button-hover);
 }
 .move-project-option:disabled,

@@ -849,24 +849,24 @@ export function initHistoryHandlers(historyStack) {
   });
 
   // Drag and Drop support for history items (drag to canvas to load)
-  $(document).on('dragstart', '.history-item', function (e) {
-    const idx = Number($(this).data('idx'));
-    const item = historyStack[idx];
-    if (!item) return;
+  // $(document).on('dragstart', '.history-item', function (e) {
+  //   const idx = Number($(this).data('idx'));
+  //   const item = historyStack[idx];
+  //   if (!item) return;
 
-    if (item.projectName) {
-      e.preventDefault();
-      return;
-    }
+  //   if (item.projectName) {
+  //     e.preventDefault();
+  //     return;
+  //   }
 
-    e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
-      idx,
-      image_name: item.dir
-    }));
-    e.originalEvent.dataTransfer.effectAllowed = 'move';
+  //   e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
+  //     idx,
+  //     image_name: item.dir
+  //   }));
+  //   e.originalEvent.dataTransfer.effectAllowed = 'move';
 
-    $('body').addClass('dragging-history-item');
-  });
+  //   $('body').addClass('dragging-history-item');
+  // });
   // $(document).on('dragend', '.history-item', function () {
   //   $('body').removeClass('dragging-history-item');
   //   $('.project-folder').removeClass('drag-over');
@@ -884,6 +884,7 @@ export function initHistoryHandlers(historyStack) {
 
     $(this).removeClass('drag-over-images');
     $('body').removeClass('dragging-image-item');
+    $('body').removeClass('dragging-history-item');
 
     let payload = null;
     try {
@@ -905,20 +906,18 @@ export function initHistoryHandlers(historyStack) {
 
         const sourceProjectName = item.projectName || '';
 
-        // do not allow dropping to the same project
-        if (sourceProjectName === targetProjectName) continue;
+        // do not dragging if it is already in Images (no project) to prevent unnecessary move
+        if (!sourceProjectName) continue;
 
-        const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
+        const data = await moveImageToImages(item.dir, sourceProjectName);
 
-        item.projectName = data.project_name || targetProjectName;
-        item.location = data.project_name || targetProjectName;
+        item.projectName = '';
+        item.location = 'images';
 
-        if (data.display_url) {
+        if (data?.display_url) {
           item.displayUrl = data.display_url;
         }
       }
-
-      _expandedProjects.add(targetProjectName);
 
       window.StainMultiSelect?.clear();
 
@@ -926,7 +925,7 @@ export function initHistoryHandlers(historyStack) {
       await updateProjectsUI(historyStack);
 
     } catch (err) {
-      console.error('Drag move to project failed:', err);
+      console.error('Drag move back to Images failed:', err);
       alert(`Move failed: ${err.message}`);
     }
   });
