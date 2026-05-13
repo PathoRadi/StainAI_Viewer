@@ -536,8 +536,45 @@ export function initHistoryHandlers(historyStack) {
       ev.stopPropagation();
       ev.stopImmediatePropagation();
 
-      // Do nothing.
-      // This prevents random left-click or right-click from closing the multi-select menu.
+      // Right click: block browser context menu, keep multi menu open
+      if (ev.type === 'contextmenu') {
+        return false;
+      }
+
+      // Only handle actual click once.
+      // mousedown/mouseup only block background interaction.
+      if (ev.type !== 'click') {
+        return false;
+      }
+
+      // If user is still holding Ctrl / Cmd,
+      // allow selecting another history-item or project-image-item under the shield.
+      if (ev.ctrlKey || ev.metaKey) {
+        const shieldEl = this;
+
+        // Temporarily disable shield hit-test so we can find the real element below it.
+        shieldEl.style.pointerEvents = 'none';
+
+        const realTarget = document.elementFromPoint(
+          ev.clientX,
+          ev.clientY
+        );
+
+        shieldEl.style.pointerEvents = 'auto';
+
+        const selectable = realTarget?.closest?.('.history-item, .project-image-item');
+
+        if (selectable) {
+          const idx = Number(selectable.dataset.idx);
+
+          if (Number.isInteger(idx)) {
+            window.StainMultiSelect?.toggle(idx, selectable);
+          }
+        }
+      }
+
+      // Normal background click still does nothing.
+      // It should NOT close menu or clear selected items.
       return false;
     });
   }
