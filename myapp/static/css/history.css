@@ -253,6 +253,92 @@
 
 
 
+/* ============================
+   Multi-select selected state
+============================ */
+.history-item.multi-selected,
+.project-image-item.multi-selected {
+    border: 3px solid rgba(135, 206, 250, 0.95) !important;
+    box-shadow: 0 0 0 1px rgba(135, 206, 250, 0.35);
+    background: rgba(100, 100, 100, 0.35);
+}
+/* avoid border thickness change */
+.history-item,
+.project-image-item {
+    box-sizing: border-box;
+}
+
+/* ============================
+   Multi action menu
+============================ */
+.multi-action-menu {
+    position: fixed;
+    min-width: 155px;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    display: none;
+    z-index: 3200;
+    overflow: visible;
+}
+.multi-action-menu button {
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 14px;
+}
+.multi-action-menu button:hover {
+    background: var(--bg-history-action-menu-button-hover);
+}
+.multi-move-wrapper {
+    position: relative;
+}
+.multi-move-submenu {
+    position: absolute;
+    top: 0;
+    left: calc(100% - 4px);
+    min-width: 160px;
+    max-width: 220px;
+    background: var(--bg-history-action-menu);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    padding: 4px 0;
+    display: none;
+    z-index: 3300;
+}
+.multi-move-wrapper:hover .multi-move-submenu,
+.multi-move-submenu.visible {
+    display: block;
+}
+.multi-move-option,
+.multi-move-empty {
+    width: 100%;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: var(--text-history-action-menu-button);
+    text-align: left;
+    cursor: pointer;
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+}
+.multi-move-option:hover {
+    background: var(--bg-history-action-menu-button-hover);
+}
+.multi-move-empty:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+
+
+
 
 
 

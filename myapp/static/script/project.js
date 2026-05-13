@@ -290,7 +290,7 @@ async function createProject(projectName) {
  * Move Image To Project
  * ========================================================= */
 
-async function moveImageToProject(imageName, projectName, sourceProjectName = '') {
+export async function moveImageToProject(imageName, projectName, sourceProjectName = '') {
   const data = await fetchJson(MOVE_IMAGE_TO_PROJECT_URL, {
     method: 'POST',
     headers: {
@@ -369,7 +369,7 @@ async function populateProjectMoveSubmenu($submenu, idx, historyStack) {
 
     $submenu.append(`
       <button
-        class="project-move-option"
+        class="move-project-option"
         type="button"
         data-idx="${idx}"
         data-project="${safeProjectName}"
@@ -491,9 +491,20 @@ export function initProjectHandlers(historyStack) {
   });
 
   // click project image item -> use existing history loader
-  $(document).on('click', '.project-image-item', function () {
+  $(document).on('click', '.project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
+
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      clearSidebarSelection();
+      window.StainMultiSelect?.toggle(idx, this);
+      return;
+    }
+
+    window.StainMultiSelect?.clear();
 
     clearSidebarSelection();
     $(this).addClass('selected');
@@ -616,26 +627,35 @@ export function initProjectHandlers(historyStack) {
       return;
     }
 
-    const idx = Number(payload?.idx);
-    const item = historyStack[idx];
-    if (!item) return;
+    const indices = Array.isArray(payload?.indices)
+      ? payload.indices.map(Number).filter(Number.isInteger)
+      : [Number(payload?.idx)].filter(Number.isInteger);
 
-    const sourceProjectName = item.projectName || '';
-
-    // do not allow dropping to the same project
-    if (sourceProjectName === targetProjectName) return;
+    if (!indices.length) return;
 
     try {
-      const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
+      for (const idx of indices) {
+        const item = historyStack[idx];
+        if (!item) continue;
 
-      item.projectName = data.project_name || targetProjectName;
-      item.location = data.project_name || targetProjectName;
+        const sourceProjectName = item.projectName || '';
 
-      if (data.display_url) {
-        item.displayUrl = data.display_url;
+        // do not allow dropping to the same project
+        if (sourceProjectName === targetProjectName) continue;
+
+        const data = await moveImageToProject(item.dir, targetProjectName, sourceProjectName);
+
+        item.projectName = data.project_name || targetProjectName;
+        item.location = data.project_name || targetProjectName;
+
+        if (data.display_url) {
+          item.displayUrl = data.display_url;
+        }
       }
 
       _expandedProjects.add(targetProjectName);
+
+      window.StainMultiSelect?.clear();
 
       updateHistoryUI(historyStack);
       await updateProjectsUI(historyStack);
@@ -650,8 +670,19 @@ export function initProjectHandlers(historyStack) {
     const item = historyStack[idx];
     if (!item) return;
 
+    const selected = window.StainMultiSelect?.getSelectedIndices?.() || [];
+    const indices = selected.includes(idx) ? selected : [idx];
+
+    const imageNames = indices
+      .map(i => historyStack[i])
+      .filter(Boolean)
+      .map(it => it.dir || it.imageName || it.name)
+      .filter(Boolean);
+
     const payload = {
       idx,
+      indices,
+      image_names: imageNames,
       image_name: item.dir,
       source_project_name: item.projectName || ''
     };
@@ -726,6 +757,8 @@ export function initProjectHandlers(historyStack) {
 
   $(document).off('click.projectMenu').on('click.projectMenu', '.project-image-menu-btn', function (e) {
     e.stopPropagation();
+
+    window.StainMultiSelect?.clear();
 
     $('.project-image-action-menu').hide();
     $('.menu-click-shield').remove();

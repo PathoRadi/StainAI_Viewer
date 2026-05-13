@@ -26,4 +26,9 @@ urlpatterns = [
     path("api/save-global-rois/", views.save_global_rois, name="save_global_rois"),
     path("api/get-global-rois/", views.get_global_rois, name="get_global_rois"),
     path("download-project-folder/", views.download_project_folder, name="download_project_folder"),
+    path(
+        "api/download-selected-with-rois/",
+        views.download_selected_images_with_rois,
+        name="download_selected_images_with_rois"
+    ),
 ]

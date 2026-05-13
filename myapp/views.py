@@ -2115,6 +2115,136 @@ def download_project_folder(request):
     except Exception:
         logger.exception("download_project_folder failed")
         return HttpResponseServerError("download failed")
+    
+@csrf_exempt
+@require_POST
+def download_selected_images_with_rois(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            payload = json.loads(request.body or "{}")
+            raw_names = payload.get("image_names") or []
+        else:
+            raw = request.POST.get("image_names") or "[]"
+            try:
+                raw_names = json.loads(raw)
+            except Exception:
+                raw_names = []
+
+        image_names = []
+        seen = set()
+
+        for name in raw_names:
+            safe = safe_filename(str(name).strip())
+            if safe and safe not in seen:
+                image_names.append(safe)
+                seen.add(safe)
+
+        if not image_names:
+            return HttpResponseBadRequest("image_names required")
+
+        global_roi_state = _download_json_from_blob(_blob_name_for_global_roi_state(user_id)) or {}
+        rois = global_roi_state.get("rois") if isinstance(global_roi_state, dict) else []
+        if not isinstance(rois, list):
+            rois = []
+
+        def _compress_type_for(fn: str):
+            return zipfile.ZIP_STORED if fn.lower().endswith((".tif", ".tiff", ".nii", ".zip")) else zipfile.ZIP_DEFLATED
+
+        tmpf = tempfile.TemporaryFile()
+
+        with zipfile.ZipFile(tmpf, "w") as selected_zip:
+            found_any = False
+
+            for image_name in image_names:
+                wanted_files = [
+                    f"{image_name}_chart.png",
+                    f"{image_name}_mmap.tif",
+                    f"{image_name}_results.json",
+                ]
+
+                for fn in wanted_files:
+                    blob_name = _blob_name_for_result(user_id, image_name, fn)
+
+                    if not _blob_exists(blob_name):
+                        continue
+
+                    file_bytes = _download_blob_bytes(blob_name)
+
+                    arcname = os.path.join(
+                        "selected_images",
+                        image_name,
+                        "result",
+                        fn
+                    )
+
+                    ctype = _compress_type_for(fn)
+
+                    if ctype == zipfile.ZIP_DEFLATED:
+                        selected_zip.writestr(
+                            arcname,
+                            file_bytes,
+                            compress_type=ctype,
+                            compresslevel=0
+                        )
+                    else:
+                        selected_zip.writestr(
+                            arcname,
+                            file_bytes,
+                            compress_type=ctype
+                        )
+
+                    found_any = True
+
+                if rois:
+                    roi_buf = BytesIO()
+
+                    with zipfile.ZipFile(roi_buf, "w", zipfile.ZIP_DEFLATED) as rz:
+                        for i, r in enumerate(rois, start=1):
+                            try:
+                                name = safe_filename(r.get("name") or f"ROI_{i}")
+                                pts = r.get("points") or []
+
+                                roi_bytes = make_imagej_roi_bytes(pts)
+                                if not roi_bytes:
+                                    continue
+
+                                rz.writestr(f"{name}.roi", roi_bytes)
+                            except Exception:
+                                logger.exception("Failed to convert ROI #%s into .roi file", i)
+                                continue
+
+                    roi_zip_bytes = roi_buf.getvalue()
+                    if roi_zip_bytes:
+                        selected_zip.writestr(
+                            os.path.join(
+                                "selected_images",
+                                image_name,
+                                f"{image_name}_rois.zip"
+                            ),
+                            roi_zip_bytes,
+                            compress_type=zipfile.ZIP_STORED
+                        )
+
+            if not found_any:
+                return HttpResponseNotFound("No result files found for selected images")
+
+        tmpf.seek(0)
+
+        return FileResponse(
+            tmpf,
+            as_attachment=True,
+            filename="selected_images.zip",
+            content_type="application/zip"
+        )
+
+    except Exception:
+        logger.exception("download_selected_images_with_rois failed")
+        return HttpResponseServerError("download failed")
 
 # helper function
 def safe_filename(name: str) -> str:
