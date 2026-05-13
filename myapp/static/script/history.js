@@ -475,7 +475,8 @@ export function initHistoryHandlers(historyStack) {
 
     if (count < 2) {
       $('#multi-action-menu').hide();
-      $('.menu-click-shield').remove();
+      $('#multi-action-menu .multi-move-submenu').removeClass('visible');
+      $('.multi-menu-shield').remove();
       return;
     }
 
@@ -514,14 +515,29 @@ export function initHistoryHandlers(historyStack) {
       visibility: 'visible'
     });
 
-    const $shield = $('<div class="menu-click-shield"></div>')
-      .css({ position: 'fixed', inset: 0, zIndex: 3100 })
+    // Multi-select shield:
+    // block background left-click / right-click, but NEVER close the menu.
+    // The menu only closes after Download / Move / Delete / ESC.
+    $('.multi-menu-shield').remove();
+
+    const $shield = $('<div class="multi-menu-shield"></div>')
+      .css({
+        position: 'fixed',
+        inset: 0,
+        zIndex: 3100,
+        background: 'transparent',
+        pointerEvents: 'auto'
+      })
       .appendTo('body');
 
-    $shield.on('click', function (ev) {
+    $shield.on('mousedown mouseup click contextmenu', function (ev) {
+      ev.preventDefault();
       ev.stopPropagation();
-      $('#multi-action-menu').hide();
-      $(this).remove();
+      ev.stopImmediatePropagation();
+
+      // Do nothing.
+      // This prevents random left-click or right-click from closing the multi-select menu.
+      return false;
     });
   }
 
@@ -703,9 +719,20 @@ export function initHistoryHandlers(historyStack) {
     downloadSelectedAsZip();
   });
 
-  $(document).off('click.multiMenuKeep').on('click.multiMenuKeep', '#multi-action-menu', function (e) {
-    e.stopPropagation();
-  });
+  $(document)
+    .off('mousedown.multiMenuKeep mouseup.multiMenuKeep click.multiMenuKeep contextmenu.multiMenuKeep')
+    .on(
+      'mousedown.multiMenuKeep mouseup.multiMenuKeep click.multiMenuKeep contextmenu.multiMenuKeep',
+      '#multi-action-menu',
+      function (e) {
+        e.stopPropagation();
+
+        // Prevent right-click from bubbling up and accidentally closing the menu.
+        if (e.type === 'contextmenu') {
+          e.preventDefault();
+        }
+      }
+    );
 
   $(document).off('click.multiMoveOption').on('click.multiMoveOption', '.multi-move-option', async function (e) {
     e.stopPropagation();
@@ -924,26 +951,17 @@ export function initHistoryHandlers(historyStack) {
       visibility: 'visible'    // Show
     });
 
-    // Multi-select menu shield:
-    // It blocks background clicks, but it does NOT close the menu.
-    // The menu only closes after Download / Move / Delete is completed.
-    $('.multi-menu-shield').remove();
-
-    const $shield = $('<div class="multi-menu-shield"></div>')
-      .css({
-        position: 'fixed',
-        inset: 0,
-        zIndex: 3100,
-        background: 'transparent'
-      })
+    const $shield = $('<div class="menu-click-shield"></div>')
+      .css({ position: 'fixed', inset: 0, zIndex: 2500 })
       .appendTo('body');
 
-    $shield.on('click', function (ev) {
+    $shield.on('click contextmenu', function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
 
-      // Do nothing.
-      // This prevents random page clicks from closing the multi-select menu.
+      $menu.hide();
+      $(this).remove();
+      restoreMenusToOrigin();
     });
   });
 
