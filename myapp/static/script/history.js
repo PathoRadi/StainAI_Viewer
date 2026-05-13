@@ -369,8 +369,12 @@ export function initHistoryHandlers(historyStack) {
     $('.project-image-action-menu').hide();
     $('.project-folder-action-menu').hide();
     $('.project-image-move-submenu').removeClass('visible');
+
+    // Only remove normal single-item menu shields.
     $('.menu-click-shield').remove();
-    $('#multi-action-menu').hide();
+
+    // Do NOT remove/hide multi menu here unless explicitly needed.
+    // showMultiActionMenu() itself controls the multi menu.
   }
 
   function getSelectedIndices() {
@@ -524,7 +528,11 @@ export function initHistoryHandlers(historyStack) {
   function clearMultiSelection() {
     selectedIdxs.clear();
     applyMultiSelectedClass();
+
     $('#multi-action-menu').hide();
+    $('#multi-action-menu .multi-move-submenu').removeClass('visible');
+
+    $('.multi-menu-shield').remove();
   }
 
   function toggleMultiSelection(idx, anchorEl) {
@@ -543,7 +551,8 @@ export function initHistoryHandlers(historyStack) {
       showMultiActionMenu(anchorEl);
     } else {
       $('#multi-action-menu').hide();
-      $('.menu-click-shield').remove();
+      $('#multi-action-menu .multi-move-submenu').removeClass('visible');
+      $('.multi-menu-shield').remove();
     }
   }
 
@@ -577,8 +586,7 @@ export function initHistoryHandlers(historyStack) {
     form.submit();
     form.remove();
 
-    $('#multi-action-menu').hide();
-    $('.menu-click-shield').remove();
+    clearMultiSelection();
   }
 
   async function moveSelectedToProject(projectName) {
@@ -615,8 +623,7 @@ export function initHistoryHandlers(historyStack) {
       console.error('Move selected failed:', err);
       alert(`Move failed: ${err.message}`);
     } finally {
-      $('#multi-action-menu').hide();
-      $('.menu-click-shield').remove();
+      $('.multi-menu-shield').remove();
     }
   }
 
@@ -668,8 +675,7 @@ export function initHistoryHandlers(historyStack) {
       console.error('Delete selected failed:', err);
       alert(`Delete failed: ${err.message}`);
     } finally {
-      $('#multi-action-menu').hide();
-      $('.menu-click-shield').remove();
+      $('.multi-menu-shield').remove();
     }
   }
 
@@ -697,6 +703,10 @@ export function initHistoryHandlers(historyStack) {
     downloadSelectedAsZip();
   });
 
+  $(document).off('click.multiMenuKeep').on('click.multiMenuKeep', '#multi-action-menu', function (e) {
+    e.stopPropagation();
+  });
+
   $(document).off('click.multiMoveOption').on('click.multiMoveOption', '.multi-move-option', async function (e) {
     e.stopPropagation();
     const projectName = normalizeName($(this).data('project'));
@@ -711,7 +721,6 @@ export function initHistoryHandlers(historyStack) {
   $(document).off('keydown.multiSelectEsc').on('keydown.multiSelectEsc', function (e) {
     if (e.key === 'Escape') {
       clearMultiSelection();
-      $('.menu-click-shield').remove();
     }
   });
 
@@ -915,17 +924,26 @@ export function initHistoryHandlers(historyStack) {
       visibility: 'visible'    // Show
     });
 
-    // Transparent shield to block background clicks (layer below menu)
-    const $shield = $('<div class="menu-click-shield"></div>')
-      .css({ position: 'fixed', inset: 0, zIndex: 2500 })
+    // Multi-select menu shield:
+    // It blocks background clicks, but it does NOT close the menu.
+    // The menu only closes after Download / Move / Delete is completed.
+    $('.multi-menu-shield').remove();
+
+    const $shield = $('<div class="multi-menu-shield"></div>')
+      .css({
+        position: 'fixed',
+        inset: 0,
+        zIndex: 3100,
+        background: 'transparent'
+      })
       .appendTo('body');
 
-    // Clicking shield closes menu
     $shield.on('click', function (ev) {
+      ev.preventDefault();
       ev.stopPropagation();
-      $menu.hide();
-      $(this).remove();
-      restoreMenusToOrigin();  // ★ Move back to origin entry
+
+      // Do nothing.
+      // This prevents random page clicks from closing the multi-select menu.
     });
   });
 
