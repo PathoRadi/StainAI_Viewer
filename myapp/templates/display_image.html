@@ -426,7 +426,7 @@
     const GET_GLOBAL_ROIS_URL = "{% url 'myapp:get_global_rois' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
-    window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'download_selected_images_with_rois' %}";
+    window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";
 
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
