@@ -317,6 +317,7 @@
     display: block;
 }
 .multi-move-option,
+.multi-move-to-images-option,
 .multi-move-empty {
     width: 100%;
     padding: 8px 12px;
@@ -328,7 +329,8 @@
     font-family: 'PingFangHKWeb', sans-serif;
     font-size: 13px;
 }
-.multi-move-option:hover {
+.multi-move-option:hover,
+.multi-move-to-images-option:hover {
     background: var(--bg-history-action-menu-button-hover);
 }
 .multi-move-empty:disabled {

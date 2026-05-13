@@ -446,19 +446,21 @@ export function initHistoryHandlers(historyStack) {
     const selectedItems = getSelectedItems();
     const projectNames = getProjectNamesForMultiMove();
 
-    const filtered = projectNames.filter(projectName => {
-      // 只要至少有一張 selected image 不在這個 project，就顯示這個 target
-      return selectedItems.some(item => normalizeName(item.projectName || '') !== projectName);
-    });
+    // Only show "Move to Images" if at least one selected item is currently in a project (i.e., has a projectName).
+    const hasProjectItems = selectedItems.some(item => normalizeName(item.projectName || ''));
 
-    if (!filtered.length) {
+    if (hasProjectItems) {
       $submenu.append(`
-        <button class="multi-move-empty" type="button" disabled>
-          No other projects
+        <button class="multi-move-to-images-option" type="button">
+          Images
         </button>
       `);
-      return;
     }
+
+    const filtered = projectNames.filter(projectName => {
+      // Only show projects that are different from ALL selected items' current project.
+      return selectedItems.some(item => normalizeName(item.projectName || '') !== projectName);
+    });
 
     filtered.forEach(projectName => {
       const safe = $('<div>').text(projectName).html();
@@ -469,6 +471,14 @@ export function initHistoryHandlers(historyStack) {
         </button>
       `);
     });
+
+    if (!hasProjectItems && !filtered.length) {
+      $submenu.append(`
+        <button class="multi-move-empty" type="button" disabled>
+          No other projects
+        </button>
+      `);
+    }
   }
 
   function showMultiActionMenu(anchorEl) {
@@ -655,7 +665,7 @@ export function initHistoryHandlers(historyStack) {
 
         const sourceProjectName = item.projectName || '';
 
-        // 已經在同一個 project 就跳過
+        // If the item is already in the target project, skip it to avoid unnecessary move and potential data loss.
         if (sourceProjectName === projectName) continue;
 
         const data = await moveImageToProject(item.dir, projectName, sourceProjectName);
@@ -675,6 +685,44 @@ export function initHistoryHandlers(historyStack) {
 
     } catch (err) {
       console.error('Move selected failed:', err);
+      alert(`Move failed: ${err.message}`);
+    } finally {
+      $('.multi-menu-shield').remove();
+    }
+  }
+
+  async function moveSelectedToImages() {
+    const indices = getSelectedIndices();
+
+    if (!indices.length) return;
+
+    try {
+      for (const idx of indices) {
+        const item = historyStack[idx];
+        if (!item) continue;
+
+        const sourceProjectName = item.projectName || '';
+
+        // Only move if it is currently in a project (i.e., has a projectName), to prevent unnecessary move and potential data loss.
+        if (!sourceProjectName) continue;
+
+        const data = await moveImageToImages(item.dir, sourceProjectName);
+
+        item.projectName = '';
+        item.location = 'images';
+
+        if (data?.display_url) {
+          item.displayUrl = data.display_url;
+        }
+      }
+
+      clearMultiSelection();
+
+      updateHistoryUI(historyStack);
+      await updateProjectsUI(historyStack);
+
+    } catch (err) {
+      console.error('Move selected back to Images failed:', err);
       alert(`Move failed: ${err.message}`);
     } finally {
       $('.multi-menu-shield').remove();
@@ -775,6 +823,13 @@ export function initHistoryHandlers(historyStack) {
         }
       }
     );
+
+  $(document).off('click.multiMoveToImages').on('click.multiMoveToImages', '.multi-move-to-images-option', async function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    await moveSelectedToImages();
+  });
 
   $(document).off('click.multiMoveOption').on('click.multiMoveOption', '.multi-move-option', async function (e) {
     e.stopPropagation();
