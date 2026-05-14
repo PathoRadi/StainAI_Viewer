@@ -531,10 +531,35 @@ export function initHistoryHandlers(historyStack) {
     // The menu only closes after Download / Move / Delete / ESC.
     $('.multi-menu-shield').remove();
 
+    // const $shield = $('<div class="multi-menu-shield"></div>')
+    //   .css({
+    //     position: 'fixed',
+    //     inset: 0,
+    //     zIndex: 3100,
+    //     background: 'transparent',
+    //     pointerEvents: 'auto'
+    //   })
+    //   .appendTo('body');
+    const sidebarEl =
+      document.querySelector('.sidebar') ||
+      document.querySelector('.side-bar') ||
+      document.querySelector('.left-sidebar') ||
+      document.querySelector('#sidebar');
+
+    const sidebarRight = sidebarEl
+      ? Math.ceil(sidebarEl.getBoundingClientRect().right)
+      : 195;
+
+    // Only cover the area to the right of the sidebar, so that user can still interact with the sidebar 
+    // (e.g., switch between History / Projects, click on project folders, etc.) 
+    // without accidentally closing the multi menu.
     const $shield = $('<div class="multi-menu-shield"></div>')
       .css({
         position: 'fixed',
-        inset: 0,
+        left: `${sidebarRight}px`,
+        top: 0,
+        right: 0,
+        bottom: 0,
         zIndex: 3100,
         background: 'transparent',
         pointerEvents: 'auto'
@@ -791,7 +816,9 @@ export function initHistoryHandlers(historyStack) {
     apply: applyMultiSelectedClass,
     getSelectedIndices,
     getSelectedItems,
-    showMenu: showMultiActionMenu
+    showMenu: showMultiActionMenu,
+    isActive: () => selectedIdxs.size > 0,
+    isSelected: (idx) => selectedIdxs.has(Number(idx))
   };
 
   $(document).off('mouseenter.multiMove').on('mouseenter.multiMove', '.multi-move-wrapper', function () {
@@ -877,6 +904,31 @@ export function initHistoryHandlers(historyStack) {
   });
   
   // click on an entry → load that image and its boxes/chart
+  // $(document).on('click', '.history-item', function(e) {
+  //   const idx = Number($(this).data('idx'));
+
+  //   if (e.ctrlKey || e.metaKey) {
+  //     e.preventDefault();
+  //     e.stopPropagation();
+
+  //     $('.history-item').removeClass('selected');
+  //     $('.project-image-item').removeClass('selected');
+  //     $('.project-folder').removeClass('selected');
+
+  //     window.StainMultiSelect?.toggle(idx, this);
+  //     return;
+  //   }
+
+  //   window.StainMultiSelect?.clear();
+
+  //   $('.history-item').removeClass('selected');
+  //   $('.project-image-item').removeClass('selected');
+  //   $('.project-folder').removeClass('selected');
+
+  //   $(this).addClass('selected');
+
+  //   loadHistoryItemByIndex(idx);
+  // });
   $(document).on('click', '.history-item', function(e) {
     const idx = Number($(this).data('idx'));
 
@@ -889,6 +941,14 @@ export function initHistoryHandlers(historyStack) {
       $('.project-folder').removeClass('selected');
 
       window.StainMultiSelect?.toggle(idx, this);
+      return;
+    }
+
+    // if multi-select is active, clicking an item should only toggle selection, not load the image. 
+    // This prevents accidental navigation when trying to select multiple items.
+    if (window.StainMultiSelect?.isActive?.()) {
+      e.preventDefault();
+      e.stopPropagation();
       return;
     }
 
