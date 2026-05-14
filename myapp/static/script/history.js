@@ -185,7 +185,7 @@ export function initHistoryHandlers(historyStack) {
         window.renderROIList();
       }
 
-      // 等 viewer / stage 穩一拍再重畫
+      // Double requestAnimationFrame to ensure Konva redraw happens after all layers are set and rendered.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           window.konvaManager?.redrawPolygons?.();
@@ -531,15 +531,6 @@ export function initHistoryHandlers(historyStack) {
     // The menu only closes after Download / Move / Delete / ESC.
     $('.multi-menu-shield').remove();
 
-    // const $shield = $('<div class="multi-menu-shield"></div>')
-    //   .css({
-    //     position: 'fixed',
-    //     inset: 0,
-    //     zIndex: 3100,
-    //     background: 'transparent',
-    //     pointerEvents: 'auto'
-    //   })
-    //   .appendTo('body');
     const sidebarEl =
       document.querySelector('.sidebar') ||
       document.querySelector('.side-bar') ||
@@ -904,31 +895,6 @@ export function initHistoryHandlers(historyStack) {
   });
   
   // click on an entry → load that image and its boxes/chart
-  // $(document).on('click', '.history-item', function(e) {
-  //   const idx = Number($(this).data('idx'));
-
-  //   if (e.ctrlKey || e.metaKey) {
-  //     e.preventDefault();
-  //     e.stopPropagation();
-
-  //     $('.history-item').removeClass('selected');
-  //     $('.project-image-item').removeClass('selected');
-  //     $('.project-folder').removeClass('selected');
-
-  //     window.StainMultiSelect?.toggle(idx, this);
-  //     return;
-  //   }
-
-  //   window.StainMultiSelect?.clear();
-
-  //   $('.history-item').removeClass('selected');
-  //   $('.project-image-item').removeClass('selected');
-  //   $('.project-folder').removeClass('selected');
-
-  //   $(this).addClass('selected');
-
-  //   loadHistoryItemByIndex(idx);
-  // });
   $(document).on('click', '.history-item', function(e) {
     const idx = Number($(this).data('idx'));
 
@@ -964,28 +930,6 @@ export function initHistoryHandlers(historyStack) {
   });
 
   // Drag and Drop support for history items (drag to canvas to load)
-  // $(document).on('dragstart', '.history-item', function (e) {
-  //   const idx = Number($(this).data('idx'));
-  //   const item = historyStack[idx];
-  //   if (!item) return;
-
-  //   if (item.projectName) {
-  //     e.preventDefault();
-  //     return;
-  //   }
-
-  //   e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify({
-  //     idx,
-  //     image_name: item.dir
-  //   }));
-  //   e.originalEvent.dataTransfer.effectAllowed = 'move';
-
-  //   $('body').addClass('dragging-history-item');
-  // });
-  // $(document).on('dragend', '.history-item', function () {
-  //   $('body').removeClass('dragging-history-item');
-  //   $('.project-folder').removeClass('drag-over');
-  // });
   $(document).on('dragover', '#history-container', function (e) {
     e.preventDefault();
     e.originalEvent.dataTransfer.dropEffect = 'move';

@@ -503,28 +503,6 @@ export function initProjectHandlers(historyStack) {
   });
 
   // click project image item -> use existing history loader
-  // $(document).on('click', '.project-image-item', function (e) {
-  //   const idx = Number($(this).data('idx'));
-  //   if (Number.isNaN(idx)) return;
-
-  //   if (e.ctrlKey || e.metaKey) {
-  //     e.preventDefault();
-  //     e.stopPropagation();
-
-  //     clearSidebarSelection();
-  //     window.StainMultiSelect?.toggle(idx, this);
-  //     return;
-  //   }
-
-  //   window.StainMultiSelect?.clear();
-
-  //   clearSidebarSelection();
-  //   $(this).addClass('selected');
-
-  //   if (typeof window.loadHistoryItemByIndex === 'function') {
-  //     window.loadHistoryItemByIndex(idx);
-  //   }
-  // });
   $(document).on('click', '.project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     if (Number.isNaN(idx)) return;
@@ -751,34 +729,7 @@ export function initProjectHandlers(historyStack) {
       alert(`Move failed: ${err.message}`);
     }
   });
-  // $(document).on('dragstart', '.history-item, .project-image-item', function (e) {
-  //   const idx = Number($(this).data('idx'));
-  //   const item = historyStack[idx];
-  //   if (!item) return;
 
-  //   const selected = window.StainMultiSelect?.getSelectedIndices?.() || [];
-  //   const indices = selected.includes(idx) ? selected : [idx];
-
-  //   const imageNames = indices
-  //     .map(i => historyStack[i])
-  //     .filter(Boolean)
-  //     .map(it => it.dir || it.imageName || it.name)
-  //     .filter(Boolean);
-
-  //   const payload = {
-  //     idx,
-  //     indices,
-  //     image_names: imageNames,
-  //     image_name: item.dir,
-  //     source_project_name: item.projectName || ''
-  //   };
-
-  //   e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(payload));
-  //   e.originalEvent.dataTransfer.effectAllowed = 'move';
-
-  //   $('body').addClass('dragging-image-item');
-  // });
-  
   $(document).on('dragstart', '.history-item, .project-image-item', function (e) {
     const idx = Number($(this).data('idx'));
     const item = historyStack[idx];
@@ -804,8 +755,8 @@ export function initProjectHandlers(historyStack) {
     e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(payload));
     e.originalEvent.dataTransfer.effectAllowed = 'move';
 
-    // 拖曳開始時先關掉 menu / shield，但不要 clear selection。
-    // selected indices 已經被放進 payload，所以拖曳仍然會移動多張。
+    // immediately hide any open menus to avoid them being dragged instead of the item, 
+    // and also to provide visual feedback of the drag action.
     $('#multi-action-menu').hide();
     $('#multi-action-menu .multi-move-submenu').removeClass('visible');
     $('.multi-menu-shield').remove();
