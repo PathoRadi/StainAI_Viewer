@@ -440,6 +440,106 @@ def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
 
     return blob.url
 
+def _safe_json_value(value):
+    """
+    Convert values to JSON-safe values.
+    Empty resolution remains None in output.
+    """
+    if value in ("", "null", None):
+        return None
+
+    try:
+        if isinstance(value, (int, float)):
+            if np.isfinite(value):
+                return float(value)
+            return None
+    except Exception:
+        return None
+
+    return value
+
+def _build_grayscale_parameters(
+    image_name: str,
+    original_filename: str,
+    resolution,
+    gain,
+    gamma,
+    p_low,
+    p_high,
+) -> dict:
+    """
+    Central metadata object for grayscale settings.
+
+    In current UI/back-end logic:
+    brightness = gain
+    contrast = gamma
+    """
+    return {
+        "image_name": image_name,
+        "original_filename": original_filename,
+        "resolution": _safe_json_value(resolution),
+        "brightness": _safe_json_value(gain),
+        "contrast": _safe_json_value(gamma),
+        "p_low": _safe_json_value(p_low),
+        "p_high": _safe_json_value(p_high),
+    }
+
+
+def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_parameters: dict) -> str:
+    """
+    Write grayscale parameter txt into local result folder.
+    This file will later be uploaded to Azure Blob result/.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+
+    txt_path = os.path.join(result_dir, f"{image_name}_grayscale_parameters.txt")
+
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(f"Image name: {grayscale_parameters.get('image_name') or ''}\n")
+        f.write(f"Resolution: {grayscale_parameters.get('resolution') or ''}\n")
+        f.write(f"Brightness: {grayscale_parameters.get('brightness') or ''}\n")
+        f.write(f"Contrast: {grayscale_parameters.get('contrast') or ''}\n")
+        f.write(f"p_low: {grayscale_parameters.get('p_low') or ''}\n")
+        f.write(f"p_high: {grayscale_parameters.get('p_high') or ''}\n")
+
+    return txt_path
+
+
+def _add_grayscale_parameters_to_result_json(result_json_path: str, grayscale_parameters: dict):
+    """
+    Add grayscale settings into downloadable xxx_results.json.
+
+    If original JSON is a dict:
+        add top-level grayscale_parameters.
+
+    If original JSON is a list:
+        wrap it into:
+        {
+            "grayscale_parameters": {...},
+            "results": [...]
+        }
+    """
+    if not os.path.exists(result_json_path):
+        return
+
+    try:
+        with open(result_json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            data["grayscale_parameters"] = grayscale_parameters
+        else:
+            data = {
+                "grayscale_parameters": grayscale_parameters,
+                "results": data,
+            }
+
+        with open(result_json_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    except Exception:
+        logger.exception("Failed to add grayscale parameters to result json: %s", result_json_path)
+
 def upload_detection_outputs_to_blob(
     user_id: str,
     image_name: str,
@@ -448,6 +548,7 @@ def upload_detection_outputs_to_blob(
     result_json_path: str,
     resized_path: str | None = None,
     detect_result_path: str | None = None,
+    grayscale_params_path: str | None = None,
 ):
     """
     Upload final detection outputs to Azure Blob Storage.
@@ -476,6 +577,15 @@ def upload_detection_outputs_to_blob(
         _upload_file_to_blob(result_json_path, _blob_name_for_result(user_id, image_name, f"{image_name}_results.json"))
     else:
         logger.warning("result json not found: %s", result_json_path)
+
+    # upload grayscale parameters txt
+    if grayscale_params_path and os.path.exists(grayscale_params_path):
+        _upload_file_to_blob(
+            grayscale_params_path,
+            _blob_name_for_result(user_id, image_name, f"{image_name}_grayscale_parameters.txt")
+        )
+    else:
+        logger.warning("grayscale parameters txt not found: %s", grayscale_params_path)
 
     # upload chart.png
     chart_path = os.path.join(result_dir, f"{image_name}_chart.png")
@@ -1118,6 +1228,16 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         if p_high <= p_low:
             p_high = min(100.0, p_low + 1.0)
 
+        grayscale_parameters = _build_grayscale_parameters(
+            image_name=image_name,
+            original_filename=orig_name,
+            resolution=current_res,
+            gain=gain,
+            gamma=gamma,
+            p_low=p_low,
+            p_high=p_high,
+        )
+
         gcvt = GrayscaleConverter(
             orig_path, image_dir,
             p_low=p_low, p_high=p_high,
@@ -1220,6 +1340,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             "display_size": [dw, dh],
             "original_filename": orig_name,
             "resolution": current_res,
+            "grayscale_parameters": grayscale_parameters,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -1238,6 +1359,17 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         
         logger.info("Using existing YOLO result json: %s", download_result_path)
 
+        grayscale_params_path = _write_grayscale_parameters_txt(
+            result_dir=result_dir,
+            image_name=image_name,
+            grayscale_parameters=grayscale_parameters,
+        )
+
+        _add_grayscale_parameters_to_result_json(
+            result_json_path=download_result_path,
+            grayscale_parameters=grayscale_parameters,
+        )
+
         # ---------------------------
         # 6) Save to Azure Blob Storage
         # ---------------------------
@@ -1250,6 +1382,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 result_json_path=download_result_path,
                 resized_path=disp_path,
                 detect_result_path=result_path,
+                grayscale_params_path=grayscale_params_path,
             )
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
