@@ -460,7 +460,6 @@ def _safe_json_value(value):
 
 def _build_grayscale_parameters(
     image_name: str,
-    original_filename: str,
     resolution,
     gain,
     gamma,
@@ -476,7 +475,6 @@ def _build_grayscale_parameters(
     """
     return {
         "image_name": image_name,
-        "original_filename": original_filename,
         "resolution": _safe_json_value(resolution),
         "brightness": _safe_json_value(gain),
         "contrast": _safe_json_value(gamma),
@@ -1230,7 +1228,6 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
 
         grayscale_parameters = _build_grayscale_parameters(
             image_name=image_name,
-            original_filename=orig_name,
             resolution=current_res,
             gain=gain,
             gamma=gamma,
@@ -1705,6 +1702,18 @@ def rename_image(request):
         old_results = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_results.json")
         new_results = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_results.json")
 
+        old_gray_params = _blob_name_for_result(
+            user_id,
+            old_image_name,
+            f"{old_image_name}_grayscale_parameters.txt"
+        )
+
+        new_gray_params = _blob_name_for_result(
+            user_id,
+            new_image_name,
+            f"{new_image_name}_grayscale_parameters.txt"
+        )
+
         old_detect = _blob_name_for_detect_result(user_id, old_image_name)
         new_detect = _blob_name_for_detect_result(user_id, new_image_name)
 
@@ -1728,6 +1737,9 @@ def rename_image(request):
 
             if _blob_exists(old_results):
                 _copy_blob(old_results, new_results)
+
+            if _blob_exists(old_gray_params):
+                _copy_blob(old_gray_params, new_gray_params)
 
             # detect result 內容裡如果有 image name 相關欄位，可在這裡更新
             _copy_blob(old_detect, new_detect)
@@ -2051,6 +2063,7 @@ def download_project_with_rois(request):
             f"{image_name}_chart.png",
             f"{image_name}_mmap.tif",
             f"{image_name}_results.json",
+            f"{image_name}_grayscale_parameters.txt",
         ]
 
         tmpf = tempfile.TemporaryFile()
@@ -2168,6 +2181,7 @@ def download_project_folder(request):
                     f"{image_name}_chart.png",
                     f"{image_name}_mmap.tif",
                     f"{image_name}_results.json",
+                    f"{image_name}_grayscale_parameters.txt",
                 ]
 
                 for fn in wanted_files:
@@ -2298,6 +2312,7 @@ def download_selected_images_with_rois(request):
                     f"{image_name}_chart.png",
                     f"{image_name}_mmap.tif",
                     f"{image_name}_results.json",
+                    f"{image_name}_grayscale_parameters.txt",
                 ]
 
                 for fn in wanted_files:
