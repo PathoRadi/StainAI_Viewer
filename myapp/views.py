@@ -483,6 +483,15 @@ def _build_grayscale_parameters(
     }
 
 
+def _format_param_value(value):
+    """
+    Keep 0 / 0.0 visible, but show empty string for None.
+    """
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_parameters: dict) -> str:
     """
     Write grayscale parameter txt into local result folder.
@@ -493,12 +502,12 @@ def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_
     txt_path = os.path.join(result_dir, f"{image_name}_grayscale_parameters.txt")
 
     with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(f"Image name: {grayscale_parameters.get('image_name') or ''}\n")
-        f.write(f"Resolution: {grayscale_parameters.get('resolution') or ''}\n")
-        f.write(f"Brightness: {grayscale_parameters.get('brightness') or ''}\n")
-        f.write(f"Contrast: {grayscale_parameters.get('contrast') or ''}\n")
-        f.write(f"p_low: {grayscale_parameters.get('p_low') or ''}\n")
-        f.write(f"p_high: {grayscale_parameters.get('p_high') or ''}\n")
+        f.write(f"Image name: {_format_param_value(grayscale_parameters.get('image_name'))}\n")
+        f.write(f"Resolution (um/px): {_format_param_value(grayscale_parameters.get('resolution'))}\n")
+        f.write(f"Brightness: {_format_param_value(grayscale_parameters.get('brightness'))}\n")
+        f.write(f"Contrast: {_format_param_value(grayscale_parameters.get('contrast'))}\n")
+        f.write(f"p_low: {_format_param_value(grayscale_parameters.get('p_low'))}\n")
+        f.write(f"p_high: {_format_param_value(grayscale_parameters.get('p_high'))}\n")
 
     return txt_path
 
@@ -1173,12 +1182,12 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # current_res = float(current_res) if current_res not in (None, "", "null") else None
         raw_resolution = params.get("resolution")
         try:
-            current_res = float(raw_resolution) if raw_resolution not in (None, "", "null") else None
+            current_res = float(raw_resolution) if raw_resolution not in (None, "", "null") else 0.464
         except (TypeError, ValueError):
-            current_res = None
+            current_res = 0.464
 
-        if current_res is not None and current_res <= 0:
-            current_res = None
+        if current_res <= 0:
+            current_res = 0.464
 
         # --- training-scale resize ---
         if current_res is not None:
@@ -1741,7 +1750,7 @@ def rename_image(request):
             if _blob_exists(old_gray_params):
                 _copy_blob(old_gray_params, new_gray_params)
 
-            # detect result 內容裡如果有 image name 相關欄位，可在這裡更新
+            # detect result blob should be copied last since it's the "flag" for the new image to appear in frontend
             _copy_blob(old_detect, new_detect)
 
         except Exception:
