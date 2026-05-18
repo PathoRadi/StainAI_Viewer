@@ -482,6 +482,35 @@ def _build_grayscale_parameters(
         "p_high": _safe_json_value(p_high),
     }
 
+def _build_image_summary(
+    width: int,
+    height: int,
+    resolution,
+    user_provided_resolution: bool,
+    total_cell_count: int,
+) -> dict:
+    """
+    Whole-image quantitative summary.
+
+    If user explicitly provides resolution:
+        total_area = width * height * resolution^2, unit = µm²
+    Otherwise:
+        total_area = width * height, unit = px²
+    """
+    pixel_area = int(width) * int(height)
+
+    if user_provided_resolution and resolution is not None:
+        total_area = pixel_area * float(resolution) * float(resolution)
+        area_unit = "µm²"
+    else:
+        total_area = pixel_area
+        area_unit = "px²"
+
+    return {
+        "total_area": _safe_json_value(total_area),
+        "area_unit": area_unit,
+        "total_cell_count": int(total_cell_count or 0),
+    }
 
 def _format_param_value(value):
     """
@@ -492,7 +521,12 @@ def _format_param_value(value):
     return str(value)
 
 
-def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_parameters: dict) -> str:
+def _write_grayscale_parameters_txt(
+    result_dir: str,
+    image_name: str,
+    grayscale_parameters: dict,
+    image_summary: dict,
+) -> str:
     """
     Write grayscale parameter txt into local result folder.
     This file will later be uploaded to Azure Blob result/.
@@ -501,6 +535,10 @@ def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_
 
     txt_path = os.path.join(result_dir, f"{image_name}_grayscale_parameters.txt")
 
+    total_area = _format_param_value(image_summary.get("total_area"))
+    area_unit = _format_param_value(image_summary.get("area_unit"))
+    total_cell_count = _format_param_value(image_summary.get("total_cell_count"))
+
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(f"Image name: {_format_param_value(grayscale_parameters.get('image_name'))}\n")
         f.write(f"Resolution (um/px): {_format_param_value(grayscale_parameters.get('resolution'))}\n")
@@ -508,21 +546,29 @@ def _write_grayscale_parameters_txt(result_dir: str, image_name: str, grayscale_
         f.write(f"Contrast: {_format_param_value(grayscale_parameters.get('contrast'))}\n")
         f.write(f"p_low: {_format_param_value(grayscale_parameters.get('p_low'))}\n")
         f.write(f"p_high: {_format_param_value(grayscale_parameters.get('p_high'))}\n")
+        f.write("\n")
+        f.write(f"Total area: {total_area} {area_unit}\n")
+        f.write(f"Total cell count: {total_cell_count}\n")
 
     return txt_path
 
 
-def _add_grayscale_parameters_to_result_json(result_json_path: str, grayscale_parameters: dict):
+def _add_grayscale_parameters_to_result_json(
+    result_json_path: str,
+    grayscale_parameters: dict,
+    image_summary: dict,
+):
     """
-    Add grayscale settings into downloadable xxx_results.json.
+    Add grayscale settings and whole-image summary into downloadable xxx_results.json.
 
     If original JSON is a dict:
-        add top-level grayscale_parameters.
+        add top-level grayscale_parameters and image_summary.
 
     If original JSON is a list:
         wrap it into:
         {
             "grayscale_parameters": {...},
+            "image_summary": {...},
             "results": [...]
         }
     """
@@ -535,9 +581,11 @@ def _add_grayscale_parameters_to_result_json(result_json_path: str, grayscale_pa
 
         if isinstance(data, dict):
             data["grayscale_parameters"] = grayscale_parameters
+            data["image_summary"] = image_summary
         else:
             data = {
                 "grayscale_parameters": grayscale_parameters,
+                "image_summary": image_summary,
                 "results": data,
             }
 
@@ -545,7 +593,7 @@ def _add_grayscale_parameters_to_result_json(result_json_path: str, grayscale_pa
             json.dump(data, f, ensure_ascii=False, indent=2)
 
     except Exception:
-        logger.exception("Failed to add grayscale parameters to result json: %s", result_json_path)
+        logger.exception("Failed to add metadata to result json: %s", result_json_path)
 
 def upload_detection_outputs_to_blob(
     user_id: str,
@@ -1181,12 +1229,16 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # current_res = params.get("resolution")
         # current_res = float(current_res) if current_res not in (None, "", "null") else None
         raw_resolution = params.get("resolution")
+        user_provided_resolution = raw_resolution not in (None, "", "null")
+
         try:
-            current_res = float(raw_resolution) if raw_resolution not in (None, "", "null") else 0.464
+            current_res = float(raw_resolution) if user_provided_resolution else 0.464
         except (TypeError, ValueError):
+            user_provided_resolution = False
             current_res = 0.464
 
         if current_res <= 0:
+            user_provided_resolution = False
             current_res = 0.464
 
         # --- training-scale resize ---
@@ -1340,6 +1392,14 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         done_stage_start = time.perf_counter()
 
         # Write result JSON for frontend /detect_result to read
+        image_summary = _build_image_summary(
+            width=ow,
+            height=oh,
+            resolution=current_res,
+            user_provided_resolution=user_provided_resolution,
+            total_cell_count=len(detections),
+        )
+        
         result = {
             "boxes": detections,
             "orig_size": [ow, oh],
@@ -1347,6 +1407,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             "original_filename": orig_name,
             "resolution": current_res,
             "grayscale_parameters": grayscale_parameters,
+            "image_summary": image_summary,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -1369,11 +1430,13 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             result_dir=result_dir,
             image_name=image_name,
             grayscale_parameters=grayscale_parameters,
+            image_summary=image_summary,
         )
 
         _add_grayscale_parameters_to_result_json(
             result_json_path=download_result_path,
             grayscale_parameters=grayscale_parameters,
+            image_summary=image_summary,
         )
 
         # ---------------------------
