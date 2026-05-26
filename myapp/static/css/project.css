@@ -335,6 +335,31 @@ body.dragging-image-item .project-folder{
     min-width: 0;
     width: 100%;
 }
+.project-image-item{
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.project-image-name{
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.history-entry,
+.project-image-entry,
+.project-entry{
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.history-item,
+.project-image-item,
+.project-folder {
+    max-width: 100%;
+    box-sizing: border-box;
+}
 /* Project Image Menu */
 .project-image-menu-btn{
     position: absolute;
