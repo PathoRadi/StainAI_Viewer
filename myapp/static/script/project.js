@@ -534,42 +534,153 @@ export function initProjectHandlers(historyStack) {
     }
   });
 
-  // when hovering/clicking project move wrapper, fill submenu
-  $(document).on('mouseenter', '.project-image-move-wrapper', async function () {
-    const idx = Number($(this).data('idx'));
+  // ===============================
+  // Single-select Move submenu positioning
+  // Works for BOTH:
+  // 1. history-item action menu
+  // 2. project-image-item action menu
+  // because both use .project-image-move-wrapper
+  // ===============================
+
+  function hideAllMoveSubmenus() {
+    $('.project-image-move-submenu')
+      .removeClass('visible')
+      .hide()
+      .css({
+        visibility: '',
+        top: '',
+        left: '',
+        right: '',
+        maxHeight: '',
+        overflowY: ''
+      });
+  }
+
+  function positionMoveSubmenu($wrapper, $submenu) {
+    if (!$wrapper.length || !$submenu.length) return;
+
+    const margin = 8;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    // Reset first, otherwise old position affects measurement
+    $submenu.css({
+      position: 'absolute',
+      display: 'block',
+      visibility: 'hidden',
+      top: '0px',
+      left: 'calc(100% - 4px)',
+      right: 'auto',
+      maxHeight: '',
+      overflowY: ''
+    });
+
+    const submenuEl = $submenu[0];
+
+    let rect = submenuEl.getBoundingClientRect();
+    let shiftY = 0;
+
+    // If submenu bottom goes below viewport, move it upward
+    if (rect.bottom > vh - margin) {
+      shiftY = (vh - margin) - rect.bottom;
+    }
+
+    // If moving upward makes it exceed top, limit height and allow scroll
+    if (rect.top + shiftY < margin) {
+      const wrapperRect = $wrapper[0].getBoundingClientRect();
+      shiftY = margin - wrapperRect.top;
+
+      const availableHeight = Math.max(120, vh - margin * 2);
+      $submenu.css({
+        maxHeight: `${availableHeight}px`,
+        overflowY: 'auto'
+      });
+    }
+
+    $submenu.css({
+      top: `${shiftY}px`
+    });
+
+    // Re-measure after vertical adjustment
+    rect = submenuEl.getBoundingClientRect();
+
+    // If submenu exceeds right side, open to the left
+    if (rect.right > vw - margin) {
+      $submenu.css({
+        left: 'auto',
+        right: 'calc(100% - 4px)'
+      });
+    } else {
+      $submenu.css({
+        left: 'calc(100% - 4px)',
+        right: 'auto'
+      });
+    }
+
+    $submenu.css({
+      visibility: 'visible'
+    });
+  }
+
+  async function openMoveSubmenu(wrapperEl) {
+    const $wrapper = $(wrapperEl);
+    const idx = Number($wrapper.data('idx'));
     if (Number.isNaN(idx)) return;
 
-    const $submenu = $(this).find('.project-image-move-submenu');
-    await populateProjectMoveSubmenu($submenu, idx, historyStack);
-  });
-
-  // support click open too, in case hover not enough
-  $(document).on('click', '.project-image-move-btn', async function (e) {
-    e.stopPropagation();
-
-    const idx = Number($(this).data('idx'));
-    if (Number.isNaN(idx)) return;
-
-    const $wrapper = $(this).closest('.project-image-move-wrapper');
     const $submenu = $wrapper.find('.project-image-move-submenu');
 
-    await populateProjectMoveSubmenu($submenu, idx, historyStack);
-    $submenu.toggleClass('visible');
-  });
-
-  // support click open too, in case hover not enough
-  $(document).on('click', '.project-image-move-btn', async function (e) {
-    e.stopPropagation();
-
-    const idx = Number($(this).data('idx'));
-    if (Number.isNaN(idx)) return;
-
-    const $wrapper = $(this).closest('.project-image-move-wrapper');
-    const $submenu = $wrapper.find('.project-image-move-submenu');
+    $wrapper.data('moveHover', true);
 
     await populateProjectMoveSubmenu($submenu, idx, historyStack);
-    $submenu.toggleClass('visible');
-  });
+
+    // If mouse already left while async function was running, don't show it
+    if (!$wrapper.data('moveHover')) return;
+
+    $('.project-image-move-submenu').not($submenu).removeClass('visible').hide();
+
+    $submenu.addClass('visible');
+    positionMoveSubmenu($wrapper, $submenu);
+  }
+
+  $(document)
+    .off('mouseenter.projectMoveSubmenu')
+    .on('mouseenter.projectMoveSubmenu', '.project-image-move-wrapper', function () {
+      openMoveSubmenu(this);
+    });
+
+  $(document)
+    .off('mouseleave.projectMoveSubmenu')
+    .on('mouseleave.projectMoveSubmenu', '.project-image-move-wrapper', function () {
+      const $wrapper = $(this);
+      $wrapper.data('moveHover', false);
+
+      const $submenu = $wrapper.find('.project-image-move-submenu');
+
+      setTimeout(() => {
+        if (!$wrapper.is(':hover') && !$submenu.is(':hover')) {
+          $submenu.removeClass('visible').hide();
+        }
+      }, 80);
+    });
+
+  $(document)
+    .off('click.projectMoveSubmenu')
+    .on('click.projectMoveSubmenu', '.project-image-move-btn', async function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $wrapper = $(this).closest('.project-image-move-wrapper');
+      const $submenu = $wrapper.find('.project-image-move-submenu');
+
+      const isOpen = $submenu.hasClass('visible');
+
+      hideAllMoveSubmenus();
+
+      if (isOpen) return;
+
+      $wrapper.data('moveHover', true);
+      await openMoveSubmenu($wrapper[0]);
+    });
 
   $(document).on('click', '.move-to-images-option', async function (e) {
     e.stopPropagation();

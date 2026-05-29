@@ -424,11 +424,11 @@ body.dragging-image-item .project-folder{
     padding: 4px 0;
     display: none;
     z-index: 3100;
+
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
 }
 .project-image-move-submenu.visible{
-    display: block;
-}
-.project-image-move-wrapper:hover .project-image-move-submenu{
     display: block;
 }
 .project-image-move-btn{

@@ -311,8 +311,10 @@
     padding: 4px 0;
     display: none;
     z-index: 3300;
+
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
 }
-.multi-move-wrapper:hover .multi-move-submenu,
 .multi-move-submenu.visible {
     display: block;
 }

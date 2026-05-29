@@ -486,7 +486,17 @@ export function initHistoryHandlers(historyStack) {
 
     if (count < 1) {
       $('#multi-action-menu').hide();
-      $('#multi-action-menu .multi-move-submenu').removeClass('visible');
+      $('#multi-action-menu .multi-move-submenu')
+        .removeClass('visible')
+        .hide()
+        .css({
+          visibility: '',
+          top: '',
+          left: '',
+          right: '',
+          maxHeight: '',
+          overflowY: ''
+        });
       $('.multi-menu-shield').remove();
       return;
     }
@@ -610,7 +620,18 @@ export function initHistoryHandlers(historyStack) {
     applyMultiSelectedClass();
 
     $('#multi-action-menu').hide();
-    $('#multi-action-menu .multi-move-submenu').removeClass('visible');
+
+    $('#multi-action-menu .multi-move-submenu')
+      .removeClass('visible')
+      .hide()
+      .css({
+        visibility: '',
+        top: '',
+        left: '',
+        right: '',
+        maxHeight: '',
+        overflowY: ''
+      });
 
     $('.multi-menu-shield').remove();
   }
@@ -812,15 +833,127 @@ export function initHistoryHandlers(historyStack) {
     isSelected: (idx) => selectedIdxs.has(Number(idx))
   };
 
-  $(document).off('mouseenter.multiMove').on('mouseenter.multiMove', '.multi-move-wrapper', function () {
-    populateMultiMoveSubmenu();
-  });
+  function hideMultiMoveSubmenu() {
+    $('#multi-action-menu .multi-move-submenu')
+      .removeClass('visible')
+      .hide()
+      .css({
+        visibility: '',
+        top: '',
+        left: '',
+        right: '',
+        maxHeight: '',
+        overflowY: ''
+      });
+  }
 
-  $(document).off('click.multiMoveBtn').on('click.multiMoveBtn', '.multi-move-btn', function (e) {
-    e.stopPropagation();
+  function positionMultiMoveSubmenu() {
+    const $wrapper = $('#multi-action-menu .multi-move-wrapper');
+    const $submenu = $('#multi-action-menu .multi-move-submenu');
+
+    if (!$wrapper.length || !$submenu.length) return;
+
+    const margin = 8;
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+
+    $submenu.css({
+      position: 'absolute',
+      display: 'block',
+      visibility: 'hidden',
+      top: '0px',
+      left: 'calc(100% - 4px)',
+      right: 'auto',
+      maxHeight: '',
+      overflowY: ''
+    });
+
+    const submenuEl = $submenu[0];
+
+    let rect = submenuEl.getBoundingClientRect();
+    let shiftY = 0;
+
+    if (rect.bottom > vh - margin) {
+      shiftY = (vh - margin) - rect.bottom;
+    }
+
+    if (rect.top + shiftY < margin) {
+      const wrapperRect = $wrapper[0].getBoundingClientRect();
+      shiftY = margin - wrapperRect.top;
+
+      const availableHeight = Math.max(120, vh - margin * 2);
+      $submenu.css({
+        maxHeight: `${availableHeight}px`,
+        overflowY: 'auto'
+      });
+    }
+
+    $submenu.css({
+      top: `${shiftY}px`
+    });
+
+    rect = submenuEl.getBoundingClientRect();
+
+    if (rect.right > vw - margin) {
+      $submenu.css({
+        left: 'auto',
+        right: 'calc(100% - 4px)'
+      });
+    } else {
+      $submenu.css({
+        left: 'calc(100% - 4px)',
+        right: 'auto'
+      });
+    }
+
+    $submenu.css({
+      visibility: 'visible'
+    });
+  }
+
+  function openMultiMoveSubmenu() {
     populateMultiMoveSubmenu();
-    $('#multi-action-menu .multi-move-submenu').toggleClass('visible');
-  });
+
+    const $submenu = $('#multi-action-menu .multi-move-submenu');
+
+    $submenu.addClass('visible');
+    positionMultiMoveSubmenu();
+  }
+
+  $(document)
+    .off('mouseenter.multiMove')
+    .on('mouseenter.multiMove', '.multi-move-wrapper', function () {
+      openMultiMoveSubmenu();
+    });
+
+  $(document)
+    .off('mouseleave.multiMove')
+    .on('mouseleave.multiMove', '.multi-move-wrapper', function () {
+      const $wrapper = $(this);
+      const $submenu = $('#multi-action-menu .multi-move-submenu');
+
+      setTimeout(() => {
+        if (!$wrapper.is(':hover') && !$submenu.is(':hover')) {
+          hideMultiMoveSubmenu();
+        }
+      }, 80);
+    });
+
+  $(document)
+    .off('click.multiMoveBtn')
+    .on('click.multiMoveBtn', '.multi-move-btn', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const $submenu = $('#multi-action-menu .multi-move-submenu');
+      const isOpen = $submenu.hasClass('visible');
+
+      hideMultiMoveSubmenu();
+
+      if (!isOpen) {
+        openMultiMoveSubmenu();
+      }
+    });
 
   $(document).off('click.multiDownload').on('click.multiDownload', '.multi-download-btn', function (e) {
     e.stopPropagation();
