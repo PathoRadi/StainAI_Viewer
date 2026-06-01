@@ -310,7 +310,7 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.6);
     padding: 4px 0;
     display: none;
-    z-index: 3300;
+    z-index: 3300; 
 
     max-height: calc(100vh - 16px);
     overflow-y: auto;
@@ -344,6 +344,13 @@
     margin-top: 4px;
 }
 .multi-cancel-btn:hover {
+    background: rgba(120,120,120,0.55) !important;
+}
+.multi-project-folder-cancel-btn {
+    border-top: 1px solid rgba(255,255,255,0.14) !important;
+    margin-top: 4px;
+}
+.multi-project-folder-cancel-btn:hover {
     background: rgba(120,120,120,0.55) !important;
 }
 

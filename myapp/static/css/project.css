@@ -147,6 +147,16 @@
 .project-folder:hover{
     background: var(--bg-history-item-hover);
 }
+.project-folder.multi-selected {
+    border: 3px solid rgba(135, 206, 250, 0.95) !important;
+    box-shadow: 0 0 0 1px rgba(135, 206, 250, 0.35);
+    background: rgba(100, 100, 100, 0.35);
+    box-sizing: border-box;
+}
+
+.project-folder.multi-selected:hover {
+    background: rgba(100, 100, 100, 0.45);
+}
 .project-folder-left{
     display: flex;
     align-items: center;

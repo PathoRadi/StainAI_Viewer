@@ -2465,6 +2465,271 @@ def download_selected_images_with_rois(request):
     except Exception:
         logger.exception("download_selected_images_with_rois failed")
         return HttpResponseServerError("download failed")
+    
+@csrf_exempt
+@require_POST
+def download_single_project(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            payload = json.loads(request.body or "{}")
+            project_name = safe_filename((payload.get("project_name") or "").strip())
+        else:
+            project_name = safe_filename((request.POST.get("project_name") or "").strip())
+
+        if not project_name:
+            return HttpResponseBadRequest("project_name required")
+
+        state = load_viewer_state_from_blob(user_id)
+        project = _find_project_entry(state, project_name)
+
+        if project is None:
+            return HttpResponseNotFound("Project not found")
+
+        image_names = [
+            safe_filename(name)
+            for name in project.get("images", [])
+            if isinstance(name, str) and name.strip()
+        ]
+
+        if not image_names:
+            return HttpResponseNotFound("No images in this project")
+
+        tmpf = tempfile.TemporaryFile()
+
+        with zipfile.ZipFile(tmpf, "w") as project_zip:
+            found_any = False
+
+            project_zip_root = f"{_safe_zip_name(project_name)}/"
+            project_zip.writestr(project_zip_root, "")
+
+            for image_name in image_names:
+                image_zip_root = f"{project_zip_root}{_safe_zip_name(image_name)}/"
+                result_zip_root = f"{image_zip_root}result/"
+
+                # Keep folder structure even if some files are missing
+                project_zip.writestr(image_zip_root, "")
+                project_zip.writestr(result_zip_root, "")
+
+                for filename in _wanted_project_result_files(image_name):
+                    arcname = f"{result_zip_root}{filename}"
+
+                    written = _write_blob_result_file_to_zip(
+                        project_zip,
+                        user_id=user_id,
+                        image_name=image_name,
+                        filename=filename,
+                        arcname=arcname,
+                    )
+
+                    if written:
+                        found_any = True
+
+            if not found_any:
+                return HttpResponseNotFound("No result files found for this project")
+
+        tmpf.seek(0)
+
+        return FileResponse(
+            tmpf,
+            as_attachment=True,
+            filename=f"{project_name}.zip",
+            content_type="application/zip"
+        )
+
+    except Exception:
+        logger.exception("download_single_project failed")
+        return HttpResponseServerError("download failed")
+    
+@csrf_exempt
+@require_POST
+def download_selected_project(request):
+    try:
+        user_id = _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        if request.content_type and request.content_type.startswith("application/json"):
+            payload = json.loads(request.body or "{}")
+            raw_project_names = payload.get("project_names") or []
+        else:
+            raw = request.POST.get("project_names") or "[]"
+            try:
+                raw_project_names = json.loads(raw)
+            except Exception:
+                raw_project_names = []
+
+        project_names = []
+        seen = set()
+
+        for name in raw_project_names:
+            safe = safe_filename(str(name).strip())
+            if safe and safe not in seen:
+                project_names.append(safe)
+                seen.add(safe)
+
+        if not project_names:
+            return HttpResponseBadRequest("project_names required")
+
+        state = load_viewer_state_from_blob(user_id)
+
+        tmpf = tempfile.TemporaryFile()
+
+        with zipfile.ZipFile(tmpf, "w") as selected_zip:
+            found_any = False
+
+            selected_zip.writestr("selected_folder/", "")
+
+            for project_name in project_names:
+                project = _find_project_entry(state, project_name)
+                if project is None:
+                    continue
+
+                project_zip_root = f"selected_folder/{_safe_zip_name(project_name)}/"
+                selected_zip.writestr(project_zip_root, "")
+
+                image_names = [
+                    safe_filename(name)
+                    for name in project.get("images", [])
+                    if isinstance(name, str) and name.strip()
+                ]
+
+                for image_name in image_names:
+                    image_zip_root = f"{project_zip_root}{_safe_zip_name(image_name)}/"
+                    result_zip_root = f"{image_zip_root}result/"
+
+                    # Keep folder structure even if some files are missing
+                    selected_zip.writestr(image_zip_root, "")
+                    selected_zip.writestr(result_zip_root, "")
+
+                    for filename in _wanted_project_result_files(image_name):
+                        arcname = f"{result_zip_root}{filename}"
+
+                        written = _write_blob_result_file_to_zip(
+                            selected_zip,
+                            user_id=user_id,
+                            image_name=image_name,
+                            filename=filename,
+                            arcname=arcname,
+                        )
+
+                        if written:
+                            found_any = True
+
+            if not found_any:
+                return HttpResponseNotFound("No result files found for selected projects")
+
+        tmpf.seek(0)
+
+        return FileResponse(
+            tmpf,
+            as_attachment=True,
+            filename="selected_folder.zip",
+            content_type="application/zip"
+        )
+
+    except Exception:
+        logger.exception("download_selected_project failed")
+        return HttpResponseServerError("download failed")
+    
+@csrf_exempt
+@require_POST
+def download_project_folder(request):
+    """
+    Backward-compatible alias.
+    Old frontend may still call download_project_folder.
+    """
+    return download_single_project(request)
+
+
+@csrf_exempt
+@require_POST
+def download_selected_project_folders(request):
+    """
+    Backward-compatible alias.
+    Use this if frontend URL name is download_selected_project_folders.
+    """
+    return download_selected_project(request)
+    
+# helper function
+def _safe_zip_name(name: str) -> str:
+    """
+    Sanitize folder/file names used inside zip paths.
+    This is different from safe_filename because zip path can contain folders,
+    but we still remove dangerous traversal patterns.
+    """
+    name = str(name or "").strip()
+    name = name.replace("\\", "/")
+    name = name.strip("/")
+    name = name.replace("..", "")
+    return name or "untitled"
+
+# helper function
+def _compress_type_for_download(filename: str):
+    """
+    Avoid recompressing large binary files such as tif/zip.
+    """
+    return zipfile.ZIP_STORED if filename.lower().endswith(
+        (".tif", ".tiff", ".nii", ".zip")
+    ) else zipfile.ZIP_DEFLATED
+
+# helper function
+def _wanted_project_result_files(image_name: str) -> list[str]:
+    """
+    The only files included in project-level downloads.
+    Keep this list shared by single-project and multi-project download.
+    """
+    return [
+        f"{image_name}_chart.png",
+        f"{image_name}_mmap.tif",
+        f"{image_name}_results.json",
+        f"{image_name}_grayscale_parameters.txt",
+    ]
+
+# helper function
+def _write_blob_result_file_to_zip(
+    zip_file,
+    *,
+    user_id: str,
+    image_name: str,
+    filename: str,
+    arcname: str,
+) -> bool:
+    """
+    Download one result file from Azure Blob and write it into zip.
+
+    Returns:
+        True  = file existed and was written
+        False = file did not exist
+    """
+    blob_name = _blob_name_for_result(user_id, image_name, filename)
+
+    if not _blob_exists(blob_name):
+        return False
+
+    file_bytes = _download_blob_bytes(blob_name)
+    ctype = _compress_type_for_download(filename)
+
+    if ctype == zipfile.ZIP_DEFLATED:
+        zip_file.writestr(
+            arcname,
+            file_bytes,
+            compress_type=ctype,
+            compresslevel=0
+        )
+    else:
+        zip_file.writestr(
+            arcname,
+            file_bytes,
+            compress_type=ctype
+        )
+
+    return True
 
 # helper function
 def safe_filename(name: str) -> str:

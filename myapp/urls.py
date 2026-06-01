@@ -31,4 +31,14 @@ urlpatterns = [
         views.download_selected_images_with_rois,
         name="download_selected_images_with_rois"
     ),
+    path(
+        "download-single-project/",
+        views.download_single_project,
+        name="download_single_project"
+    ),
+    path(
+        "download-selected-project/",
+        views.download_selected_project,
+        name="download_selected_project"
+    ),
 ]

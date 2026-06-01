@@ -475,7 +475,208 @@ export function initProjectHandlers(historyStack) {
   });
 
 
+  /* =========================================================
+   * Multi-select controller for project folders
+   * ========================================================= */
 
+  const selectedProjectNames = new Set();
+
+  function getSelectedProjectNames() {
+    return Array.from(selectedProjectNames)
+      .map(normalizeProjectName)
+      .filter(Boolean);
+  }
+
+  function applyProjectFolderMultiSelectedClass() {
+    $('.project-folder').removeClass('multi-selected');
+
+    selectedProjectNames.forEach(projectName => {
+      $(`.project-folder[data-project="${CSS.escape(projectName)}"]`)
+        .addClass('multi-selected');
+    });
+  }
+
+  function clearProjectFolderMultiSelection() {
+    selectedProjectNames.clear();
+    applyProjectFolderMultiSelectedClass();
+
+    $('#multi-project-folder-menu').hide();
+    $('.multi-project-folder-shield').remove();
+  }
+
+  function ensureMultiProjectFolderMenu() {
+    let $menu = $('#multi-project-folder-menu');
+
+    if ($menu.length) return $menu;
+
+    $menu = $(`
+      <div id="multi-project-folder-menu" class="multi-action-menu">
+        <button class="multi-project-folder-download-btn" type="button">Download</button>
+        <button class="multi-project-folder-cancel-btn" type="button">Cancel</button>
+      </div>
+    `);
+
+    $('body').append($menu);
+    return $menu;
+  }
+
+  function showMultiProjectFolderMenu(anchorEl) {
+    if (selectedProjectNames.size < 1) {
+      clearProjectFolderMultiSelection();
+      return;
+    }
+
+    // close normal menus
+    $('.project-folder-action-menu').hide();
+    $('.project-image-action-menu').hide();
+    $('.history-action-menu').hide();
+    $('.menu-click-shield').remove();
+
+    // avoid mixing with image multi-select
+    window.StainMultiSelect?.clear?.();
+
+    const $menu = ensureMultiProjectFolderMenu();
+    const rect = anchorEl.getBoundingClientRect();
+
+    $menu.css({
+      display: 'block',
+      visibility: 'hidden',
+      left: '0px',
+      top: '0px',
+      zIndex: 3200
+    });
+
+    const menuW = $menu.outerWidth();
+    const menuH = $menu.outerHeight();
+
+    let left = Math.round(rect.right - 10);
+    let top = Math.round(rect.bottom - 10);
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (left + menuW > vw) left = vw - menuW - 8;
+    if (top + menuH > vh) top = vh - menuH - 8;
+    if (left < 0) left = 0;
+    if (top < 0) top = 0;
+
+    $menu.css({
+      left: `${left}px`,
+      top: `${top}px`,
+      visibility: 'visible'
+    });
+
+    $('.multi-project-folder-shield').remove();
+
+    const sidebarEl =
+      document.querySelector('.left-container') ||
+      document.querySelector('.sidebar') ||
+      document.querySelector('.side-bar') ||
+      document.querySelector('.left-sidebar') ||
+      document.querySelector('#sidebar');
+
+    const sidebarRight = sidebarEl
+      ? Math.ceil(sidebarEl.getBoundingClientRect().right)
+      : 200;
+
+    const $shield = $('<div class="multi-project-folder-shield"></div>')
+      .css({
+        position: 'fixed',
+        left: `${sidebarRight}px`,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 3100,
+        background: 'transparent',
+        pointerEvents: 'auto'
+      })
+      .appendTo('body');
+
+    // block page interaction outside sidebar/menu;
+    // only Cancel closes project multi-select mode
+    $shield.on('mousedown mouseup click contextmenu', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      return false;
+    });
+  }
+
+  function toggleProjectFolderMultiSelection(projectName, anchorEl) {
+    projectName = normalizeProjectName(projectName);
+    if (!projectName) return;
+
+    if (selectedProjectNames.has(projectName)) {
+      selectedProjectNames.delete(projectName);
+    } else {
+      selectedProjectNames.add(projectName);
+    }
+
+    applyProjectFolderMultiSelectedClass();
+
+    if (selectedProjectNames.size >= 1) {
+      showMultiProjectFolderMenu(anchorEl);
+    } else {
+      clearProjectFolderMultiSelection();
+    }
+  }
+
+  function downloadSelectedProjectFolders() {
+    const projectNames = getSelectedProjectNames();
+
+    if (projectNames.length < 1) {
+      alert('Please select at least 1 project.');
+      return;
+    }
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = DOWNLOAD_SELECTED_PROJECT_URL;
+    form.target = '_blank';
+
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = csrftoken;
+
+    const names = document.createElement('input');
+    names.type = 'hidden';
+    names.name = 'project_names';
+    names.value = JSON.stringify(projectNames);
+
+    form.append(csrf, names);
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+
+    clearProjectFolderMultiSelection();
+  }
+
+  $(document)
+    .off('click.multiProjectFolderDownload')
+    .on('click.multiProjectFolderDownload', '.multi-project-folder-download-btn', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      downloadSelectedProjectFolders();
+    });
+
+  $(document)
+    .off('click.multiProjectFolderCancel')
+    .on('click.multiProjectFolderCancel', '.multi-project-folder-cancel-btn', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      clearProjectFolderMultiSelection();
+    });
+
+  $(document)
+    .off('keydown.multiProjectFolderEsc')
+    .on('keydown.multiProjectFolderEsc', function (e) {
+      if (e.key === 'Escape') {
+        clearProjectFolderMultiSelection();
+      }
+    });
 
 
   // expand / collapse one project
@@ -483,8 +684,30 @@ export function initProjectHandlers(historyStack) {
     e.stopPropagation();
 
     const projectName = normalizeProjectName($(this).data('project'));
-    const $list = $(`.project-images-list[data-project="${projectName}"]`);
 
+    // Ctrl / Cmd + click = multi-select project folders
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+
+      $('.history-item').removeClass('selected');
+      $('.project-image-item').removeClass('selected');
+      $('.project-folder').removeClass('selected');
+
+      toggleProjectFolderMultiSelection(projectName, this);
+      return;
+    }
+
+    // If project-folder multi-select is active,
+    // normal click should not expand/collapse.
+    // Only Cancel / Esc clears it.
+    if (selectedProjectNames.size > 0) {
+      e.preventDefault();
+      return;
+    }
+
+    window.StainMultiSelect?.clear?.();
+
+    const $list = $(`.project-images-list[data-project="${projectName}"]`);
     const willExpand = $list.hasClass('collapsed');
 
     $list.toggleClass('collapsed');
@@ -1074,7 +1297,7 @@ export function initProjectHandlers(historyStack) {
 
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = DOWNLOAD_PROJECT_FOLDER_URL;
+    form.action = DOWNLOAD_SINGLE_PROJECT_URL || DOWNLOAD_PROJECT_FOLDER_URL;
     form.target = '_blank';
 
     const csrf = document.createElement('input');
