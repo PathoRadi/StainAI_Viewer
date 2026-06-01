@@ -512,6 +512,7 @@ export function initProjectHandlers(historyStack) {
     $menu = $(`
       <div id="multi-project-folder-menu" class="multi-action-menu">
         <button class="multi-project-folder-download-btn" type="button">Download</button>
+        <button class="multi-project-folder-delete-btn" type="button">Delete</button>
         <button class="multi-project-folder-cancel-btn" type="button">Cancel</button>
       </div>
     `);
@@ -652,6 +653,73 @@ export function initProjectHandlers(historyStack) {
     clearProjectFolderMultiSelection();
   }
 
+  async function deleteSelectedProjectFolders() {
+    const projectNames = getSelectedProjectNames();
+
+    if (projectNames.length < 1) {
+      alert('Please select at least 1 project.');
+      return;
+    }
+
+    const ok = confirm(
+      `Delete ${projectNames.length} selected project${projectNames.length > 1 ? 's' : ''} and all images inside?`
+    );
+
+    if (!ok) {
+      clearProjectFolderMultiSelection();
+      return;
+    }
+
+    const deletedProjects = new Set();
+
+    try {
+      for (const projectName of projectNames) {
+        const data = await fetchJson(DELETE_PROJECT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify({
+            project_name: projectName
+          })
+        });
+
+        if (data.success) {
+          deletedProjects.add(projectName);
+          _expandedProjects.delete(projectName);
+        } else {
+          alert(`Delete project "${projectName}" failed: ${data.message || ''}`);
+        }
+      }
+
+      if (deletedProjects.size) {
+        for (let i = historyStack.length - 1; i >= 0; i--) {
+          if (deletedProjects.has(historyStack[i].projectName || '')) {
+            historyStack.splice(i, 1);
+          }
+        }
+
+        if (Array.isArray(window.viewerProjects)) {
+          window.viewerProjects = window.viewerProjects.filter(
+            p => !deletedProjects.has(normalizeProjectName(p.project_name))
+          );
+        }
+
+        updateHistoryUI(historyStack);
+        await updateProjectsUI(historyStack);
+
+        window.hardResetToHomepage?.();
+      }
+
+    } catch (err) {
+      console.error('Delete selected projects failed:', err);
+      alert('Delete failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      clearProjectFolderMultiSelection();
+    }
+  }
+
   $(document)
     .off('click.multiProjectFolderDownload')
     .on('click.multiProjectFolderDownload', '.multi-project-folder-download-btn', function (e) {
@@ -660,6 +728,15 @@ export function initProjectHandlers(historyStack) {
 
       downloadSelectedProjectFolders();
     });
+    
+  $(document)
+  .off('click.multiProjectFolderDelete')
+  .on('click.multiProjectFolderDelete', '.multi-project-folder-delete-btn', async function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    await deleteSelectedProjectFolders();
+  });
 
   $(document)
     .off('click.multiProjectFolderCancel')
