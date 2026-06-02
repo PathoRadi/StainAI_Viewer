@@ -35,8 +35,70 @@ from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
 
 logger = logging.getLogger(__name__)
+_PROCESSING_STATS_LOCK = threading.Lock()
 
 
+
+# ---------------------------
+# Processing stats 
+# ---------------------------
+def _blob_name_for_processing_stats() -> str:
+    return "processing_stats.json"
+
+def _default_processing_stats() -> dict:
+    return {
+        "images_processed": 0,
+        "updated_at": None,
+    }
+
+def load_processing_stats_from_blob() -> dict:
+    data = _download_json_from_blob(_blob_name_for_processing_stats())
+
+    if not isinstance(data, dict):
+        return _default_processing_stats()
+
+    try:
+        images_processed = int(data.get("images_processed") or 0)
+    except Exception:
+        images_processed = 0
+
+    return {
+        "images_processed": max(0, images_processed),
+        "updated_at": data.get("updated_at"),
+    }
+
+def save_processing_stats_to_blob(stats: dict) -> dict:
+    payload = {
+        "images_processed": int(stats.get("images_processed") or 0),
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+    _upload_json_to_blob(_blob_name_for_processing_stats(), payload)
+    return payload
+
+def increment_images_processed_count() -> dict:
+    with _PROCESSING_STATS_LOCK:
+        stats = load_processing_stats_from_blob()
+        stats["images_processed"] = int(stats.get("images_processed") or 0) + 1
+        return save_processing_stats_to_blob(stats)
+    
+@require_GET
+def processing_stats(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    stats = load_processing_stats_from_blob()
+
+    resp = JsonResponse({
+        "success": True,
+        "images_processed": int(stats.get("images_processed") or 0),
+        "updated_at": stats.get("updated_at"),
+    })
+    resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp["Pragma"] = "no-cache"
+    return resp
 
 
 # ---------------------------
@@ -1460,6 +1522,11 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             state_add_image(user_id, image_name, "images")
         except Exception:
             logger.exception("Failed to update viewer state after detection for image=%s", image_name)
+
+        try:
+            increment_images_processed_count()
+        except Exception:
+            logger.exception("Failed to increment images_processed count for image=%s", image_name)
 
         _set_progress_stage(image_dir, "done")  # enter stage 5) done
 

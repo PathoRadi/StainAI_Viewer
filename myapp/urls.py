@@ -41,4 +41,5 @@ urlpatterns = [
         views.download_selected_project,
         name="download_selected_project"
     ),
+    path("processing-stats/", views.processing_stats, name="processing_stats"),
 ]

@@ -100,6 +100,10 @@
         <img class="readme-btn-icon" src="{% static 'logo/readme_icon.png' %}">
       </button> -->
       <!-- Dark/Light Mode Toggle -->
+      <div class="processed-stats-wrapper">
+        <div class="processed-stats-label">Images Processed</div>
+        <div class="processed-stats-value" id="images-processed-count">0</div>
+      </div>
       <div class="theme-toggle-wrapper">
         <span id="theme-mode-text">Dark Mode</span>
         <label class="theme-switch">
@@ -426,6 +430,7 @@
     const GET_GLOBAL_ROIS_URL = "{% url 'myapp:get_global_rois' %}";
     const DOWNLOAD_SINGLE_PROJECT_URL = "{% url 'myapp:download_single_project' %}";
     const DOWNLOAD_SELECTED_PROJECT_URL = "{% url 'myapp:download_selected_project' %}";
+    const PROCESSING_STATS_URL = "{% url 'myapp:processing_stats' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
     window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";

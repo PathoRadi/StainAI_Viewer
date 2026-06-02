@@ -222,6 +222,31 @@
     z-index: 20;
     position: relative;
 }
+/* -----Processed Stats----- */
+.processed-stats-wrapper {
+    width: 190px;
+    margin: 0 0 4px 0;
+    padding: 10px 14px 8px 14px;
+    box-sizing: border-box;
+
+    font-family: 'PingFangHKWeb', sans-serif;
+    color: white;
+
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.processed-stats-label {
+    font-size: 12px;
+    opacity: 0.72;
+    line-height: 1.2;
+    margin-bottom: 4px;
+}
+.processed-stats-value {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: 0.3px;
+}
 /* -----Dark/Light Mode Toggle----- */
 .theme-toggle-wrapper {
     display: flex;

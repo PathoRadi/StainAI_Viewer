@@ -380,6 +380,36 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     }
   }
 
+
+  function setImagesProcessedCount(value) {
+    const el = document.getElementById('images-processed-count');
+    if (!el) return;
+
+    const n = Number(value);
+    el.textContent = Number.isFinite(n) ? n.toLocaleString() : '0';
+  }
+
+  async function refreshProcessingStats() {
+    if (typeof PROCESSING_STATS_URL === 'undefined') return;
+
+    try {
+      const r = await fetch(`${PROCESSING_STATS_URL}?t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+
+      const d = await r.json();
+
+      if (d && d.success) {
+        setImagesProcessedCount(d.images_processed);
+      }
+    } catch (err) {
+      console.warn('Failed to load processing stats:', err);
+    }
+  }
+  refreshProcessingStats();
+
   // ================================
   // Settings preview: pan + zoom
   // ================================
@@ -1496,6 +1526,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       }, 0);
     });
     refreshProjectsUI();
+    refreshProcessingStats();
   }
 
 
