@@ -48,6 +48,11 @@
           <span id="viewer-account-name" class="viewer-account-name"></span>
         </div>
       </div>
+      <!-- Global Images Processed -->
+      <div class="processed-stats-wrapper processed-stats-header">
+        <div class="processed-stats-label">Global Images Processed</div>
+        <div class="processed-stats-value" id="global-images-processed-count">0</div>
+      </div>
       <!-- Add New Project -->
       <button id="new-project-btn" class="new-project-btn" type="button">
         <span class="btn-plus">+</span>
@@ -100,9 +105,9 @@
         <img class="readme-btn-icon" src="{% static 'logo/readme_icon.png' %}">
       </button> -->
       <!-- Dark/Light Mode Toggle -->
-      <div class="processed-stats-wrapper">
-        <div class="processed-stats-label">Images Processed</div>
-        <div class="processed-stats-value" id="images-processed-count">0</div>
+      <div class="processed-stats-wrapper processed-stats-bottom">
+        <div class="processed-stats-label">Your Images Processed</div>
+        <div class="processed-stats-value" id="user-images-processed-count">0</div>
       </div>
       <div class="theme-toggle-wrapper">
         <span id="theme-mode-text">Dark Mode</span>

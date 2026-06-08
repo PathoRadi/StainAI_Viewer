@@ -223,6 +223,24 @@
     position: relative;
 }
 /* -----Processed Stats----- */
+.processed-stats-header {
+    width: calc(100% - 24px);
+    margin: 0 12px 12px 12px;
+    padding: 8px 4px 10px 4px;
+
+    border-top: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+.processed-stats-header .processed-stats-label {
+    font-size: 11px;
+}
+.processed-stats-header .processed-stats-value {
+    font-size: 18px;
+}
+.processed-stats-bottom {
+    width: 190px;
+    margin: 0 0 4px 0;
+}
 .processed-stats-wrapper {
     width: 190px;
     margin: 0 0 4px 0;

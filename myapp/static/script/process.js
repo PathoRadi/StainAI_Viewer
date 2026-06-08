@@ -381,8 +381,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   }
 
 
-  function setImagesProcessedCount(value) {
-    const el = document.getElementById('images-processed-count');
+  function setCountText(elementId, value) {
+    const el = document.getElementById(elementId);
     if (!el) return;
 
     const n = Number(value);
@@ -394,6 +394,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     try {
       const r = await fetch(`${PROCESSING_STATS_URL}?t=${Date.now()}`, {
+        credentials: 'same-origin',
         cache: 'no-store'
       });
 
@@ -402,7 +403,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const d = await r.json();
 
       if (d && d.success) {
-        setImagesProcessedCount(d.images_processed);
+        setCountText(
+          'global-images-processed-count',
+          d.global_images_processed ?? d.images_processed
+        );
+
+        setCountText(
+          'user-images-processed-count',
+          d.user_images_processed
+        );
       }
     } catch (err) {
       console.warn('Failed to load processing stats:', err);

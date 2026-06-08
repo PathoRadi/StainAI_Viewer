@@ -85,16 +85,30 @@ def increment_images_processed_count() -> dict:
 @require_GET
 def processing_stats(request):
     try:
-        _require_viewer_user(request)
+        user_id = _require_viewer_user(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
-    stats = load_processing_stats_from_blob()
+    global_stats = load_processing_stats_from_blob()
+    user_state = load_viewer_state_from_blob(user_id)
+
+    try:
+        user_images_processed = int(user_state.get("images_processed") or 0)
+    except Exception:
+        user_images_processed = 0
 
     resp = JsonResponse({
         "success": True,
-        "images_processed": int(stats.get("images_processed") or 0),
-        "updated_at": stats.get("updated_at"),
+
+        # legacy key for backward compatibility; frontend should migrate to explicit keys below
+        "images_processed": int(global_stats.get("images_processed") or 0),
+
+        # new explicit keys
+        "global_images_processed": int(global_stats.get("images_processed") or 0),
+        "user_images_processed": max(0, user_images_processed),
+
+        "global_updated_at": global_stats.get("updated_at"),
+        "user_updated_at": user_state.get("images_processed_updated_at"),
     })
     resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp["Pragma"] = "no-cache"
@@ -732,8 +746,10 @@ def _blob_state_name(user_id: str) -> str:
 
 def _default_viewer_state() -> dict:
     return {
-        "images": [],     # [{image_name, location}]
-        "projects": []    # [{project_name, images:[...]}]
+        "images": [],
+        "projects": [],
+        "images_processed": 0,
+        "images_processed_updated_at": None,
     }
 
 def load_viewer_state_from_blob(user_id: str) -> dict:
@@ -750,8 +766,11 @@ def load_viewer_state_from_blob(user_id: str) -> dict:
         data = json.loads(raw.decode("utf-8"))
         if not isinstance(data, dict):
             return _default_viewer_state()
+        
         data.setdefault("images", [])
         data.setdefault("projects", [])
+        data.setdefault("images_processed", 0)
+        data.setdefault("images_processed_updated_at", None)
         return data
     except Exception:
         return _default_viewer_state()
@@ -894,6 +913,25 @@ def state_delete_project(user_id: str, project_name: str):
 
     save_viewer_state_to_blob(user_id, state)
 
+def increment_user_images_processed_count(user_id: str) -> dict:
+    with _PROCESSING_STATS_LOCK:
+        state = load_viewer_state_from_blob(user_id)
+
+        try:
+            current_count = int(state.get("images_processed") or 0)
+        except Exception:
+            current_count = 0
+
+        state["images_processed"] = max(0, current_count) + 1
+        state["images_processed_updated_at"] = datetime.utcnow().isoformat() + "Z"
+
+        save_viewer_state_to_blob(user_id, state)
+
+        return {
+            "images_processed": state["images_processed"],
+            "updated_at": state["images_processed_updated_at"],
+        }
+
 def _load_detect_result_for_state(user_id: str, image_name: str, location: str) -> dict:
     """
     Read blob _detect_result.json for one image and return frontend-ready fields.
@@ -948,6 +986,8 @@ def viewer_state(request):
         "success": True,
         "history": hydrated_history,
         "projects": state.get("projects", []),
+        "images_processed": int(state.get("images_processed") or 0),
+        "images_processed_updated_at": state.get("images_processed_updated_at"),
     })
 
 @csrf_exempt
@@ -1526,7 +1566,12 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         try:
             increment_images_processed_count()
         except Exception:
-            logger.exception("Failed to increment images_processed count for image=%s", image_name)
+            logger.exception("Failed to increment global images_processed count for image=%s", image_name)
+
+        try:
+            increment_user_images_processed_count(user_id)
+        except Exception:
+            logger.exception("Failed to increment user images_processed count for image=%s", image_name)
 
         _set_progress_stage(image_dir, "done")  # enter stage 5) done
 
@@ -1937,31 +1982,7 @@ def rename_project(request):
     except Exception:
         logger.exception("rename_project failed")
         return JsonResponse({"success": False, "message": "rename failed"}, status=500)
-    
-# @csrf_exempt
-# @require_POST
-# def delete_project(request):
-#     try:
-#         user_id = _require_viewer_user(request)
-#     except PermissionError:
-#         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
-#     try:
-#         body = json.loads(request.body or "{}")
-#         project_name = safe_filename((body.get("project_name") or "").strip())
-#         if not project_name:
-#             return JsonResponse({"success": False, "message": "project_name required"}, status=400)
-
-#         state = load_viewer_state_from_blob(user_id)
-#         if _find_project_entry(state, project_name) is None:
-#             return JsonResponse({"success": False, "message": "Project not found"}, status=404)
-
-#         state_delete_project(user_id, project_name)
-#         return JsonResponse({"success": True, "project_name": project_name})
-
-#     except Exception:
-#         logger.exception("delete_project failed")
-#         return JsonResponse({"success": False, "message": "delete failed"}, status=500)
 @csrf_exempt
 @require_POST
 def delete_project(request):
