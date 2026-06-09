@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +21,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      # 不在 CI 端 pip install，也不建立 venv
+      # Install dependencies
 
       - name: Zip artifact for deployment
         run: |
