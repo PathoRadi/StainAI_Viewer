@@ -766,60 +766,105 @@ export function initHistoryHandlers(historyStack) {
     }
   }
 
+  // async function deleteSelectedImages() {
+  //   const indices = getSelectedIndices();
+
+  //   if (!indices.length) return;
+
+  //   const ok = confirm(`Delete ${indices.length} selected image${indices.length > 1 ? 's' : ''}?`);
+
+  //   if (!ok) {
+  //     clearMultiSelection();
+  //     return;
+  //   }
+
+  //   const imageNamesToDelete = new Set();
+
+  //   try {
+  //     for (const idx of indices) {
+  //       const item = historyStack[idx];
+  //       if (!item) continue;
+
+  //       const data = await fetchJson(DELETE_IMAGE_URL, {
+  //         method: 'POST',
+  //         headers: {
+  //           'Content-Type': 'application/json',
+  //           'X-CSRFToken': csrftoken
+  //         },
+  //         body: JSON.stringify({
+  //           image_name: item.dir,
+  //           project_name: item.projectName || ''
+  //         })
+  //       });
+
+  //       if (data.success) {
+  //         imageNamesToDelete.add(item.dir);
+  //       }
+  //     }
+
+  //     for (let i = historyStack.length - 1; i >= 0; i--) {
+  //       if (imageNamesToDelete.has(historyStack[i].dir)) {
+  //         historyStack.splice(i, 1);
+  //       }
+  //     }
+
+  //     clearMultiSelection();
+
+  //     updateHistoryUI(historyStack);
+  //     await updateProjectsUI(historyStack);
+  //     window.hardResetToHomepage?.();
+
+  //   } catch (err) {
+  //     console.error('Delete selected failed:', err);
+  //     alert(`Delete failed: ${err.message}`);
+  //   } finally {
+  //     $('.multi-menu-shield').remove();
+  //   }
+  // }
+
+  let pendingDeleteMode = null;
+  let pendingDeleteIdx = null;
+  let pendingDeleteIndices = [];
+
+  function openDeleteModal(message) {
+    $('#delete-modal-message').text(message);
+
+    $('#delete-modal-overlay')
+      .css('z-index', 5000)
+      .show()
+      .prop('hidden', false);
+
+    $('#modal-delete').trigger('focus');
+  }
+
+  function closeDeleteModal() {
+    pendingDeleteMode = null;
+    pendingDeleteIdx = null;
+    pendingDeleteIndices = [];
+
+    $('#delete-modal-overlay').hide();
+
+    $('.menu-click-shield').remove();
+    $('.multi-menu-shield').remove();
+    $('.history-action-menu').hide();
+    $('#multi-action-menu').hide();
+  }
+
   async function deleteSelectedImages() {
     const indices = getSelectedIndices();
 
     if (!indices.length) return;
 
-    const ok = confirm(`Delete ${indices.length} selected image${indices.length > 1 ? 's' : ''}?`);
+    pendingDeleteMode = 'multi-images';
+    pendingDeleteIndices = indices;
 
-    if (!ok) {
-      clearMultiSelection();
-      return;
-    }
+    $('#multi-action-menu').hide();
+    $('#multi-action-menu .multi-move-submenu').removeClass('visible').hide();
+    $('.multi-menu-shield').remove();
 
-    const imageNamesToDelete = new Set();
-
-    try {
-      for (const idx of indices) {
-        const item = historyStack[idx];
-        if (!item) continue;
-
-        const data = await fetchJson(DELETE_IMAGE_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrftoken
-          },
-          body: JSON.stringify({
-            image_name: item.dir,
-            project_name: item.projectName || ''
-          })
-        });
-
-        if (data.success) {
-          imageNamesToDelete.add(item.dir);
-        }
-      }
-
-      for (let i = historyStack.length - 1; i >= 0; i--) {
-        if (imageNamesToDelete.has(historyStack[i].dir)) {
-          historyStack.splice(i, 1);
-        }
-      }
-
-      clearMultiSelection();
-
-      updateHistoryUI(historyStack);
-      await updateProjectsUI(historyStack);
-      window.hardResetToHomepage?.();
-
-    } catch (err) {
-      console.error('Delete selected failed:', err);
-      alert(`Delete failed: ${err.message}`);
-    } finally {
-      $('.multi-menu-shield').remove();
-    }
+    openDeleteModal(
+      `Delete ${indices.length} selected image${indices.length > 1 ? 's' : ''}?`
+    );
   }
 
   window.StainMultiSelect = {
@@ -1328,67 +1373,174 @@ export function initHistoryHandlers(historyStack) {
 
 
 
-  let pendingDeleteIdx = null;
-  $(document).on('click', '.history-delete-btn', function (e) {
+  // let pendingDeleteIdx = null;
+  // $(document).on('click', '.history-delete-btn', function (e) {
+  //   e.stopPropagation();
+
+  //   // ✅ Close any open menus and remove click-shield to avoid covering the modal
+  //   $('.history-action-menu').hide();
+  //   $('.menu-click-shield').remove();
+
+  //   pendingDeleteIdx = $(this).data('idx');
+
+  //   // Show delete confirmation modal (make sure it's on top)
+  //   $('#delete-modal-overlay')
+  //   .css('z-index', 3000)     // Just needs to be higher than menu/shield; or not set, since shield is already removed above
+  //     .show()
+  //     .prop('hidden', false);
+
+  //   // Default focus so user can directly press Enter/Space
+  //   $('#modal-delete').trigger('focus');
+  // });
+  // $('#modal-cancel').on('click', () => {
+  //   pendingDeleteIdx = null;
+  //   $('#delete-modal-overlay').hide();
+  //   // ✅ Safety: make sure there are no leftover overlays/menus
+  //   $('.menu-click-shield').remove();
+  //   $('.history-action-menu').hide();
+  // });
+  // $('#modal-delete').on('click', async () => {
+  //   const item = historyStack[pendingDeleteIdx];
+  //   if (!item) return;
+
+  //   try {
+  //     const data = await fetchJson(DELETE_IMAGE_URL, {
+  //       method: 'POST',
+  //       headers: {
+  //         'Content-Type': 'application/json',
+  //         'X-CSRFToken': csrftoken
+  //       },
+  //       body: JSON.stringify({
+  //         image_name: item.dir,
+  //         project_name: item.projectName || ''
+  //       })
+  //     });
+
+  //     if (data.success) {
+  //       historyStack.splice(pendingDeleteIdx, 1);
+  //       updateHistoryUI(historyStack);
+  //       await updateProjectsUI(historyStack);
+
+  //       hardResetToHomepage();
+  //     } else {
+  //       alert('Delete failed: ' + (data.message || ''));
+  //     }
+  //   } catch (err) {
+  //     console.error(err);
+  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
+  //   } finally {
+  //     pendingDeleteIdx = null;
+  //     $('#delete-modal-overlay').hide();
+  //     $('.menu-click-shield').remove();
+  //     $('.history-action-menu').hide();
+  //   }
+  // });
+
+  $(document).off('click.histDelete').on('click.histDelete', '.history-delete-btn', function (e) {
     e.stopPropagation();
 
-    // ✅ Close any open menus and remove click-shield to avoid covering the modal
     $('.history-action-menu').hide();
     $('.menu-click-shield').remove();
 
-    pendingDeleteIdx = $(this).data('idx');
+    pendingDeleteMode = 'single-image';
+    pendingDeleteIdx = Number($(this).data('idx'));
 
-    // Show delete confirmation modal (make sure it's on top)
-    $('#delete-modal-overlay')
-    .css('z-index', 3000)     // Just needs to be higher than menu/shield; or not set, since shield is already removed above
-      .show()
-      .prop('hidden', false);
-
-    // Default focus so user can directly press Enter/Space
-    $('#modal-delete').trigger('focus');
-  });
-  $('#modal-cancel').on('click', () => {
-    pendingDeleteIdx = null;
-    $('#delete-modal-overlay').hide();
-    // ✅ Safety: make sure there are no leftover overlays/menus
-    $('.menu-click-shield').remove();
-    $('.history-action-menu').hide();
-  });
-
-  $('#modal-delete').on('click', async () => {
     const item = historyStack[pendingDeleteIdx];
-    if (!item) return;
+    const imageName = item?.name || item?.dir || '';
+
+    openDeleteModal(
+      imageName ? `Delete image "${imageName}"?` : 'Delete this item?'
+    );
+  });
+
+  $(document).off('click.histDeleteCancel').on('click.histDeleteCancel', '#modal-cancel', function () {
+    if (!pendingDeleteMode) return;
+
+    if (pendingDeleteMode === 'multi-images') {
+      clearMultiSelection();
+    }
+
+    closeDeleteModal();
+  });
+
+  $(document).off('click.histDeleteConfirm').on('click.histDeleteConfirm', '#modal-delete', async function () {
+    if (!pendingDeleteMode) return;
 
     try {
-      const data = await fetchJson(DELETE_IMAGE_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrftoken
-        },
-        body: JSON.stringify({
-          image_name: item.dir,
-          project_name: item.projectName || ''
-        })
-      });
+      if (pendingDeleteMode === 'single-image') {
+        const item = historyStack[pendingDeleteIdx];
+        if (!item) {
+          closeDeleteModal();
+          return;
+        }
 
-      if (data.success) {
-        historyStack.splice(pendingDeleteIdx, 1);
+        const data = await fetchJson(DELETE_IMAGE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrftoken
+          },
+          body: JSON.stringify({
+            image_name: item.dir,
+            project_name: item.projectName || ''
+          })
+        });
+
+        if (data.success) {
+          historyStack.splice(pendingDeleteIdx, 1);
+
+          updateHistoryUI(historyStack);
+          await updateProjectsUI(historyStack);
+
+          hardResetToHomepage();
+        } else {
+          alert('Delete failed: ' + (data.message || ''));
+        }
+      }
+
+      else if (pendingDeleteMode === 'multi-images') {
+        const imageNamesToDelete = new Set();
+
+        for (const idx of pendingDeleteIndices) {
+          const item = historyStack[idx];
+          if (!item) continue;
+
+          const data = await fetchJson(DELETE_IMAGE_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+              image_name: item.dir,
+              project_name: item.projectName || ''
+            })
+          });
+
+          if (data.success) {
+            imageNamesToDelete.add(item.dir);
+          }
+        }
+
+        for (let i = historyStack.length - 1; i >= 0; i--) {
+          if (imageNamesToDelete.has(historyStack[i].dir)) {
+            historyStack.splice(i, 1);
+          }
+        }
+
+        clearMultiSelection();
+
         updateHistoryUI(historyStack);
         await updateProjectsUI(historyStack);
 
-        hardResetToHomepage();
-      } else {
-        alert('Delete failed: ' + (data.message || ''));
+        window.hardResetToHomepage?.();
       }
+
     } catch (err) {
       console.error(err);
       alert('Delete failed: ' + (err.message || 'Unknown error'));
     } finally {
-      pendingDeleteIdx = null;
-      $('#delete-modal-overlay').hide();
-      $('.menu-click-shield').remove();
-      $('.history-action-menu').hide();
+      closeDeleteModal();
     }
   });
 

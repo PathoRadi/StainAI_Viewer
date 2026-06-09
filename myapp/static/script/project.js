@@ -653,23 +653,73 @@ export function initProjectHandlers(historyStack) {
     clearProjectFolderMultiSelection();
   }
 
-  async function deleteSelectedProjectFolders() {
-    const projectNames = getSelectedProjectNames();
+  // async function deleteSelectedProjectFolders() {
+  //   const projectNames = getSelectedProjectNames();
 
-    if (projectNames.length < 1) {
-      alert('Please select at least 1 project.');
-      return;
-    }
+  //   if (projectNames.length < 1) {
+  //     alert('Please select at least 1 project.');
+  //     return;
+  //   }
 
-    const ok = confirm(
-      `Delete ${projectNames.length} selected project${projectNames.length > 1 ? 's' : ''} and all images inside?`
-    );
+  //   const ok = confirm(
+  //     `Delete ${projectNames.length} selected project${projectNames.length > 1 ? 's' : ''} and all images inside?`
+  //   );
 
-    if (!ok) {
-      clearProjectFolderMultiSelection();
-      return;
-    }
+  //   if (!ok) {
+  //     clearProjectFolderMultiSelection();
+  //     return;
+  //   }
 
+  //   const deletedProjects = new Set();
+
+  //   try {
+  //     for (const projectName of projectNames) {
+  //       const data = await fetchJson(DELETE_PROJECT_URL, {
+  //         method: 'POST',
+  //         headers: {
+  //           'Content-Type': 'application/json',
+  //           'X-CSRFToken': csrftoken
+  //         },
+  //         body: JSON.stringify({
+  //           project_name: projectName
+  //         })
+  //       });
+
+  //       if (data.success) {
+  //         deletedProjects.add(projectName);
+  //         _expandedProjects.delete(projectName);
+  //       } else {
+  //         alert(`Delete project "${projectName}" failed: ${data.message || ''}`);
+  //       }
+  //     }
+
+  //     if (deletedProjects.size) {
+  //       for (let i = historyStack.length - 1; i >= 0; i--) {
+  //         if (deletedProjects.has(historyStack[i].projectName || '')) {
+  //           historyStack.splice(i, 1);
+  //         }
+  //       }
+
+  //       if (Array.isArray(window.viewerProjects)) {
+  //         window.viewerProjects = window.viewerProjects.filter(
+  //           p => !deletedProjects.has(normalizeProjectName(p.project_name))
+  //         );
+  //       }
+
+  //       updateHistoryUI(historyStack);
+  //       await updateProjectsUI(historyStack);
+
+  //       window.hardResetToHomepage?.();
+  //     }
+
+  //   } catch (err) {
+  //     console.error('Delete selected projects failed:', err);
+  //     alert('Delete failed: ' + (err.message || 'Unknown error'));
+  //   } finally {
+  //     clearProjectFolderMultiSelection();
+  //   }
+  // }
+  async function performDeleteSelectedProjectFolders(projectNames) {
     const deletedProjects = new Set();
 
     try {
@@ -718,6 +768,23 @@ export function initProjectHandlers(historyStack) {
     } finally {
       clearProjectFolderMultiSelection();
     }
+  }
+
+  async function deleteSelectedProjectFolders() {
+    const projectNames = getSelectedProjectNames();
+
+    if (projectNames.length < 1) {
+      alert('Please select at least 1 project.');
+      return;
+    }
+
+    $('#multi-project-folder-menu').hide();
+    $('.multi-project-folder-shield').remove();
+
+    showDeleteModal({
+      type: 'multi-project-folder',
+      projectNames
+    });
   }
 
   $(document)
@@ -1206,8 +1273,29 @@ export function initProjectHandlers(historyStack) {
 
   let pendingDeleteState = null;
 
-  function showDeleteModal({ type, idx = null, projectName = '' }) {
-    pendingDeleteState = { type, idx, projectName };
+  // function showDeleteModal({ type, idx = null, projectName = '' }) {
+  //   pendingDeleteState = { type, idx, projectName };
+
+  //   let message = 'Delete this item?';
+
+  //   if (type === 'project-image') {
+  //     const item = historyStack[idx];
+  //     message = `Delete image "${item?.name || item?.dir || ''}"?`;
+  //   } else if (type === 'project-folder') {
+  //     message = `Delete project "${projectName}"?`;
+  //   }
+
+  //   $('#delete-modal-message').text(message);
+
+  //   $('#delete-modal-overlay')
+  //     .css('z-index', 3000)
+  //     .show()
+  //     .prop('hidden', false);
+
+  //   $('#modal-delete').trigger('focus');
+  // }
+  function showDeleteModal({ type, idx = null, projectName = '', projectNames = [] }) {
+    pendingDeleteState = { type, idx, projectName, projectNames };
 
     let message = 'Delete this item?';
 
@@ -1216,12 +1304,14 @@ export function initProjectHandlers(historyStack) {
       message = `Delete image "${item?.name || item?.dir || ''}"?`;
     } else if (type === 'project-folder') {
       message = `Delete project "${projectName}"?`;
+    } else if (type === 'multi-project-folder') {
+      message = `Delete ${projectNames.length} selected project${projectNames.length > 1 ? 's' : ''} and all images inside?`;
     }
 
     $('#delete-modal-message').text(message);
 
     $('#delete-modal-overlay')
-      .css('z-index', 3000)
+      .css('z-index', 5000)
       .show()
       .prop('hidden', false);
 
@@ -1599,6 +1689,18 @@ export function initProjectHandlers(historyStack) {
         } else {
           alert('Delete failed: ' + (data.message || ''));
         }
+      }
+      else if (pendingDeleteState.type === 'multi-project-folder') {
+        const projectNames = Array.isArray(pendingDeleteState.projectNames)
+          ? pendingDeleteState.projectNames
+          : [];
+
+        if (!projectNames.length) {
+          closeDeleteModal();
+          return;
+        }
+
+        await performDeleteSelectedProjectFolders(projectNames);
       }
     } catch (err) {
       console.error(err);
