@@ -1319,11 +1319,19 @@ export function initProjectHandlers(historyStack) {
   }
 
   function closeDeleteModal() {
+    if (pendingDeleteState?.type === 'multi-project-folder') {
+      clearProjectFolderMultiSelection();
+    }
+
     pendingDeleteState = null;
+
     $('#delete-modal-overlay').hide();
     $('.menu-click-shield').remove();
+    $('.multi-project-folder-shield').remove();
     $('.project-image-action-menu').hide();
     $('.project-folder-action-menu').hide();
+    $('#multi-project-folder-menu').hide();
+
     restoreProjectMenusToOrigin();
     restoreProjectFolderMenusToOrigin();
   }
@@ -1612,6 +1620,11 @@ export function initProjectHandlers(historyStack) {
 
   $(document).off('click.projectDeleteModalCancel').on('click.projectDeleteModalCancel', '#modal-cancel', function () {
     if (!pendingDeleteState) return;
+
+    if (pendingDeleteState.type === 'multi-project-folder') {
+      clearProjectFolderMultiSelection();
+    }
+
     closeDeleteModal();
   });
 
