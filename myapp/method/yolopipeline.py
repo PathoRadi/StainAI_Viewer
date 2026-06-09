@@ -448,12 +448,16 @@ class YOLOPipeline:
             else:
                 classes = [str(int(i)) for i in labels_out]
             det_list = [
-                {"coords": [int(a), int(b), int(c), int(d)], "type": cls}
-                for a, b, c, d, cls in zip(x1, y1, x2, y2, classes)
+                {
+                    "coords": [int(a), int(b), int(c), int(d)],
+                    "conf": float(round(float(conf), 6)),
+                    "type": cls,
+                }
+                for a, b, c, d, cls, conf in zip(x1, y1, x2, y2, classes, confs_out)
             ]
 
         # write JSON (reuse existing _save_results -> also computes FM/MAS)
-        self._save_results(det_list, boxes_out, labels_out)
+        self._save_results(det_list, boxes_out, labels_out, confs_out)
 
         return det_list, boxes_out.astype(np.float32, copy=False), labels_out.astype(np.int16, copy=False)
 
@@ -668,7 +672,7 @@ class YOLOPipeline:
     #########################################
     # ------ 1) Save Result as .json ------ #
     #########################################
-    def _save_results(self, detections_xyxy_type, all_boxes, all_labels):
+    def _save_results(self, detections_xyxy_type, all_boxes, all_labels, all_confs=None):
         """
         Output JSON in the same format as the old save_results():
         bbox   -> "[x y w h]"
@@ -715,6 +719,12 @@ class YOLOPipeline:
         classes    = [self.class_mapping[i][0] for i in labels_int]
         mas_vals   = [float(mas_weight.get(c, 0.0)) for c in classes]
 
+        # confidence values after final post-processing
+        if all_confs is not None and len(all_confs) == len(all_labels):
+            conf_vals = [float(round(float(c), 6)) for c in all_confs]
+        else:
+            conf_vals = [None for _ in classes]
+
         # FM calculation (parallel)
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=os.cpu_count() or 8) as ex:
@@ -724,13 +734,14 @@ class YOLOPipeline:
         results_json = [
             {
                 "bbox":   f"[{xi} {yi} {wi} {hi}]",
+                "conf":   conf,
                 "center": f"[{cxi} {cyi}]",
                 "class":  cls,
                 "FM":     float(fm),
                 "MAS":    mv,
             }
-            for xi, yi, wi, hi, cxi, cyi, cls, fm, mv
-            in zip(x1, y1, w, h, cx, cy, classes, fm_vals, mas_vals)
+            for xi, yi, wi, hi, conf, cxi, cyi, cls, fm, mv
+            in zip(x1, y1, w, h, conf_vals, cx, cy, classes, fm_vals, mas_vals)
         ]
 
         with open(out_path, "w", encoding="utf-8") as f:
