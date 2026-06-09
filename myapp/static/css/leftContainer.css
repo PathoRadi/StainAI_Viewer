@@ -88,6 +88,20 @@
     align-items: center;
     object-fit: contain;
 }
+.logo-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.logo-link:focus {
+  outline: none;
+}
+.logo-link:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 4px;
+  border-radius: 6px;
+}
 /* -----Account----- */
 .viewer-hidden {
   display: none !important;
