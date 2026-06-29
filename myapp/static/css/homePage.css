@@ -317,6 +317,15 @@ Right Side
     0 0 22px rgba(255,255,255,0.18);         /* border glow */
   backdrop-filter: blur(8px);
 }
+#settings-preview-osd {
+  width: 100%;
+  height: 100%;
+  display: none;
+  background: #000;
+}
+#settings-preview-osd.active {
+  display: block;
+}
 .grayscale-parameter-wrapper .settings-row{
   width: 100%;
   margin: 0 0 16px 0;

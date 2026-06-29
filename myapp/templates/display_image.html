@@ -154,6 +154,7 @@
       <div class="settings-left">
         <img id="settings-preview-img" alt="preview"/>
         <canvas id="settings-preview-canvas"></canvas>
+        <div id="settings-preview-osd"></div>
       </div>
 
       <div class="settings-right">
@@ -443,6 +444,8 @@
     const DOWNLOAD_SINGLE_PROJECT_URL = "{% url 'myapp:download_single_project' %}";
     const DOWNLOAD_SELECTED_PROJECT_URL = "{% url 'myapp:download_selected_project' %}";
     const PROCESSING_STATS_URL = "{% url 'myapp:processing_stats' %}";
+    const GRAYSCALE_PREVIEW_META_URL = "{% url 'myapp:grayscale_preview_meta' %}";
+    const GRAYSCALE_PREVIEW_TILE_URL = "{% url 'myapp:grayscale_preview_tile' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
     window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";

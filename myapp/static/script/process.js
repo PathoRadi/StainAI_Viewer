@@ -288,6 +288,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   const settingsStartBtn   = document.getElementById('settings-start-btn');
   const settingsImageName  = document.getElementById('settings-image-name');
   const settingsCanvas     = document.getElementById('settings-preview-canvas');
+  const settingsPreviewOSD = document.getElementById('settings-preview-osd');
+  let settingsOSDViewer = null;
+  let grayscalePreviewVersion = 0;
   let previewBase          = null;
   let previewBusy          = false;
   let previewTimer         = null;
@@ -383,6 +386,128 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     openSingleImage();
   }
 
+  function ensureSettingsOSDViewer() {
+    if (!settingsPreviewOSD) return null;
+
+    if (settingsOSDViewer) return settingsOSDViewer;
+
+    settingsOSDViewer = OpenSeadragon({
+      element: settingsPreviewOSD,
+      prefixUrl: '/static/openseadragon/images/',
+      showNavigator: false,
+      showNavigationControl: false,
+      animationTime: 0.15,
+      blendTime: 0,
+      immediateRender: true,
+      imageLoaderLimit: 6,
+      maxImageCacheCount: 120,
+      gestureSettingsMouse: {
+        clickToZoom: false,
+        dblClickToZoom: true,
+        scrollToZoom: true,
+        dragToPan: true
+      }
+    });
+
+    return settingsOSDViewer;
+  }
+
+
+  async function openBackendGrayscaleTilePreview() {
+    const imageDir = pendingImageDir || getImageDirFromPath(window.imgPath);
+    if (!imageDir) return;
+
+    if (typeof GRAYSCALE_PREVIEW_META_URL === 'undefined') {
+      console.error('GRAYSCALE_PREVIEW_META_URL missing');
+      return;
+    }
+
+    if (typeof GRAYSCALE_PREVIEW_TILE_URL === 'undefined') {
+      console.error('GRAYSCALE_PREVIEW_TILE_URL missing');
+      return;
+    }
+
+    readUIToParams();
+
+    const r = await fetch(GRAYSCALE_PREVIEW_META_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrftoken
+      },
+      body: JSON.stringify({
+        image_name: imageDir,
+        params: pendingParams
+      }),
+      cache: 'no-store'
+    });
+
+    if (!r.ok) {
+      throw new Error(`Preview meta failed: HTTP ${r.status}`);
+    }
+
+    const d = await r.json();
+
+    if (!d.success || !d.meta) {
+      throw new Error(d.message || 'Preview meta failed');
+    }
+
+    const meta = d.meta;
+    const origW = Number(meta.width) || 1;
+    const origH = Number(meta.height) || 1;
+    const tileSize = 512;
+    const maxLevel = Math.ceil(Math.log2(Math.max(origW, origH)));
+
+    grayscalePreviewVersion += 1;
+    const version = grayscalePreviewVersion;
+
+    if (settingsPreviewImg) {
+      settingsPreviewImg.style.display = 'none';
+      settingsPreviewImg.style.visibility = 'hidden';
+    }
+
+    if (settingsCanvas) {
+      settingsCanvas.style.display = 'none';
+    }
+
+    if (settingsPreviewOSD) {
+      settingsPreviewOSD.style.display = 'block';
+      settingsPreviewOSD.classList.add('active');
+    }
+
+    const viewer = ensureSettingsOSDViewer();
+    if (!viewer) return;
+
+    const tileSource = {
+      width: origW,
+      height: origH,
+      tileSize: tileSize,
+      minLevel: 0,
+      maxLevel: maxLevel,
+
+      getTileUrl: function(level, x, y) {
+        const qs = new URLSearchParams({
+          image: imageDir,
+          level: String(level),
+          x: String(x),
+          y: String(y),
+          gamma: String(pendingParams.gamma),
+          gain: String(pendingParams.gain),
+          p_low: String(pendingParams.p_low),
+          p_high: String(pendingParams.p_high),
+          bg_radius: String(pendingParams.bg_radius ?? 101),
+          bg_mode: String(pendingParams.bg_mode ?? 'subtract'),
+          do_bg_correction: String(pendingParams.do_bg_correction !== false),
+          v: String(version)
+        });
+
+        return `${GRAYSCALE_PREVIEW_TILE_URL}?${qs.toString()}`;
+      }
+    };
+
+    viewer.open(tileSource);
+  }
+
   function defaultParams(){
     return {
       gamma: 1,
@@ -424,14 +549,19 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     syncAllRangeFills();
 
     // Method 2: use global variables set by Django template (previewUrl, displayUrl, imgPath) to determine the image source for preview (which may be the original image or a placeholder/error image depending on the state)
-    const serverUrl = window.previewUrl || window.displayUrl || window.imgPath || '';
-
     if (settingsPreviewImg) {
-      if (serverUrl) {
-        settingsPreviewImg.src = serverUrl;
-      } else {
-        settingsPreviewImg.removeAttribute('src');
-      }
+      settingsPreviewImg.removeAttribute('src');
+      settingsPreviewImg.style.display = 'none';
+      settingsPreviewImg.style.visibility = 'hidden';
+    }
+
+    if (settingsCanvas) {
+      settingsCanvas.style.display = 'none';
+    }
+
+    if (settingsPreviewOSD) {
+      settingsPreviewOSD.style.display = 'block';
+      settingsPreviewOSD.classList.add('active');
     }
   }
 
@@ -942,12 +1072,13 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   }
 
   function scheduleRealtimePreview() {
-    // debounce：only render after user stops changing parameters for 120ms, to 
-    // avoid excessive rendering during slider drags or rapid input changes
     clearTimeout(previewTimer);
+
     previewTimer = setTimeout(() => {
-      renderRealtimePreview();
-    }, 120);
+      openBackendGrayscaleTilePreview().catch(err => {
+        console.error('Backend tile preview failed:', err);
+      });
+    }, 500);
   }
 
   function renderRealtimePreview() {
@@ -1171,7 +1302,10 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     settingsResetBtn.addEventListener('click', () => {
       pendingParams = defaultParams();
       applyParamsToUI(pendingParams);
-      renderRealtimePreview();
+
+      openBackendGrayscaleTilePreview().catch(err => {
+        console.error('Reset backend tile preview failed:', err);
+      });
     });
   }
 
@@ -1359,6 +1493,15 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     if (settingsPreviewImg) settingsPreviewImg.style.transform = '';
     if (settingsCanvas) settingsCanvas.style.transform = '';
     settingsPanZoom?.reset();
+
+    if (settingsOSDViewer) {
+      settingsOSDViewer.close();
+    }
+
+    if (settingsPreviewOSD) {
+      settingsPreviewOSD.classList.remove('active');
+      settingsPreviewOSD.style.display = 'none';
+    }
   }
 
   window.resetPendingUpload = resetPendingUpload;
@@ -1416,26 +1559,13 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
         pendingParams = defaultParams();
 
-        const previewSrc = window.previewUrl || window.displayUrl || window.imgPath || '';
-
         openSettingsModal(file?.name || '');
 
-        if (previewSrc) {
-          setTimeout(async () => {
-            const ok = await buildPreviewBaseFromBlob(previewSrc);
-
-            if (ok) {
-              const mode = detectModeFromPreviewBase(previewBase, 110);
-              previewFluoChannelInfo = (mode === 'fluorescence')
-                ? selectFluorescenceChannelFromPreviewBase(previewBase)
-                : null;
-
-              renderRealtimePreview();
-            } else {
-              console.warn('Server preview build failed, skip realtime preview.');
-            }
-          }, 0);
-        }
+        setTimeout(() => {
+          openBackendGrayscaleTilePreview().catch(err => {
+            console.error('Initial backend tile preview failed:', err);
+          });
+        }, 0);
       })
       .catch(err => {
         console.error('Upload error:', err);

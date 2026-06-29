@@ -12,6 +12,8 @@ import tifffile as tiff
 import time
 import threading
 import jwt
+import math
+import hashlib
 from datetime import datetime, timedelta
 from urllib.parse import quote
 from json import JSONDecodeError
@@ -21,7 +23,7 @@ from PIL import Image
 from django.conf import settings
 from django.shortcuts import render, redirect
 from django.http import (
-    JsonResponse, FileResponse, HttpResponseNotFound,
+    JsonResponse, FileResponse, HttpResponse, HttpResponseNotFound,
     HttpResponseBadRequest, HttpResponseServerError, HttpResponseNotAllowed
 )
 from django.views.decorators.csrf import csrf_exempt
@@ -1215,20 +1217,16 @@ def upload_image(request):
             ow, oh = _image_size_wh(original_path)
 
             if ow > 6000 or oh > 6000:
-                preview_path = generate_upload_preview_image(
-                    original_path,
-                    image_dir,
-                    max_side=1600
-                )
-                preview_url = _to_media_url(preview_path)
-
-                display_url = preview_url
+                # Do not generate small preview image anymore.
+                # Grayscale setting modal will use backend tile preview.
+                preview_url = ""
+                display_url = image_url
             else:
                 preview_url = image_url
                 display_url = image_url
 
         except Exception:
-            logger.exception("Failed to generate preview/display image during upload")
+            logger.exception("Failed to prepare upload response")
             preview_url = image_url
             display_url = image_url
 
@@ -1391,6 +1389,336 @@ def get_project_images(request):
 
     return JsonResponse({"success": True, "images": items})
 
+def _compute_grayscale_preview_meta(image_path: str, params: dict) -> dict:
+    """
+    Compute global grayscale meta for tile preview.
+    Detection will also reuse this meta, so preview and backend output stay consistent.
+    """
+    from .method.grayscale import GrayscaleConverter
+
+    arr = _sample_image_array_for_meta(image_path, max_side=2500)
+
+    tmp_dir = tempfile.mkdtemp(prefix="stainai_meta_")
+
+    try:
+        # Save only temporary in-memory sample to let GrayscaleConverter helper methods be reused.
+        # This is not user-facing preview image.
+        sample_path = os.path.join(tmp_dir, "meta_sample.png")
+
+        if arr.ndim == 2:
+            Image.fromarray(arr).save(sample_path)
+        else:
+            Image.fromarray(arr[:, :, :3]).save(sample_path)
+
+        p_low = float(params.get("p_low", 0))
+        p_high = float(params.get("p_high", 100))
+        gamma = float(params.get("gamma", 1))
+        gain = float(params.get("gain", 1))
+
+        p_low = max(0.0, min(100.0, p_low))
+        p_high = max(0.0, min(100.0, p_high))
+
+        if p_high <= p_low:
+            p_high = min(100.0, p_low + 1.0)
+
+        gcvt = GrayscaleConverter(
+            sample_path,
+            tmp_dir,
+            p_low=p_low,
+            p_high=p_high,
+            gamma=gamma,
+            gain=gain,
+            write_u8_png=False,
+            bg_radius=int(params.get("bg_radius", 101) or 101),
+            bg_mode=str(params.get("bg_mode", "subtract") or "subtract"),
+            do_bg_correction=bool(params.get("do_bg_correction", True)),
+        )
+
+        mode = gcvt.auto_detect_mode(thr=110.0)
+
+        sample_arr, is_rgb, dtype = gcvt._read_keep_bit()
+
+        channel = None
+
+        if mode == "fluorescence":
+            if is_rgb:
+                rgb01 = sample_arr.astype(np.float32) / 255.0
+
+                scores = []
+                for c in range(3):
+                    ch = rgb01[:, :, c]
+                    score = float(np.percentile(ch, 99.5) - np.percentile(ch, 50.0))
+                    scores.append(score)
+
+                idx = int(np.argmax(scores))
+                channel = ["red", "green", "blue"][idx]
+                x01 = rgb01[:, :, idx]
+            else:
+                x01 = gcvt._to_float01(sample_arr, dtype=dtype)
+
+        else:
+            if is_rgb:
+                rgb01 = sample_arr.astype(np.float32) / 255.0
+                L = 0.2126 * rgb01[:, :, 0] + 0.7152 * rgb01[:, :, 1] + 0.0722 * rgb01[:, :, 2]
+                x01 = 1.0 - L
+            else:
+                gray01 = gcvt._to_float01(sample_arr, dtype=dtype)
+                x01 = 1.0 - gray01
+
+        corr01 = gcvt._background_correct01(x01)
+
+        valid = corr01[np.isfinite(corr01)]
+
+        if valid.size == 0:
+            lo = 0.0
+            hi = 1.0
+        else:
+            lo = float(np.percentile(valid, p_low))
+            hi = float(np.percentile(valid, p_high))
+
+        if hi <= lo:
+            hi = lo + 1e-6
+
+        ow, oh = _image_size_wh(image_path)
+
+        return {
+            "width": int(ow),
+            "height": int(oh),
+            "mode": mode,
+            "channel": channel,
+            "lo": lo,
+            "hi": hi,
+            "p_low": p_low,
+            "p_high": p_high,
+            "bg_radius": int(params.get("bg_radius", 101) or 101),
+            "bg_mode": str(params.get("bg_mode", "subtract") or "subtract"),
+            "do_bg_correction": bool(params.get("do_bg_correction", True)),
+            "created_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+def _get_or_create_grayscale_preview_meta(image_dir: str, image_path: str, params: dict) -> dict:
+    meta_dir = _grayscale_preview_meta_dir(image_dir)
+    key = _params_key(params)
+    meta_path = os.path.join(meta_dir, f"{key}.json")
+
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    meta = _compute_grayscale_preview_meta(image_path, params)
+
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+    return meta
+
+@csrf_exempt
+@require_POST
+def grayscale_preview_meta(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
+
+    try:
+        body = json.loads(request.body or "{}")
+        image_name = (body.get("image_name") or "").strip()
+        params = body.get("params") or {}
+
+        if not image_name:
+            return JsonResponse({"success": False, "message": "image_name required"}, status=400)
+
+        image_dir = _image_dir(request, image_name)
+        image_path = _original_path_for_image_dir(image_dir)
+
+        if not image_path:
+            return JsonResponse({"success": False, "message": "original image missing"}, status=404)
+
+        meta = _get_or_create_grayscale_preview_meta(image_dir, image_path, params)
+
+        return JsonResponse({
+            "success": True,
+            "meta": meta,
+        })
+
+    except Exception as e:
+        logger.exception("grayscale_preview_meta failed")
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+    
+def _extract_region_with_padding(image_path: str, x: int, y: int, w: int, h: int, pad: int):
+    import pyvips
+
+    img = pyvips.Image.new_from_file(image_path, access="random")
+
+    img_w = img.width
+    img_h = img.height
+
+    read_x = max(0, x - pad)
+    read_y = max(0, y - pad)
+    read_r = min(img_w, x + w + pad)
+    read_b = min(img_h, y + h + pad)
+
+    read_w = max(1, read_r - read_x)
+    read_h = max(1, read_b - read_y)
+
+    region = img.extract_area(read_x, read_y, read_w, read_h)
+
+    if region.bands > 3:
+        region = region[:3]
+
+    if region.format not in ("uchar",):
+        region = region.cast("uchar")
+
+    mem = region.write_to_memory()
+    arr = np.frombuffer(mem, dtype=np.uint8)
+
+    if region.bands == 1:
+        arr = arr.reshape(region.height, region.width)
+    else:
+        arr = arr.reshape(region.height, region.width, region.bands)
+
+    inner_left = x - read_x
+    inner_top = y - read_y
+
+    return arr, inner_left, inner_top
+
+@require_GET
+def grayscale_preview_tile(request):
+    try:
+        _require_viewer_user(request)
+    except PermissionError:
+        return HttpResponse("Not authenticated", status=401)
+
+    try:
+        image_name = (request.GET.get("image") or "").strip()
+
+        if not image_name:
+            return HttpResponseBadRequest("image required")
+
+        level = int(request.GET.get("level", "0"))
+        tx = int(request.GET.get("x", "0"))
+        ty = int(request.GET.get("y", "0"))
+
+        params = {
+            "gamma": float(request.GET.get("gamma", "1")),
+            "gain": float(request.GET.get("gain", "1")),
+            "p_low": float(request.GET.get("p_low", "0")),
+            "p_high": float(request.GET.get("p_high", "100")),
+            "bg_radius": int(request.GET.get("bg_radius", "101")),
+            "bg_mode": request.GET.get("bg_mode", "subtract"),
+            "do_bg_correction": request.GET.get("do_bg_correction", "true") != "false",
+        }
+
+        image_dir = _image_dir(request, image_name)
+        image_path = _original_path_for_image_dir(image_dir)
+
+        if not image_path:
+            return HttpResponse("original image missing", status=404)
+
+        meta = _get_or_create_grayscale_preview_meta(image_dir, image_path, params)
+
+        ow = int(meta["width"])
+        oh = int(meta["height"])
+
+        tile_size = 512
+        max_level = int(math.ceil(math.log2(max(ow, oh))))
+
+        level = max(0, min(max_level, level))
+        scale = 2 ** (max_level - level)
+
+        orig_x = int(tx * tile_size * scale)
+        orig_y = int(ty * tile_size * scale)
+
+        if orig_x >= ow or orig_y >= oh:
+            return HttpResponse(status=404)
+
+        orig_w = min(int(tile_size * scale), ow - orig_x)
+        orig_h = min(int(tile_size * scale), oh - orig_y)
+
+        pad = int(meta.get("bg_radius", 101) or 101)
+
+        arr, inner_left, inner_top = _extract_region_with_padding(
+            image_path,
+            orig_x,
+            orig_y,
+            orig_w,
+            orig_h,
+            pad
+        )
+
+        tmp_dir = tempfile.mkdtemp(prefix="stainai_tile_")
+
+        try:
+            crop_path = os.path.join(tmp_dir, "tile_input.png")
+
+            if arr.ndim == 2:
+                Image.fromarray(arr).save(crop_path)
+            else:
+                Image.fromarray(arr[:, :, :3]).save(crop_path)
+
+            fixed_meta = {
+                "mode": meta.get("mode"),
+                "channel": meta.get("channel"),
+                "lo": meta.get("lo"),
+                "hi": meta.get("hi"),
+            }
+
+            gcvt = GrayscaleConverter(
+                crop_path,
+                tmp_dir,
+                p_low=params["p_low"],
+                p_high=params["p_high"],
+                gamma=params["gamma"],
+                gain=params["gain"],
+                write_u8_png=True,
+                bg_radius=params["bg_radius"],
+                bg_mode=params["bg_mode"],
+                do_bg_correction=params["do_bg_correction"],
+                fixed_meta=fixed_meta,
+            )
+
+            result = gcvt.convert_to_grayscale_auto()
+            gray_path = result.get("gray_u8_path") or result.get("gray_path")
+
+            if not gray_path or not os.path.exists(gray_path):
+                return HttpResponse("tile failed", status=500)
+
+            with Image.open(gray_path) as im:
+                im = im.convert("L")
+
+                center = im.crop((
+                    inner_left,
+                    inner_top,
+                    inner_left + orig_w,
+                    inner_top + orig_h
+                ))
+
+                out_w = max(1, int(math.ceil(orig_w / scale)))
+                out_h = max(1, int(math.ceil(orig_h / scale)))
+
+                if center.size != (out_w, out_h):
+                    center = center.resize((out_w, out_h), Image.Resampling.BILINEAR)
+
+                buf = BytesIO()
+                center.save(buf, format="JPEG", quality=88, optimize=True)
+                data = buf.getvalue()
+
+            resp = HttpResponse(data, content_type="image/jpeg")
+            resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            return resp
+
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    except Exception:
+        logger.exception("grayscale_preview_tile failed")
+        return HttpResponseServerError("tile failed")
 
 
 
@@ -1502,12 +1830,49 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             p_high=p_high,
         )
 
+        preview_meta = None
+
+        try:
+            preview_meta = _get_or_create_grayscale_preview_meta(
+                image_dir,
+                orig_path,
+                {
+                    "p_low": p_low,
+                    "p_high": p_high,
+                    "gamma": gamma,
+                    "gain": gain,
+                    "bg_radius": int(params.get("bg_radius", 101) or 101),
+                    "bg_mode": str(params.get("bg_mode", "subtract") or "subtract"),
+                    "do_bg_correction": bool(params.get("do_bg_correction", True)),
+                }
+            )
+        except Exception:
+            logger.exception("Failed to load grayscale preview meta; fallback to auto full-image grayscale")
+            preview_meta = None
+
+        fixed_meta = None
+        if preview_meta:
+            fixed_meta = {
+                "mode": preview_meta.get("mode"),
+                "channel": preview_meta.get("channel"),
+                "lo": preview_meta.get("lo"),
+                "hi": preview_meta.get("hi"),
+            }
+
         gcvt = GrayscaleConverter(
-            orig_path, image_dir,
-            p_low=p_low, p_high=p_high,
-            gamma=gamma, gain=gain,
-            write_u8_png=False
+            orig_path,
+            image_dir,
+            p_low=p_low,
+            p_high=p_high,
+            gamma=gamma,
+            gain=gain,
+            write_u8_png=False,
+            bg_radius=int(params.get("bg_radius", 101) or 101),
+            bg_mode=str(params.get("bg_mode", "subtract") or "subtract"),
+            do_bg_correction=bool(params.get("do_bg_correction", True)),
+            fixed_meta=fixed_meta,
         )
+
         gcvt.convert_to_grayscale_auto()
 
         gc.collect()
@@ -1747,6 +2112,19 @@ def extract_image_name_from_media_url(path: str):
 
     return parts[idx + 1]
 
+def _original_path_for_image_dir(image_dir: str) -> str | None:
+    orig_dir = os.path.join(image_dir, "original")
+
+    if not os.path.isdir(orig_dir):
+        return None
+
+    files = [f for f in os.listdir(orig_dir) if not f.startswith(".")]
+
+    if not files:
+        return None
+
+    return os.path.join(orig_dir, files[0])
+
 @csrf_exempt
 def detect_image(request):
     """
@@ -1954,7 +2332,54 @@ def _to_media_url(abs_path: str) -> str:
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
 
+def _grayscale_preview_meta_dir(image_dir: str) -> str:
+    d = os.path.join(image_dir, "grayscale_preview_meta")
+    os.makedirs(d, exist_ok=True)
+    return d
 
+def _grayscale_preview_cache_dir(image_dir: str) -> str:
+    d = os.path.join(image_dir, "grayscale_preview_tiles")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+def _params_key(params: dict) -> str:
+    payload = {
+        "p_low": float(params.get("p_low", 0)),
+        "p_high": float(params.get("p_high", 100)),
+        "gamma": float(params.get("gamma", 1)),
+        "gain": float(params.get("gain", 1)),
+        "bg_radius": int(params.get("bg_radius", 101) or 101),
+        "bg_mode": str(params.get("bg_mode", "subtract") or "subtract"),
+        "do_bg_correction": bool(params.get("do_bg_correction", True)),
+    }
+
+    raw = json.dumps(payload, sort_keys=True).encode("utf-8")
+    return hashlib.md5(raw).hexdigest()
+
+def _sample_image_array_for_meta(image_path: str, max_side: int = 2500):
+    """
+    Read a downsampled in-memory version only for estimating global preview meta.
+    This does NOT create a preview image file.
+    """
+    import pyvips
+
+    img = pyvips.Image.thumbnail(image_path, max_side)
+
+    if img.bands > 3:
+        img = img[:3]
+
+    if img.format not in ("uchar",):
+        img = img.cast("uchar")
+
+    mem = img.write_to_memory()
+    arr = np.frombuffer(mem, dtype=np.uint8)
+
+    if img.bands == 1:
+        arr = arr.reshape(img.height, img.width)
+    else:
+        arr = arr.reshape(img.height, img.width, img.bands)
+
+    return arr
 
 
 

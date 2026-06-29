@@ -38,6 +38,7 @@ class GrayscaleConverter:
         bg_radius: int = 101,
         do_bg_correction: bool = True,
         bg_mode: str = "subtract",
+        fixed_meta: dict | None = None,
     ):
         self.img_path = img_path
         self.output_dir = output_dir
@@ -56,6 +57,7 @@ class GrayscaleConverter:
         self.bg_radius = int(bg_radius)
         self.do_bg_correction = bool(do_bg_correction)
         self.bg_mode = str(bg_mode)
+        self.fixed_meta = fixed_meta if isinstance(fixed_meta, dict) else None
 
         base = os.path.basename(img_path)
         self.root, self.ext = os.path.splitext(base)
@@ -184,6 +186,16 @@ class GrayscaleConverter:
             hi = lo + 1e-6
         y = (x01 - lo) / (hi - lo)
         return np.clip(y, 0.0, 1.0)
+    
+    def _norm_fixed01(self, x01: np.ndarray, lo: float, hi: float) -> np.ndarray:
+        lo = float(lo)
+        hi = float(hi)
+
+        if hi <= lo:
+            hi = lo + 1e-6
+
+        y = (x01 - lo) / (hi - lo)
+        return np.clip(y, 0.0, 1.0)
 
     def _enhance01(self, norm01: np.ndarray) -> np.ndarray:
         y = np.power(norm01, self.gamma) * self.gain
@@ -274,18 +286,35 @@ class GrayscaleConverter:
                 score = float(p995 - med)
                 score_list.append(score)
 
-            idx = int(np.argmax(score_list))
-            detected_channel = channel_names[idx]
-            channel_scores = {
-                "red": float(score_list[0]),
-                "green": float(score_list[1]),
-                "blue": float(score_list[2]),
-            }
+            fixed_idx = self._fixed_channel_index()
+
+            if fixed_idx is not None:
+                idx = fixed_idx
+                detected_channel = channel_names[idx]
+                channel_scores = None
+            else:
+                idx = int(np.argmax(score_list))
+                detected_channel = channel_names[idx]
+                channel_scores = {
+                    "red": float(score_list[0]),
+                    "green": float(score_list[1]),
+                    "blue": float(score_list[2]),
+                }
 
             ch01 = rgb01[:, :, idx]
 
             corr01 = self._background_correct01(ch01)
-            out01 = self._enhance01(self._norm_percentile01(corr01))
+
+            if self.fixed_meta and "lo" in self.fixed_meta and "hi" in self.fixed_meta:
+                norm01 = self._norm_fixed01(
+                    corr01,
+                    self.fixed_meta["lo"],
+                    self.fixed_meta["hi"]
+                )
+            else:
+                norm01 = self._norm_percentile01(corr01)
+
+            out01 = self._enhance01(norm01)
 
             out_arr, out_dtype = self._from_float01(out01, np.uint8)  # rgb images end up as u8
 
@@ -293,7 +322,17 @@ class GrayscaleConverter:
             # already grayscale (could be u16)
             x01 = self._to_float01(arr, dtype=dtype)
             corr01 = self._background_correct01(x01)
-            out01 = self._enhance01(self._norm_percentile01(corr01))
+
+            if self.fixed_meta and "lo" in self.fixed_meta and "hi" in self.fixed_meta:
+                norm01 = self._norm_fixed01(
+                    corr01,
+                    self.fixed_meta["lo"],
+                    self.fixed_meta["hi"]
+                )
+            else:
+                norm01 = self._norm_percentile01(corr01)
+
+            out01 = self._enhance01(norm01)
 
             out_arr, out_dtype = self._from_float01(out01, dtype)
 
@@ -314,6 +353,21 @@ class GrayscaleConverter:
 
         return result
 
+    def _fixed_channel_index(self):
+        if not self.fixed_meta:
+            return None
+
+        ch = str(self.fixed_meta.get("channel") or "").lower()
+
+        if ch == "red":
+            return 0
+        if ch == "green":
+            return 1
+        if ch == "blue":
+            return 2
+
+        return None
+
     def convert_to_grayscale_brightfield(self):
         arr, is_rgb, dtype = self._read_keep_bit()
 
@@ -321,17 +375,37 @@ class GrayscaleConverter:
             rgb01 = arr.astype(np.float32) / 255.0
             L = 0.2126 * rgb01[:, :, 0] + 0.7152 * rgb01[:, :, 1] + 0.0722 * rgb01[:, :, 2]
             inv = 1.0 - L
-            # out01 = self._enhance01(self._norm_percentile01(inv))
+            
             corr01 = self._background_correct01(inv)
-            out01 = self._enhance01(self._norm_percentile01(corr01))
+
+            if self.fixed_meta and "lo" in self.fixed_meta and "hi" in self.fixed_meta:
+                norm01 = self._norm_fixed01(
+                    corr01,
+                    self.fixed_meta["lo"],
+                    self.fixed_meta["hi"]
+                )
+            else:
+                norm01 = self._norm_percentile01(corr01)
+
+            out01 = self._enhance01(norm01)
 
             out_arr, out_dtype = self._from_float01(out01, np.uint8)
         else:
             x01 = self._to_float01(arr, dtype=dtype)
             inv = 1.0 - x01
-            # out01 = self._enhance01(self._norm_percentile01(inv))
+            
             corr01 = self._background_correct01(inv)
-            out01 = self._enhance01(self._norm_percentile01(corr01))
+
+            if self.fixed_meta and "lo" in self.fixed_meta and "hi" in self.fixed_meta:
+                norm01 = self._norm_fixed01(
+                    corr01,
+                    self.fixed_meta["lo"],
+                    self.fixed_meta["hi"]
+                )
+            else:
+                norm01 = self._norm_percentile01(corr01)
+
+            out01 = self._enhance01(norm01)
 
             out_arr, out_dtype = self._from_float01(out01, dtype)
 
@@ -343,7 +417,12 @@ class GrayscaleConverter:
         return {"gray_path": main_path, "gray_u8_path": extra_u8, "mode": "brightfield"}
 
     def convert_to_grayscale_auto(self, thr: float = 110.0):
-        mode = self.auto_detect_mode(thr=thr)
+        if self.fixed_meta and self.fixed_meta.get("mode"):
+            mode = str(self.fixed_meta.get("mode")).lower()
+        else:
+            mode = self.auto_detect_mode(thr=thr)
+
         if mode == "fluorescence":
             return self.convert_to_grayscale_fluorescence()
+
         return self.convert_to_grayscale_brightfield()
