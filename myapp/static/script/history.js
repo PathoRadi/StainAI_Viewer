@@ -255,17 +255,11 @@ export function initHistoryHandlers(historyStack) {
     $('.main-container').prop('hidden', false);
 
     // show loading overlay
-    $('#progress-overlay1').show();
-
-    // open the saved display URL
-    window.viewer.open({
-      type: 'image',
-      url: item.displayUrl,
-      buildPyramid: false
-    });
+    $('#progress-overlay1').show().addClass('active');
 
     window.viewer.addOnceHandler('open-failed', () => {
-      $('#progress-overlay1').hide();
+      console.error('[OSD OPEN FAILED]', ev);
+      $('#progress-overlay1').hide().removeClass('active');
       alert('Failed to load image result.');
     });
 
@@ -349,6 +343,23 @@ export function initHistoryHandlers(historyStack) {
         }
       });
     });
+
+    // open image LAST
+    if (item.displayDziUrl) {
+      console.log('[OSD OPEN] HISTORY DZI:', item.displayDziUrl);
+      window.viewer.open(item.displayDziUrl);
+    } else if (item.displayUrl) {
+      console.log('[OSD OPEN] HISTORY SINGLE IMAGE:', item.displayUrl);
+      window.viewer.open({
+        type: 'image',
+        url: item.displayUrl,
+        buildPyramid: false
+      });
+    } else {
+      console.error('[OSD OPEN] missing displayUrl/displayDziUrl', item);
+      $('#progress-overlay1').hide().removeClass('active');
+      alert('This history item has no display image URL.');
+    }
   }
 
   // expose for other modules (e.g., demo thumbnail click)
@@ -713,6 +724,10 @@ export function initHistoryHandlers(historyStack) {
         if (data.display_url) {
           item.displayUrl = data.display_url;
         }
+
+        if (data.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
+        }
       }
 
       clearMultiSelection();
@@ -750,6 +765,10 @@ export function initHistoryHandlers(historyStack) {
 
         if (data?.display_url) {
           item.displayUrl = data.display_url;
+        }
+
+        if (data?.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
         }
       }
 
@@ -1283,6 +1302,10 @@ export function initHistoryHandlers(historyStack) {
 
         if (data.display_url) {
           item.displayUrl = data.display_url;
+        }
+
+        if (data.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
         }
 
         $textSpan.text(data.image_name);

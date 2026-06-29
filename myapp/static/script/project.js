@@ -1011,6 +1011,10 @@ export function initProjectHandlers(historyStack) {
         item.displayUrl = data.display_url;
       }
 
+      if (data?.display_dzi_url) {
+        item.displayDziUrl = data.display_dzi_url;
+      }
+
       $('.history-action-menu').hide();
       $('.project-image-action-menu').hide();
       $('.project-image-move-submenu').removeClass('visible');
@@ -1044,6 +1048,10 @@ export function initProjectHandlers(historyStack) {
 
       if (data.display_url) {
         item.displayUrl = data.display_url;
+      }
+
+      if (data.display_dzi_url) {
+        item.displayDziUrl = data.display_dzi_url;
       }
 
       // hide menus
@@ -1125,6 +1133,10 @@ export function initProjectHandlers(historyStack) {
 
         if (data.display_url) {
           item.displayUrl = data.display_url;
+        }
+
+        if (data.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
         }
       }
 
@@ -1728,6 +1740,10 @@ export function initProjectHandlers(historyStack) {
           item.displayUrl = data.display_url;
         }
 
+        if (data.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
+        }
+
         $textSpan.text(data.image_name);
 
         updateHistoryUI(historyStack);
@@ -1836,6 +1852,10 @@ export function initProjectHandlers(historyStack) {
 
       if (data.display_url) {
         item.displayUrl = data.display_url;
+      }
+
+      if (data.display_dzi_url) {
+        item.displayDziUrl = data.display_dzi_url;
       }
 
       $('.project-image-action-menu').hide();

@@ -1459,11 +1459,17 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     clearBoxes();
 
-    window.viewer.open({
-      type: 'image',
-      url: d.display_url,
-      buildPyramid: false
-    });
+    if (d.display_dzi_url) {
+      console.log('[OSD OPEN] DZI:', d.display_dzi_url);
+      window.viewer.open(d.display_dzi_url);
+    } else {
+      console.log('[OSD OPEN] SINGLE IMAGE:', d.display_url);
+      window.viewer.open({
+        type: 'image',
+        url: d.display_url,
+        buildPyramid: false
+      });
+    }
 
     window.viewer.addOnceHandler('open', () => {
       const viewer = window.viewer;
@@ -1514,6 +1520,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       location: d.location || 'images',
       projectName: (d.location && d.location !== 'images') ? d.location : '',
       displayUrl: d.display_url,
+      displayDziUrl: d.display_dzi_url || '',
       boxes: window.bboxData.slice(),
       origSize: d.orig_size,
       dispSize: d.display_size,
@@ -1561,7 +1568,18 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       document.getElementById('drop-zone').style.display = 'none';
       showMain();
 
-      window.viewer.open({ type: 'image', url: item.displayUrl, buildPyramid: false });
+      if (item.displayDziUrl) {
+        console.log('[OSD OPEN] EXISTING DZI:', item.displayDziUrl);
+        window.viewer.open(item.displayDziUrl);
+      } else {
+        console.log('[OSD OPEN] EXISTING SINGLE IMAGE:', item.displayUrl);
+        window.viewer.open({
+          type: 'image',
+          url: item.displayUrl,
+          buildPyramid: false
+        });
+      }
+      
       window.viewer.addOnceHandler('open', () => {
         const vp = window.viewer.viewport;
         vp.goHome();

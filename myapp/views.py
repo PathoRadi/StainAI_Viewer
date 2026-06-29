@@ -26,7 +26,13 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET
-from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
+from azure.storage.blob import (
+    BlobServiceClient,
+    generate_blob_sas,
+    BlobSasPermissions,
+    generate_container_sas,
+    ContainerSasPermissions,
+)
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
@@ -327,6 +333,17 @@ def _blob_name_for_result(user_id: str, image_name: str, filename: str) -> str:
 def _blob_name_for_resized(user_id: str, image_name: str, filename: str) -> str:
     return f"{_blob_prefix_for_image(user_id, image_name)}/resized/{filename}"
 
+def _blob_name_for_dzi(user_id: str, image_name: str, relative_path: str) -> str:
+    """
+    Blob path for DeepZoom DZI files and tile files.
+
+    Example:
+      <user_id>/images/<image_name>/dzi/<stem>.dzi
+      <user_id>/images/<image_name>/dzi/<stem>_files/...
+    """
+    relative_path = str(relative_path or "").replace("\\", "/").lstrip("/")
+    return f"{_blob_prefix_for_image(user_id, image_name)}/dzi/{relative_path}"
+
 def _blob_prefix_for_global_roi(user_id: str) -> str:
     return f"{user_id}/roi"
 
@@ -476,10 +493,49 @@ def _blob_resized_url(user_id, image_name):
 
     return f"{blob_client.url}?{sas_token}"
 
+def _blob_dzi_url(user_id: str, image_name: str, dzi_blob_name: str | None):
+    if not dzi_blob_name:
+        return None
+
+    return _blob_url_with_container_sas(dzi_blob_name)
+
+def _blob_url_with_container_sas(blob_name: str):
+    """
+    Return a readable URL using a container-level SAS token.
+
+    This is useful for DZI because OpenSeadragon needs to load:
+      1) the .dzi file
+      2) many tile jpg files under *_files/
+
+    A blob-only SAS for the .dzi may not be enough for tile requests.
+    """
+    client = _blob_service_client()
+    if client is None:
+        return None
+
+    blob_client = client.get_blob_client(
+        container=settings.AZURE_BLOB_CONTAINER_NAME,
+        blob=blob_name
+    )
+
+    if not blob_client.exists():
+        return None
+
+    sas_token = generate_container_sas(
+        account_name=blob_client.account_name,
+        container_name=settings.AZURE_BLOB_CONTAINER_NAME,
+        account_key=settings.AZURE_ACCOUNT_KEY,
+        permission=ContainerSasPermissions(read=True),
+        expiry=datetime.utcnow() + timedelta(hours=2)
+    )
+
+    return f"{blob_client.url}?{sas_token}"
+
 def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict) -> dict:
     if not isinstance(payload, dict):
         return {
             "display_url": "",
+            "display_dzi_url": "",
             "boxes": [],
             "orig_size": [],
             "display_size": [],
@@ -492,8 +548,12 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
     if not display_url and original_filename:
         display_url = _blob_original_url(user_id, image_name, original_filename) or ""
 
+    display_dzi_blob_name = payload.get("display_dzi_blob_name")
+    display_dzi_url = _blob_dzi_url(user_id, image_name, display_dzi_blob_name)
+
     return {
         "display_url": display_url,
+        "display_dzi_url": display_dzi_url or "",
         "boxes": payload.get("boxes", []),
         "orig_size": payload.get("orig_size", []),
         "display_size": payload.get("display_size", []),
@@ -515,6 +575,34 @@ def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
         blob.upload_blob(f, overwrite=True)
 
     return blob.url
+
+def _upload_dzi_directory_to_blob(
+    user_id: str,
+    image_name: str,
+    dzi_dir: str | None,
+):
+    """
+    Upload all files inside local image_dir/dzi/ to Azure Blob.
+
+    Local:
+      image_dir/dzi/<stem>.dzi
+      image_dir/dzi/<stem>_files/...
+
+    Blob:
+      <user_id>/images/<image_name>/dzi/<stem>.dzi
+      <user_id>/images/<image_name>/dzi/<stem>_files/...
+    """
+    if not dzi_dir or not os.path.isdir(dzi_dir):
+        return
+
+    for root, _, files in os.walk(dzi_dir):
+        for fn in files:
+            local_path = os.path.join(root, fn)
+
+            rel_path = os.path.relpath(local_path, dzi_dir).replace("\\", "/")
+            blob_name = _blob_name_for_dzi(user_id, image_name, rel_path)
+
+            _upload_file_to_blob(local_path, blob_name)
 
 def _safe_json_value(value):
     """
@@ -680,6 +768,7 @@ def upload_detection_outputs_to_blob(
     resized_path: str | None = None,
     detect_result_path: str | None = None,
     grayscale_params_path: str | None = None,
+    dzi_dir: str | None = None,
 ):
     """
     Upload final detection outputs to Azure Blob Storage.
@@ -728,6 +817,16 @@ def upload_detection_outputs_to_blob(
     # upload resized display image
     if resized_path and os.path.exists(resized_path):
         _upload_file_to_blob(resized_path, _blob_name_for_resized(user_id, image_name, f"{image_name}_resized.png"))
+
+    # upload DZI tiles
+    try:
+        _upload_dzi_directory_to_blob(
+            user_id=user_id,
+            image_name=image_name,
+            dzi_dir=dzi_dir,
+        )
+    except Exception:
+        logger.exception("Failed to upload DZI tiles for image=%s", image_name)
 
 
     if detect_result_path and os.path.exists(detect_result_path):
@@ -976,6 +1075,7 @@ def viewer_state(request):
             "image_name": image_name,
             "location": location,
             "display_url": result_data.get("display_url", ""),
+            "display_dzi_url": result_data.get("display_dzi_url", ""),
             "boxes": result_data.get("boxes", []),
             "orig_size": result_data.get("orig_size", []),
             "display_size": result_data.get("display_size", []),
@@ -1283,6 +1383,7 @@ def get_project_images(request):
             "name": image_name,
             "project_name": project_name,
             "displayUrl": data.get("display_url"),
+            "displayDziUrl": data.get("display_dzi_url", ""),
         })
 
     return JsonResponse({"success": True, "images": items})
@@ -1460,6 +1561,26 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
 
         dw, dh = _image_size_wh(disp_path)  # display image (w, h)
 
+        display_dzi_blob_name = None
+        dzi_dir = None
+
+        try:
+            display_dzi_path, dzi_dir = generate_deepzoom_image(disp_path, image_dir)
+
+            if display_dzi_path and dzi_dir:
+                rel_dzi_path = os.path.relpath(display_dzi_path, dzi_dir).replace("\\", "/")
+                display_dzi_blob_name = _blob_name_for_dzi(
+                    user_id=user_id,
+                    image_name=image_name,
+                    relative_path=rel_dzi_path,
+                )
+                logger.info("DeepZoom tiles created: %s", display_dzi_path)
+
+        except Exception:
+            logger.exception("Failed to generate DeepZoom tiles")
+            display_dzi_blob_name = None
+            dzi_dir = None
+
         # Create Original_Mmap.tiff
         result_dir = os.path.join(image_dir, "result")
         os.makedirs(result_dir, exist_ok=True)
@@ -1510,6 +1631,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             "resolution": current_res,
             "grayscale_parameters": grayscale_parameters,
             "image_summary": image_summary,
+            "display_dzi_blob_name": display_dzi_blob_name,
         }
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
@@ -1554,6 +1676,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 resized_path=disp_path,
                 detect_result_path=result_path,
                 grayscale_params_path=grayscale_params_path,
+                dzi_dir=dzi_dir,
             )
         except Exception:
             logger.exception("Failed to upload detection outputs for image=%s", image_name)
@@ -1731,6 +1854,52 @@ def _image_size_wh(path: str):
     """Read image size using Pillow. Returns (w, h)."""
     with Image.open(path) as im:
         return im.width, im.height
+    
+def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None, str | None]:
+    """
+    Generate Deep Zoom Image tiles for OpenSeadragon.
+
+    Output:
+      image_dir/dzi/<stem>.dzi
+      image_dir/dzi/<stem>_files/...
+
+    Returns:
+      (dzi_path, dzi_dir)
+
+    If pyvips/libvips is not available, return (None, None)
+    so the app can safely fall back to normal display_url.
+    """
+    try:
+        import pyvips
+    except Exception:
+        logger.exception("pyvips is not available; skipping DeepZoom generation")
+        return None, None
+
+    try:
+        dzi_dir = os.path.join(image_dir, "dzi")
+        os.makedirs(dzi_dir, exist_ok=True)
+
+        stem = safe_filename(os.path.splitext(os.path.basename(image_path))[0])
+        dzi_base = os.path.join(dzi_dir, stem)
+        dzi_path = f"{dzi_base}.dzi"
+
+        if os.path.exists(dzi_path):
+            return dzi_path, dzi_dir
+
+        img = pyvips.Image.new_from_file(image_path, access="sequential")
+
+        img.dzsave(
+            dzi_base,
+            tile_size=256,
+            overlap=0,
+            suffix=".jpg[Q=85]"
+        )
+
+        return dzi_path, dzi_dir
+
+    except Exception:
+        logger.exception("Failed to generate DeepZoom tiles for %s", image_path)
+        return None, None
     
 # helper funtion: upload_image(), detect_image()
 def _to_media_url(abs_path: str) -> str:
@@ -1924,6 +2093,15 @@ def rename_image(request):
 
             if _blob_exists(old_gray_params):
                 _copy_blob(old_gray_params, new_gray_params)
+
+            # copy DZI folder if it exists
+            old_dzi_prefix = f"{old_root}/dzi/"
+            old_dzi_blobs = _list_blob_names(old_dzi_prefix)
+
+            for old_dzi_blob in old_dzi_blobs:
+                rel = old_dzi_blob[len(old_dzi_prefix):]
+                new_dzi_blob = f"{new_root}/dzi/{rel}"
+                _copy_blob(old_dzi_blob, new_dzi_blob)
 
             # detect result blob should be copied last since it's the "flag" for the new image to appear in frontend
             _copy_blob(old_detect, new_detect)

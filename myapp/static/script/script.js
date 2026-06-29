@@ -105,8 +105,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       showFullPageControl: false,
       minZoomLevel:  0,
       maxZoomLevel:  40,
-      animationTime: 1.2,
-      springStiffness: 4.0
+      animationTime: 0.35,
+      springStiffness: 8.0,
+      immediateRender: false,
+      blendTime: 0,
     });
     window.viewer = viewer;
 
@@ -190,6 +192,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             location: item.location || "images",
             projectName: item.location === "images" ? "" : item.location,
             displayUrl: item.display_url || "",
+            displayDziUrl: item.display_dzi_url || item.displayDziUrl || "",
             boxes: Array.isArray(item.boxes) ? item.boxes : [],
             origSize: item.orig_size || [],
             dispSize: item.display_size || [],

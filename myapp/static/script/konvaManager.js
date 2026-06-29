@@ -389,16 +389,17 @@ export function initKonvaManager({
   /* Viewer resize / move */
   viewer.addHandler('open', () => {
     stage.size({ width: wrapEl.clientWidth, height: wrapEl.clientHeight });
-    redrawPolygons();
+    scheduleRedrawPolygons();
   });
-  viewer.addHandler('viewport-change', redrawPolygons);
+
+  viewer.addHandler('viewport-change', scheduleRedrawPolygons);
 
   window.addEventListener('resize', () => {
     stage.size({
       width: wrapEl.clientWidth,
       height: wrapEl.clientHeight
     });
-    redrawPolygons();
+    scheduleRedrawPolygons();
   });
 
   /* Group drag (move the entire polygon) */
@@ -428,6 +429,17 @@ export function initKonvaManager({
     const cp = document.getElementById(colorPickerId);
     if (cp && polygons[i]?.color) cp.value = cssToHex(polygons[i].color);
     redrawPolygons();
+  }
+
+  let roiRedrawRaf = null;
+
+  function scheduleRedrawPolygons() {
+    if (roiRedrawRaf) return;
+
+    roiRedrawRaf = requestAnimationFrame(() => {
+      roiRedrawRaf = null;
+      redrawPolygons();
+    });
   }
 
   /* Redraw all ROIs */
@@ -728,7 +740,7 @@ export function initKonvaManager({
   window.addEventListener('resize', () => {
     const wrapEl = document.getElementById('displayedImage-wrapper');
     stage.size({ width: wrapEl.clientWidth, height: wrapEl.clientHeight });
-    redrawPolygons(); // Redraw on resize to adjust to new viewport/image size
+    scheduleRedrawPolygons();
   });
 
   return { stage, redrawPolygons, isInAnyPolygon };
