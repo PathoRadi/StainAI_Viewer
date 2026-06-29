@@ -1217,9 +1217,13 @@ def upload_image(request):
             # 方法二：upload 完就準備 preview/display image
             # 大圖一律先做小圖給前端 preview 用
             if ow > 6000 or oh > 6000:
+                # Small preview only for grayscale setting modal
+                preview_path = generate_upload_preview_image(original_path, image_dir, max_side=2500)
+                preview_url = _to_media_url(preview_path)
+
+                # Display image can still use your original display generator
                 disp_path = DisplayImageGenerator(original_path, image_dir).generate_display_image()
-                preview_url = _to_media_url(disp_path)
-                display_url = preview_url
+                display_url = _to_media_url(disp_path)
             else:
                 preview_url = image_url
                 display_url = image_url
@@ -1854,6 +1858,27 @@ def _image_size_wh(path: str):
     """Read image size using Pillow. Returns (w, h)."""
     with Image.open(path) as im:
         return im.width, im.height
+    
+def generate_upload_preview_image(image_path: str, image_dir: str, max_side: int = 2500) -> str:
+    """
+    Generate a lightweight preview image for grayscale setting modal.
+    This avoids browser decoding a 20000x20000 image during upload preview.
+    """
+    preview_dir = os.path.join(image_dir, "preview")
+    os.makedirs(preview_dir, exist_ok=True)
+
+    preview_path = os.path.join(preview_dir, "upload_preview.jpg")
+
+    if os.path.exists(preview_path):
+        return preview_path
+
+    with Image.open(image_path) as im:
+      im.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+      if im.mode not in ("RGB", "L"):
+          im = im.convert("RGB")
+      im.save(preview_path, "JPEG", quality=85, optimize=True)
+
+    return preview_path
     
 def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None, str | None]:
     """

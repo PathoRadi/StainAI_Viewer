@@ -1413,28 +1413,28 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           resolution: null,
         };
 
-        const parts = (window.imgPath || '').split('/');
-        pendingImageDir = parts[3] || null;
+        pendingImageDir = d.image_name || getImageDirFromPath(window.imgPath);
         pendingParams = defaultParams();
 
         const previewSrc = window.previewUrl || window.displayUrl || window.imgPath || '';
 
-        let ok = false;
-        if (previewSrc) {
-          ok = await buildPreviewBaseFromBlob(previewSrc);
-        }
-
         openSettingsModal(file?.name || '');
 
-        if (ok) {
-          const mode = detectModeFromPreviewBase(previewBase, 110);
-          previewFluoChannelInfo = (mode === 'fluorescence')
-            ? selectFluorescenceChannelFromPreviewBase(previewBase)
-            : null;
+        if (previewSrc) {
+          setTimeout(async () => {
+            const ok = await buildPreviewBaseFromBlob(previewSrc);
 
-          renderRealtimePreview();
-        } else {
-          console.warn('Server preview build failed, skip realtime preview.');
+            if (ok) {
+              const mode = detectModeFromPreviewBase(previewBase, 110);
+              previewFluoChannelInfo = (mode === 'fluorescence')
+                ? selectFluorescenceChannelFromPreviewBase(previewBase)
+                : null;
+
+              renderRealtimePreview();
+            } else {
+              console.warn('Server preview build failed, skip realtime preview.');
+            }
+          }, 0);
         }
       })
       .catch(err => {
