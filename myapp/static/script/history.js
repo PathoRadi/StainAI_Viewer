@@ -243,6 +243,65 @@ export function initHistoryHandlers(historyStack) {
     }));
   }
 
+  function openImageWithFallback(item) {
+    const viewer = window.viewer;
+    if (!viewer) return false;
+
+    const dziUrl =
+      item.displayDziUrl ||
+      item.display_dzi_url ||
+      '';
+
+    const displayUrl =
+      item.displayUrl ||
+      item.display_url ||
+      item.originalUrl ||
+      item.original_url ||
+      '';
+
+    const openSingleImage = () => {
+      if (!displayUrl) {
+        console.error('[OSD OPEN] missing displayUrl:', item);
+        $('#progress-overlay1').hide().removeClass('active');
+        alert('This history item has no display image URL.');
+        return false;
+      }
+
+      console.log('[OSD OPEN] HISTORY SINGLE IMAGE:', displayUrl);
+
+      viewer.addOnceHandler('open-failed', (ev) => {
+        console.error('[OSD OPEN FAILED] single image failed:', ev);
+        $('#progress-overlay1').hide().removeClass('active');
+        alert('Failed to load image result.');
+      });
+
+      viewer.open({
+        type: 'image',
+        url: displayUrl,
+        buildPyramid: false
+      });
+
+      return true;
+    };
+
+    if (dziUrl) {
+      console.log('[OSD OPEN] HISTORY TRY DZI:', dziUrl);
+
+      viewer.addOnceHandler('open-failed', (ev) => {
+        console.warn('[OSD OPEN FAILED] DZI failed, fallback to display image:', ev);
+
+        // DZI failed → fallback to normal display/original image
+        openSingleImage();
+      });
+
+      viewer.open(dziUrl);
+      return true;
+    }
+
+    // Old images do not have DZI, so use original displayUrl logic
+    return openSingleImage();
+  }
+
   // Public: load a history item by index (used by Demo button, etc.)
   function loadHistoryItemByIndex(idx) {
     const item = historyStack[idx];
@@ -257,14 +316,8 @@ export function initHistoryHandlers(historyStack) {
     // show loading overlay
     $('#progress-overlay1').show().addClass('active');
 
-    window.viewer.addOnceHandler('open-failed', () => {
-      console.error('[OSD OPEN FAILED]', ev);
-      $('#progress-overlay1').hide().removeClass('active');
-      alert('Failed to load image result.');
-    });
-
     window.viewer.addOnceHandler('open', () => {
-      $('#progress-overlay1').hide();
+      $('#progress-overlay1').hide().removeClass('active');
 
       window.bboxData = toDisplayScaleBoxes(item);
 
@@ -345,21 +398,7 @@ export function initHistoryHandlers(historyStack) {
     });
 
     // open image LAST
-    if (item.displayDziUrl) {
-      console.log('[OSD OPEN] HISTORY DZI:', item.displayDziUrl);
-      window.viewer.open(item.displayDziUrl);
-    } else if (item.displayUrl) {
-      console.log('[OSD OPEN] HISTORY SINGLE IMAGE:', item.displayUrl);
-      window.viewer.open({
-        type: 'image',
-        url: item.displayUrl,
-        buildPyramid: false
-      });
-    } else {
-      console.error('[OSD OPEN] missing displayUrl/displayDziUrl', item);
-      $('#progress-overlay1').hide().removeClass('active');
-      alert('This history item has no display image URL.');
-    }
+    openImageWithFallback(item);
   }
 
   // expose for other modules (e.g., demo thumbnail click)
@@ -1116,6 +1155,10 @@ export function initHistoryHandlers(historyStack) {
 
         if (data?.display_url) {
           item.displayUrl = data.display_url;
+        }
+
+        if (data?.display_dzi_url) {
+          item.displayDziUrl = data.display_dzi_url;
         }
       }
 

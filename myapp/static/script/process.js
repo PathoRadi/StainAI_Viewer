@@ -328,6 +328,61 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   let pendingImageDir = null;
   let pendingParams = null; // current UI params
 
+  function openViewerImageWithFallback({
+    dziUrl = '',
+    displayUrl = '',
+    label = 'IMAGE',
+    onOpen = null,
+    onFail = null,
+  }) {
+    const viewer = window.viewer;
+
+    if (!viewer) {
+      console.error('[OSD OPEN] viewer missing');
+      if (typeof onFail === 'function') onFail();
+      return;
+    }
+
+    viewer.addOnceHandler('open', () => {
+      if (typeof onOpen === 'function') onOpen();
+    });
+
+    const openSingleImage = () => {
+      if (!displayUrl) {
+        console.error(`[OSD OPEN] ${label} missing displayUrl`);
+        if (typeof onFail === 'function') onFail();
+        return;
+      }
+
+      console.log(`[OSD OPEN] ${label} SINGLE IMAGE:`, displayUrl);
+
+      viewer.open({
+        type: 'image',
+        url: displayUrl,
+        buildPyramid: false
+      });
+    };
+
+    if (dziUrl) {
+      console.log(`[OSD OPEN] ${label} TRY DZI:`, dziUrl);
+
+      viewer.addOnceHandler('open-failed', (ev) => {
+        console.warn(`[OSD OPEN FAILED] ${label} DZI failed, fallback to display image:`, ev);
+
+        viewer.addOnceHandler('open', () => {
+          if (typeof onOpen === 'function') onOpen();
+        });
+
+        openSingleImage();
+      });
+
+      viewer.open(dziUrl);
+      return;
+    }
+
+    openSingleImage();
+  }
+
   function defaultParams(){
     return {
       gamma: 1,
@@ -1459,42 +1514,38 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
     clearBoxes();
 
-    if (d.display_dzi_url) {
-      console.log('[OSD OPEN] DZI:', d.display_dzi_url);
-      window.viewer.open(d.display_dzi_url);
-    } else {
-      console.log('[OSD OPEN] SINGLE IMAGE:', d.display_url);
-      window.viewer.open({
-        type: 'image',
-        url: d.display_url,
-        buildPyramid: false
-      });
-    }
+    openViewerImageWithFallback({
+      dziUrl: d.display_dzi_url || '',
+      displayUrl: d.display_url || d.original_url || '',
+      label: 'DETECTION',
+      onOpen: () => {
+        const viewer = window.viewer;
 
-    window.viewer.addOnceHandler('open', () => {
-      const viewer = window.viewer;
-
-      // Wait for browser layout and OSD initial state to stabilize
-      requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (!viewer || !viewer.viewport) return;
+          requestAnimationFrame(() => {
+            if (!viewer || !viewer.viewport) return;
 
-          viewer.forceRedraw();
-          viewer.viewport.goHome(true);
-          viewer.viewport.applyConstraints();
-          viewer.forceRedraw();
+            viewer.forceRedraw();
+            viewer.viewport.goHome(true);
+            viewer.viewport.applyConstraints();
+            viewer.forceRedraw();
 
-          window.zoomFloor = viewer.viewport.getHomeZoom();
+            window.zoomFloor = viewer.viewport.getHomeZoom();
 
-          drawBbox(window.bboxData);
-          showAllBoxes();
-          
-          $('#Checkbox_CellCount').prop('checked', false);
-          $('#checkbox_All').prop('checked', true);
-          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-            .prop('checked', true);
+            drawBbox(window.bboxData);
+            showAllBoxes();
+
+            $('#Checkbox_CellCount').prop('checked', false);
+            $('#checkbox_All').prop('checked', true);
+            $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+              .prop('checked', true);
+          });
         });
-      });
+      },
+      onFail: () => {
+        hideProgressOverlay();
+        alert('Detection finished but image failed to load.');
+      }
     });
 
     // Rebuild all charts
@@ -1568,26 +1619,23 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       document.getElementById('drop-zone').style.display = 'none';
       showMain();
 
-      if (item.displayDziUrl) {
-        console.log('[OSD OPEN] EXISTING DZI:', item.displayDziUrl);
-        window.viewer.open(item.displayDziUrl);
-      } else {
-        console.log('[OSD OPEN] EXISTING SINGLE IMAGE:', item.displayUrl);
-        window.viewer.open({
-          type: 'image',
-          url: item.displayUrl,
-          buildPyramid: false
-        });
-      }
-      
-      window.viewer.addOnceHandler('open', () => {
+    openViewerImageWithFallback({
+      dziUrl: item.displayDziUrl || '',
+      displayUrl: item.displayUrl || '',
+      label: 'EXISTING',
+      onOpen: () => {
         const vp = window.viewer.viewport;
         vp.goHome();
-        clearBoxes();
-        const reuseBbox = item.boxes.slice();
-        drawBbox(reuseBbox);
 
+        clearBoxes();
+
+        const reuseBbox = item.boxes.slice();
+        window.bboxData = reuseBbox;
+
+        drawBbox(reuseBbox);
         showAllBoxes();
+
+        $('#Checkbox_CellCount').prop('checked', false);
         $('#checkbox_All').prop('checked', true);
         $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
           .prop('checked', true);
@@ -1596,11 +1644,17 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         wrappers.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
 
         window.chartRefs = [];
+
         const c1 = addBarChart('barChart-wrappers');
         window.chartRefs.push(c1);
+
         const c2 = addBarChart('barChart-wrappers1');
         window.chartRefs.push(c2);
-      });
+      },
+      onFail: () => {
+        alert('Failed to load image result.');
+      }
+    });
       return;
     }
 
