@@ -1214,16 +1214,15 @@ def upload_image(request):
         try:
             ow, oh = _image_size_wh(original_path)
 
-            # 方法二：upload 完就準備 preview/display image
-            # 大圖一律先做小圖給前端 preview 用
             if ow > 6000 or oh > 6000:
-                # Small preview only for grayscale setting modal
-                preview_path = generate_upload_preview_image(original_path, image_dir, max_side=2500)
+                preview_path = generate_upload_preview_image(
+                    original_path,
+                    image_dir,
+                    max_side=1600
+                )
                 preview_url = _to_media_url(preview_path)
 
-                # Display image can still use your original display generator
-                disp_path = DisplayImageGenerator(original_path, image_dir).generate_display_image()
-                display_url = _to_media_url(disp_path)
+                display_url = preview_url
             else:
                 preview_url = image_url
                 display_url = image_url
@@ -1859,10 +1858,10 @@ def _image_size_wh(path: str):
     with Image.open(path) as im:
         return im.width, im.height
     
-def generate_upload_preview_image(image_path: str, image_dir: str, max_side: int = 2500) -> str:
+def generate_upload_preview_image(image_path: str, image_dir: str, max_side: int = 1600) -> str:
     """
     Generate a lightweight preview image for grayscale setting modal.
-    This avoids browser decoding a 20000x20000 image during upload preview.
+    Prefer pyvips for huge images because it is much faster and more memory efficient than PIL.
     """
     preview_dir = os.path.join(image_dir, "preview")
     os.makedirs(preview_dir, exist_ok=True)
@@ -1872,14 +1871,37 @@ def generate_upload_preview_image(image_path: str, image_dir: str, max_side: int
     if os.path.exists(preview_path):
         return preview_path
 
+    # Fast path: pyvips
+    try:
+        import pyvips
+
+        img = pyvips.Image.new_from_file(image_path, access="sequential")
+
+        scale = min(1.0, float(max_side) / float(max(img.width, img.height)))
+
+        if scale < 1.0:
+            img = img.resize(scale)
+
+        if img.bands > 3:
+            img = img[:3]
+
+        img.jpegsave(preview_path, Q=82, strip=True, optimize_coding=True)
+        return preview_path
+
+    except Exception:
+        logger.exception("pyvips preview generation failed; fallback to PIL")
+
+    # Fallback: PIL
     with Image.open(image_path) as im:
-      im.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-      if im.mode not in ("RGB", "L"):
-          im = im.convert("RGB")
-      im.save(preview_path, "JPEG", quality=85, optimize=True)
+        im.thumbnail((max_side, max_side), Image.Resampling.BILINEAR)
+
+        if im.mode not in ("RGB", "L"):
+            im = im.convert("RGB")
+
+        im.save(preview_path, "JPEG", quality=82, optimize=True)
 
     return preview_path
-    
+
 def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None, str | None]:
     """
     Generate Deep Zoom Image tiles for OpenSeadragon.

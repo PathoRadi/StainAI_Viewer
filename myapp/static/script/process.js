@@ -731,7 +731,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       const blob = await fetch(blobUrl).then(r => r.blob());
       let probe = await createImageBitmap(blob);
 
-      const previewMaxSide = 4000;
+      const previewMaxSide = 2000;
       const scale = Math.min(1, previewMaxSide / Math.max(probe.width, probe.height));
       const w = Math.max(1, Math.round(probe.width * scale));
       const h = Math.max(1, Math.round(probe.height * scale));
