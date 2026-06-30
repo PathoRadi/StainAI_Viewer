@@ -2045,7 +2045,8 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         dzi_dir = None
         
         try:
-            display_dzi_path, dzi_dir = generate_deepzoom_image(display_path, image_dir)
+            # Use original image for DZI so OpenSeadragon coordinate system = original scale
+            display_dzi_path, dzi_dir = generate_deepzoom_image(orig_path, image_dir)
 
             if display_dzi_path and dzi_dir:
                 rel_dzi_path = os.path.relpath(display_dzi_path, dzi_dir).replace("\\", "/")

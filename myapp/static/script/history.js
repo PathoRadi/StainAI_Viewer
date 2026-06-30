@@ -208,6 +208,71 @@ export function initHistoryHandlers(historyStack) {
     }
   }
 
+  async function buildAzureDziTileSource(dziUrl) {
+    const [dziPath, sas = ''] = String(dziUrl).split('?');
+
+    const res = await fetch(dziUrl, {
+      credentials: 'omit',
+      cache: 'no-store'
+    });
+
+    if (!res.ok) {
+      throw new Error(`DZI fetch failed: HTTP ${res.status}`);
+    }
+
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, 'application/xml');
+
+    const imageEl =
+      xml.getElementsByTagName('Image')[0] ||
+      xml.getElementsByTagNameNS('*', 'Image')[0];
+
+    const sizeEl =
+      xml.getElementsByTagName('Size')[0] ||
+      xml.getElementsByTagNameNS('*', 'Size')[0];
+
+    if (!imageEl || !sizeEl) {
+      throw new Error('Invalid DZI XML');
+    }
+
+    const width = Number(sizeEl.getAttribute('Width'));
+    const height = Number(sizeEl.getAttribute('Height'));
+    const tileSize = Number(imageEl.getAttribute('TileSize') || 256);
+    const overlap = Number(imageEl.getAttribute('Overlap') || 0);
+    const format = imageEl.getAttribute('Format') || 'jpg';
+
+    const dziDir = dziPath.substring(0, dziPath.lastIndexOf('/') + 1);
+
+    let tileUrlBase = imageEl.getAttribute('Url') || '';
+
+    if (!tileUrlBase) {
+      // Standard DZI fallback: <dzi filename without .dzi>_files/
+      tileUrlBase = dziPath.replace(/\.dzi$/i, '/');
+    }
+
+    if (!/^https?:\/\//i.test(tileUrlBase)) {
+      tileUrlBase = dziDir + tileUrlBase.replace(/^\/+/, '');
+    }
+
+    tileUrlBase = tileUrlBase.replace(/\/+$/, '');
+
+    const maxLevel = Math.ceil(Math.log2(Math.max(width, height)));
+
+    return {
+      width,
+      height,
+      tileSize,
+      overlap,
+      minLevel: 0,
+      maxLevel,
+
+      getTileUrl(level, x, y) {
+        const url = `${tileUrlBase}/${level}/${x}_${y}.${format}`;
+        return sas ? `${url}?${sas}` : url;
+      }
+    };
+  }
+
   function openImageWithFallback(item) {
     const viewer = window.viewer;
     if (!viewer) return false;
@@ -225,6 +290,8 @@ export function initHistoryHandlers(historyStack) {
       '';
 
     const openSingleImage = () => {
+      item.__openedWithDzi = false;
+
       if (!displayUrl) {
         console.error('[OSD OPEN] missing displayUrl:', item);
         $('#progress-overlay1').hide().removeClass('active');
@@ -250,20 +317,29 @@ export function initHistoryHandlers(historyStack) {
     };
 
     if (dziUrl) {
-      console.log('[OSD OPEN] HISTORY TRY DZI:', dziUrl);
+      console.log('[OSD OPEN] HISTORY TRY AZURE DZI:', dziUrl);
 
-      viewer.addOnceHandler('open-failed', (ev) => {
-        console.warn('[OSD OPEN FAILED] DZI failed, fallback to display image:', ev);
+      buildAzureDziTileSource(dziUrl)
+        .then(tileSource => {
+          item.__openedWithDzi = true;
 
-        // DZI failed → fallback to normal display/original image
-        openSingleImage();
-      });
+          viewer.addOnceHandler('open-failed', (ev) => {
+            console.warn('[OSD OPEN FAILED] DZI failed, fallback to display image:', ev);
+            item.__openedWithDzi = false;
+            openSingleImage();
+          });
 
-      viewer.open(dziUrl);
+          viewer.open(tileSource);
+        })
+        .catch(err => {
+          console.warn('[OSD OPEN FAILED] build DZI tileSource failed:', err);
+          item.__openedWithDzi = false;
+          openSingleImage();
+        });
+
       return true;
     }
 
-    // Old images do not have DZI, so use original displayUrl logic
     return openSingleImage();
   }
 
@@ -284,9 +360,18 @@ export function initHistoryHandlers(historyStack) {
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide().removeClass('active');
 
-      const boxes = Array.isArray(item.boxesDisplay)
-        ? item.boxesDisplay
-        : (Array.isArray(item.boxes) ? item.boxes : []);
+      const useOriginalScale =
+        item.__openedWithDzi === true &&
+        Array.isArray(item.boxesOriginal) &&
+        item.boxesOriginal.length;
+
+      const boxes = useOriginalScale
+        ? item.boxesOriginal
+        : (
+            Array.isArray(item.boxesDisplay)
+              ? item.boxesDisplay
+              : (Array.isArray(item.boxes) ? item.boxes : [])
+          );
 
       window.bboxData = boxes.slice();
 

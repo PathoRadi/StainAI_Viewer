@@ -331,6 +331,70 @@ export function initProcess(bboxData, historyStack, barChartRef) {
   let pendingImageDir = null;
   let pendingParams = null; // current UI params
 
+  async function buildAzureDziTileSource(dziUrl) {
+    const [dziPath, sas = ''] = String(dziUrl).split('?');
+
+    const res = await fetch(dziUrl, {
+      credentials: 'omit',
+      cache: 'no-store'
+    });
+
+    if (!res.ok) {
+      throw new Error(`DZI fetch failed: HTTP ${res.status}`);
+    }
+
+    const text = await res.text();
+    const xml = new DOMParser().parseFromString(text, 'application/xml');
+
+    const imageEl =
+      xml.getElementsByTagName('Image')[0] ||
+      xml.getElementsByTagNameNS('*', 'Image')[0];
+
+    const sizeEl =
+      xml.getElementsByTagName('Size')[0] ||
+      xml.getElementsByTagNameNS('*', 'Size')[0];
+
+    if (!imageEl || !sizeEl) {
+      throw new Error('Invalid DZI XML');
+    }
+
+    const width = Number(sizeEl.getAttribute('Width'));
+    const height = Number(sizeEl.getAttribute('Height'));
+    const tileSize = Number(imageEl.getAttribute('TileSize') || 256);
+    const overlap = Number(imageEl.getAttribute('Overlap') || 0);
+    const format = imageEl.getAttribute('Format') || 'jpg';
+
+    const dziDir = dziPath.substring(0, dziPath.lastIndexOf('/') + 1);
+
+    let tileUrlBase = imageEl.getAttribute('Url') || '';
+
+    if (!tileUrlBase) {
+      tileUrlBase = dziPath.replace(/\.dzi$/i, '/');
+    }
+
+    if (!/^https?:\/\//i.test(tileUrlBase)) {
+      tileUrlBase = dziDir + tileUrlBase.replace(/^\/+/, '');
+    }
+
+    tileUrlBase = tileUrlBase.replace(/\/+$/, '');
+
+    const maxLevel = Math.ceil(Math.log2(Math.max(width, height)));
+
+    return {
+      width,
+      height,
+      tileSize,
+      overlap,
+      minLevel: 0,
+      maxLevel,
+
+      getTileUrl(level, x, y) {
+        const url = `${tileUrlBase}/${level}/${x}_${y}.${format}`;
+        return sas ? `${url}?${sas}` : url;
+      }
+    };
+  }
+
   function openViewerImageWithFallback({
     dziUrl = '',
     displayUrl = '',
@@ -351,6 +415,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     });
 
     const openSingleImage = () => {
+      window.__openedWithDzi = false;
+
       if (!displayUrl) {
         console.error(`[OSD OPEN] ${label} missing displayUrl`);
         if (typeof onFail === 'function') onFail();
@@ -367,19 +433,31 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     };
 
     if (dziUrl) {
-      console.log(`[OSD OPEN] ${label} TRY DZI:`, dziUrl);
+      console.log(`[OSD OPEN] ${label} TRY AZURE DZI:`, dziUrl);
 
-      viewer.addOnceHandler('open-failed', (ev) => {
-        console.warn(`[OSD OPEN FAILED] ${label} DZI failed, fallback to display image:`, ev);
+      buildAzureDziTileSource(dziUrl)
+        .then(tileSource => {
+          window.__openedWithDzi = true;
 
-        viewer.addOnceHandler('open', () => {
-          if (typeof onOpen === 'function') onOpen();
+          viewer.addOnceHandler('open-failed', (ev) => {
+            console.warn(`[OSD OPEN FAILED] ${label} DZI failed, fallback to display image:`, ev);
+            window.__openedWithDzi = false;
+
+            viewer.addOnceHandler('open', () => {
+              if (typeof onOpen === 'function') onOpen();
+            });
+
+            openSingleImage();
+          });
+
+          viewer.open(tileSource);
+        })
+        .catch(err => {
+          console.warn(`[OSD OPEN FAILED] ${label} build DZI tileSource failed:`, err);
+          window.__openedWithDzi = false;
+          openSingleImage();
         });
 
-        openSingleImage();
-      });
-
-      viewer.open(dziUrl);
       return;
     }
 
@@ -1647,6 +1725,19 @@ export function initProcess(bboxData, historyStack, barChartRef) {
             viewer.forceRedraw();
 
             window.zoomFloor = viewer.viewport.getHomeZoom();
+
+            const boxesForViewer =
+              window.__openedWithDzi === true &&
+              Array.isArray(d.boxes_original) &&
+              d.boxes_original.length
+                ? d.boxes_original
+                : (
+                    Array.isArray(d.boxes_display)
+                      ? d.boxes_display
+                      : (Array.isArray(d.boxes) ? d.boxes : [])
+                  );
+
+            window.bboxData = boxesForViewer.slice();
 
             drawBbox(window.bboxData);
             showAllBoxes();
