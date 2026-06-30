@@ -44,43 +44,83 @@ class DetectionImageGenerator:
 
         scale = current_res / target_res
 
-        image = pyvips.Image.new_from_file(
-            self.image_path,
-            access="sequential"
-        )
-
-        resized_image = image.resize(scale)
-
         base = os.path.basename(self.image_path)
-        root, ext = os.path.splitext(base)
-        ext_l = ext.lower()
+        root, _ = os.path.splitext(base)
 
-        if ext_l not in (".png", ".jpg", ".jpeg", ".tif", ".tiff"):
-            ext_l = ".png"
-
-        out_name = root + "_detect" + ext_l
+        out_name = root + "_detect.jpg"
         out_path = os.path.join(detection_image_dir, out_name)
 
-        if ext_l in (".jpg", ".jpeg"):
-            if resized_image.hasalpha():
-                resized_image = resized_image.flatten(background=[255, 255, 255])
-            resized_image.jpegsave(
-                out_path,
-                Q=90,
-                optimize_coding=True,
-                interlace=True
+        # Fast path: pyvips
+        if _HAS_VIPS and pyvips is not None:
+            try:
+                image = pyvips.Image.new_from_file(
+                    self.image_path,
+                    access="sequential"
+                )
+
+                resized_image = image.resize(scale)
+
+                if resized_image.hasalpha():
+                    resized_image = resized_image.flatten(background=[255, 255, 255])
+
+                if resized_image.format != "uchar":
+                    resized_image = resized_image.cast("uchar")
+
+                try:
+                    if resized_image.interpretation not in (
+                        pyvips.Interpretation.srgb,
+                        pyvips.Interpretation.B_W,
+                    ):
+                        resized_image = resized_image.colourspace(pyvips.Interpretation.srgb)
+                except Exception:
+                    pass
+
+                resized_image.jpegsave(
+                    out_path,
+                    Q=90,
+                    optimize_coding=True,
+                    interlace=True
+                )
+
+                print(f"Detection image saved at {out_path}")
+                return out_path
+
+            except Exception:
+                pass
+
+        # Fallback: PIL
+        Image.MAX_IMAGE_PIXELS = None
+
+        with Image.open(self.image_path) as im:
+            orig_w, orig_h = im.size
+
+            new_w = max(1, int(round(orig_w * scale)))
+            new_h = max(1, int(round(orig_h * scale)))
+
+            resample = (
+                Image.Resampling.BILINEAR
+                if max(orig_w, orig_h) > 20000
+                else Image.Resampling.LANCZOS
             )
 
-        elif ext_l == ".png":
-            resized_image.pngsave(out_path, compression=6)
+            im = im.resize((new_w, new_h), resample=resample)
 
-        else:
-            resized_image.tiffsave(
+            if im.mode in ("RGBA", "LA", "P"):
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                if im.mode in ("RGBA", "LA"):
+                    bg.paste(im, mask=im.split()[-1])
+                else:
+                    bg.paste(im.convert("RGB"))
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+
+            im.save(
                 out_path,
-                compression="lzw",
-                tile=True,
-                tile_width=1024,
-                tile_height=1024
+                format="JPEG",
+                quality=90,
+                optimize=True,
+                progressive=True
             )
 
         print(f"Detection image saved at {out_path}")
