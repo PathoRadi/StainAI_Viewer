@@ -581,27 +581,28 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
     display_dzi_blob_name = payload.get("display_dzi_blob_name")
     display_dzi_url = _blob_dzi_url(user_id, image_name, display_dzi_blob_name)
 
+    normalized = _normalize_boxes_for_frontend(payload)
+
     return {
         "display_url": display_url,
         "display_dzi_url": display_dzi_url or "",
 
-        # frontend expects "boxes" to be display-scale; if not available, fallback to original-scale boxes
-        "boxes": payload.get("boxes_display") or payload.get("boxes") or [],
+        # Always display-scale after normalization
+        "boxes": normalized["boxes"],
+        "boxes_display": normalized["boxes_display"],
+        "boxes_detect": normalized["boxes_detect"],
+        "boxes_original": normalized["boxes_original"],
 
-        "boxes_display": payload.get("boxes_display") or payload.get("boxes") or [],
-        "boxes_detect": payload.get("boxes_detect") or [],
-        "boxes_original": payload.get("boxes_original") or [],
-
-        "orig_size": payload.get("orig_size", []),
-        "detect_size": payload.get("detect_size", []),
-        "display_size": payload.get("display_size", []),
+        "orig_size": normalized["orig_size"],
+        "detect_size": normalized["detect_size"],
+        "display_size": normalized["display_size"],
 
         "original_filename": original_filename,
         "resolution": payload.get("resolution", None),
 
         "grayscale_parameters": payload.get("grayscale_parameters"),
         "image_summary": payload.get("image_summary"),
-        "scale_info": payload.get("scale_info"),
+        "scale_info": normalized["scale_info"] or payload.get("scale_info"),
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -2459,6 +2460,132 @@ def _to_media_url(abs_path: str) -> str:
     """Convert absolute path to MEDIA URL usable by frontend."""
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
+
+def _infer_size_hw(size, boxes=None):
+    """
+    Return size as [height, width].
+
+    New backend convention:
+        [height, width]
+
+    Legacy detect_result convention may be:
+        [width, height]
+
+    We infer using box max x/y when possible.
+    """
+    if not isinstance(size, list) or len(size) < 2:
+        return []
+
+    a = float(size[0] or 0)
+    b = float(size[1] or 0)
+
+    if a <= 0 or b <= 0:
+        return []
+
+    # No boxes: assume new convention [height, width]
+    if not isinstance(boxes, list) or not boxes:
+        return [a, b]
+
+    max_x = 0.0
+    max_y = 0.0
+
+    try:
+        for box in boxes[:2000]:  # sample enough, avoid scanning huge JSON too much
+            coords = box.get("coords")
+            if not isinstance(coords, list) or len(coords) < 4:
+                continue
+            max_x = max(max_x, float(coords[0]), float(coords[2]))
+            max_y = max(max_y, float(coords[1]), float(coords[3]))
+    except Exception:
+        return [a, b]
+
+    # If x fits size[0] but not size[1], then legacy is [width, height]
+    # Convert to [height, width].
+    if max_x > b and max_x <= a and max_y <= b:
+        return [b, a]
+
+    # Otherwise assume already [height, width]
+    return [a, b]
+
+
+def _normalize_boxes_for_frontend(payload: dict) -> dict:
+    """
+    Support both:
+    1) New _detect_result.json:
+       boxes_display / boxes_detect / boxes_original / sizes [h,w]
+
+    2) Legacy _detect_result.json:
+       boxes only, orig_size/display_size possibly [w,h],
+       boxes usually original-scale.
+    """
+    if not isinstance(payload, dict):
+        return {
+            "boxes": [],
+            "boxes_display": [],
+            "boxes_detect": [],
+            "boxes_original": [],
+            "orig_size": [],
+            "detect_size": [],
+            "display_size": [],
+            "scale_info": None,
+        }
+
+    raw_boxes = payload.get("boxes") or []
+
+    # New format: already has explicit display-scale boxes
+    if isinstance(payload.get("boxes_display"), list):
+        boxes_display = payload.get("boxes_display") or []
+        boxes_detect = payload.get("boxes_detect") or []
+        boxes_original = payload.get("boxes_original") or []
+
+        orig_size = payload.get("orig_size", [])
+        detect_size = payload.get("detect_size", [])
+        display_size = payload.get("display_size", [])
+
+        return {
+            "boxes": boxes_display,
+            "boxes_display": boxes_display,
+            "boxes_detect": boxes_detect,
+            "boxes_original": boxes_original,
+            "orig_size": orig_size,
+            "detect_size": detect_size,
+            "display_size": display_size,
+            "scale_info": payload.get("scale_info"),
+        }
+
+    # Legacy format
+    orig_size_hw = _infer_size_hw(payload.get("orig_size", []), raw_boxes)
+    display_size_hw = _infer_size_hw(payload.get("display_size", []), raw_boxes)
+
+    boxes_display = raw_boxes
+
+    # If display image is smaller than original, legacy boxes are usually original-scale.
+    # Convert them to display-scale.
+    if orig_size_hw and display_size_hw and orig_size_hw != display_size_hw:
+        boxes_display = _scale_boxes(
+            boxes=raw_boxes,
+            from_size=orig_size_hw,
+            to_size=display_size_hw,
+        )
+
+    return {
+        "boxes": boxes_display,
+        "boxes_display": boxes_display,
+
+        # Legacy does not have detection scale separately.
+        "boxes_detect": [],
+        "boxes_original": raw_boxes,
+
+        # Return normalized [height, width] to frontend
+        "orig_size": orig_size_hw,
+        "detect_size": [],
+        "display_size": display_size_hw,
+
+        "scale_info": {
+            "box_scale_in_detect_result": "legacy_normalized_to_display",
+            "legacy_detect_result": True,
+        },
+    }
 
 def _scale_boxes(boxes, from_size, to_size):
     if not isinstance(boxes, list):
