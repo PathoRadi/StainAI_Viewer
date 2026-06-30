@@ -369,7 +369,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     let tileUrlBase = imageEl.getAttribute('Url') || '';
 
     if (!tileUrlBase) {
-      tileUrlBase = dziPath.replace(/\.dzi$/i, '/');
+      // Standard DeepZoom fallback:
+      // image.dzi -> image_files/
+      tileUrlBase = dziPath.replace(/\.dzi$/i, '_files/');
     }
 
     if (!/^https?:\/\//i.test(tileUrlBase)) {

@@ -246,8 +246,9 @@ export function initHistoryHandlers(historyStack) {
     let tileUrlBase = imageEl.getAttribute('Url') || '';
 
     if (!tileUrlBase) {
-      // Standard DZI fallback: <dzi filename without .dzi>_files/
-      tileUrlBase = dziPath.replace(/\.dzi$/i, '/');
+      // Standard DeepZoom fallback:
+      // image.dzi -> image_files/
+      tileUrlBase = dziPath.replace(/\.dzi$/i, '_files/');
     }
 
     if (!/^https?:\/\//i.test(tileUrlBase)) {
