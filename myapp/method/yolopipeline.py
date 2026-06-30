@@ -35,15 +35,38 @@ class YOLOPipeline:
     Image.MAX_IMAGE_PIXELS = None
     ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-    def __init__(self, model, patches_dir, large_img_path, gray_image_path, output_dir):
+    def __init__(
+        self,
+        model,
+        patches_dir,
+        detection_image_path,
+        original_image_path,
+        gray_image_path,
+        output_dir,
+        result_stem=None,
+        result_boxes_size=None,
+        result_output_size=None,
+    ):
         self.model = model
         self.patches_dir = patches_dir
-        self.large_img_path = large_img_path
+
+        # YOLO detection / patches are based on this image scale
+        self.detection_image_path = detection_image_path
+
+        # Original uploaded image, used for original-scale annotated output
+        self.original_image_path = original_image_path
+
         self.output_dir = output_dir
         self.gray_image_path = gray_image_path
         self.gray_img = Image.open(self.gray_image_path)
-        self.project = os.path.basename(os.path.normpath(output_dir))  # e.g. <project_name>
+
+        self.project = os.path.basename(os.path.normpath(output_dir))
         self.log = logging.getLogger(f"stainai.pipeline.{self.project}")
+
+        # downloadable xxx_results.json settings
+        self.result_stem = result_stem
+        self.result_boxes_size = result_boxes_size
+        self.result_output_size = result_output_size
 
         self.result_dir      = os.path.join(output_dir, "result")
         self.annotated_dir = os.path.join(output_dir, "annotated")
@@ -66,27 +89,48 @@ class YOLOPipeline:
         1. Process patches to get bounding boxes and labels.
         2. Save results to JSON.
         3. Annotate the large image with bounding boxes.
+
         Returns:
-            List of dictionaries with bounding box coordinates and class types.
+            detections: detection-scale boxes
+            annotated_img_path_orig: original-scale annotated image
+            annotated_img_path_gray: detection-scale gray annotated image
         """
 
-        # 1. Process patches to get bounding boxes and labels
         detections, bbox, labels = self.process_patches()
         self.log.info(f"{len(bbox)} objects detected")
         gc.collect()
 
-        # 2. Generate annotated image
-        annotated_img_path_orig = self.annotate_large_image(self.large_img_path, bbox, labels)
-        annotated_img_path_gray = self.annotate_large_image(self.gray_image_path, bbox, labels)
+        # bbox is detection-scale. Convert to original-scale for original image annotation.
+        bbox_orig = self._scale_xyxy_array(
+            bbox,
+            from_size=self.result_boxes_size,
+            to_size=self.result_output_size,
+        )
 
-        # 3. Save full image bar chart
-        chart_path = self.save_full_image_barchart(detections, self.large_img_path)
+        annotated_img_path_orig = self.annotate_large_image(
+            self.original_image_path,
+            bbox_orig,
+            labels
+        )
+
+        # annotated_img_path_gray = self.annotate_large_image(
+        #     self.gray_image_path,
+        #     bbox,
+        #     labels
+        # )
+
+        chart_path = self.save_full_image_barchart(
+            detections,
+            self.detection_image_path
+        )
         self.log.info("Chart path returned: %s", chart_path)
 
-        self.log.info(f"Generating annotated image done")
+        self.log.info("Generating annotated image done")
         gc.collect()
 
-        return detections, annotated_img_path_orig, annotated_img_path_gray
+        # return detections, annotated_img_path_orig, annotated_img_path_gray
+        return detections, annotated_img_path_orig
+        
 
 
 
@@ -664,6 +708,45 @@ class YOLOPipeline:
                 elif pil.mode != "RGB":
                     pil = pil.convert("RGB")
                 return np.asarray(pil, dtype=np.uint8)
+            
+    def _scale_xyxy_array(self, boxes, from_size, to_size):
+        """
+        Scale boxes from one image size to another.
+
+        from_size / to_size format:
+            [height, width]
+
+        boxes format:
+            np.ndarray shape (N, 4), xyxy
+        """
+        if boxes is None or boxes.size == 0:
+            return boxes
+
+        if not from_size or not to_size:
+            return boxes
+
+        from_h, from_w = from_size
+        to_h, to_w = to_size
+
+        from_w = float(from_w or 0)
+        from_h = float(from_h or 0)
+        to_w = float(to_w or 0)
+        to_h = float(to_h or 0)
+
+        if from_w <= 0 or from_h <= 0 or to_w <= 0 or to_h <= 0:
+            return boxes
+
+        scale_x = to_w / from_w
+        scale_y = to_h / from_h
+
+        if abs(scale_x - 1.0) < 1e-9 and abs(scale_y - 1.0) < 1e-9:
+            return boxes
+
+        out = boxes.astype(np.float32, copy=True)
+        out[:, [0, 2]] *= scale_x
+        out[:, [1, 3]] *= scale_y
+
+        return out
 
 
     
@@ -683,13 +766,16 @@ class YOLOPipeline:
         Filename: self.result_dir/<stem>_results.json
         """
         os.makedirs(self.result_dir, exist_ok=True)
-        stem = "results"
-        try:
-            base_img = getattr(self, "large_img_path", None) or getattr(self, "image_path", None)
-            if base_img:
-                stem = os.path.splitext(os.path.basename(base_img))[0]
-        except Exception:
-            pass
+        stem = self.result_stem or "results"
+
+        if not self.result_stem:
+            try:
+                base_img = getattr(self, "detection_image_path", None) or getattr(self, "image_path", None)
+                if base_img:
+                    stem = os.path.splitext(os.path.basename(base_img))[0]
+            except Exception:
+                pass
+
         out_path = os.path.join(self.result_dir, f"{stem}_results.json")
 
         if all_boxes.size == 0 or all_labels.size == 0:
@@ -706,7 +792,14 @@ class YOLOPipeline:
             patch = self.gray_np[y1:y2, x1:x2]
             return float(self._brenner_np(patch))
 
-        boxes_i = all_boxes.astype(np.int32, copy=False)
+        boxes_for_output = self._scale_xyxy_array(
+            all_boxes,
+            from_size=self.result_boxes_size,
+            to_size=self.result_output_size,
+        )
+
+        boxes_i = boxes_for_output.astype(np.int32, copy=False)
+        
         x1, y1, x2, y2 = boxes_i.T
         w  = (x2 - x1).astype(np.int32)
         h  = (y2 - y1).astype(np.int32)

@@ -1990,7 +1990,8 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             # downloadable xxx_results.json should be original scale
             result_output_size=orig_size,
         )
-        detections, annotated_img_path_orig, annotated_img_path_gray = pipeline.run()
+        # detections, annotated_img_path_orig, annotated_img_path_gray = pipeline.run()
+        detections, annotated_img_path_orig = pipeline.run()
 
         gc.collect()
         yolo_stage_end = time.perf_counter()
@@ -2030,9 +2031,13 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         result_dir = os.path.join(image_dir, "result")
         os.makedirs(result_dir, exist_ok=True)
 
+        # original_mmap_inputs = [
+        #     orig_path, annotated_img_path_orig, 
+        #     gray_path, annotated_img_path_gray
+        # ]
+
         original_mmap_inputs = [
             orig_path, annotated_img_path_orig, 
-            gray_path, annotated_img_path_gray
         ]
 
         try:
@@ -2527,28 +2532,43 @@ def _params_key(params: dict) -> str:
 def _sample_image_array_for_meta(image_path: str, max_side: int = 2500):
     """
     Read a downsampled in-memory version only for estimating global preview meta.
-    This does NOT create a preview image file.
+    Prefer pyvips if available; fallback to PIL on Azure App Service where libvips may be missing.
     """
-    import pyvips
+    try:
+        import pyvips
 
-    img = pyvips.Image.thumbnail(image_path, max_side)
+        img = pyvips.Image.thumbnail(image_path, max_side)
 
-    if img.bands > 3:
-        img = img[:3]
+        if img.bands > 3:
+            img = img[:3]
 
-    if img.format not in ("uchar",):
-        img = img.cast("uchar")
+        if img.format not in ("uchar",):
+            img = img.cast("uchar")
 
-    mem = img.write_to_memory()
-    arr = np.frombuffer(mem, dtype=np.uint8)
+        mem = img.write_to_memory()
+        arr = np.frombuffer(mem, dtype=np.uint8)
 
-    if img.bands == 1:
-        arr = arr.reshape(img.height, img.width)
-    else:
-        arr = arr.reshape(img.height, img.width, img.bands)
+        if img.bands == 1:
+            arr = arr.reshape(img.height, img.width)
+        else:
+            arr = arr.reshape(img.height, img.width, img.bands)
 
-    return arr
+        return arr
 
+    except Exception:
+        logger.warning("pyvips unavailable for preview meta; fallback to PIL", exc_info=True)
+
+        Image.MAX_IMAGE_PIXELS = None
+
+        with Image.open(image_path) as im:
+            im.thumbnail((max_side, max_side), Image.Resampling.BILINEAR)
+
+            if im.mode in ("RGBA", "LA", "P"):
+                im = im.convert("RGB")
+            elif im.mode not in ("RGB", "L"):
+                im = im.convert("RGB")
+
+            return np.array(im)
 
 
 # ---------------------------
