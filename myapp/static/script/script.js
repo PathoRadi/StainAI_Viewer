@@ -185,23 +185,44 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
       if (state.success && Array.isArray(state.history)) {
         historyStack.push(
-          ...state.history.map(item => ({
-            dir: item.image_name,
-            name: item.image_name,
-            imageName: item.image_name,
-            location: item.location || "images",
-            projectName: item.location === "images" ? "" : item.location,
-            displayUrl: item.display_url || "",
-            displayDziUrl: item.display_dzi_url || item.displayDziUrl || "",
-            boxes: Array.isArray(item.boxes) ? item.boxes : [],
-            origSize: item.orig_size || [],
-            dispSize: item.display_size || [],
-            resolution:
-              Number.isFinite(Number(item.resolution)) && Number(item.resolution) > 0
-                ? Number(item.resolution)
-                : null,
-            demo: false,
-          }))
+          ...state.history.map(item => {
+            const boxesDisplay = Array.isArray(item.boxes_display)
+              ? item.boxes_display
+              : (Array.isArray(item.boxes) ? item.boxes : []);
+
+            return {
+              dir: item.image_name,
+              name: item.image_name,
+              imageName: item.image_name,
+
+              location: item.location || "images",
+              projectName: item.location === "images" ? "" : item.location,
+
+              displayUrl: item.display_url || "",
+              displayDziUrl: item.display_dzi_url || item.displayDziUrl || "",
+
+              // viewer / history load 用 display scale
+              boxes: boxesDisplay,
+
+              // optional debug / future use
+              boxesDisplay: boxesDisplay,
+              boxesDetect: Array.isArray(item.boxes_detect) ? item.boxes_detect : [],
+              boxesOriginal: Array.isArray(item.boxes_original) ? item.boxes_original : [],
+
+              origSize: Array.isArray(item.orig_size) ? item.orig_size : [],
+              detectSize: Array.isArray(item.detect_size) ? item.detect_size : [],
+              dispSize: Array.isArray(item.display_size) ? item.display_size : [],
+
+              scaleInfo: item.scale_info || null,
+
+              resolution:
+                Number.isFinite(Number(item.resolution)) && Number(item.resolution) > 0
+                  ? Number(item.resolution)
+                  : null,
+
+              demo: false,
+            };
+          })
         );
       }
     }

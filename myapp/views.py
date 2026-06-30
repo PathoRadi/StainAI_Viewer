@@ -38,6 +38,7 @@ from azure.storage.blob import (
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
+from .method.detection_image_generator import DetectionImageGenerator
 from .method.grayscale import GrayscaleConverter
 from .method.cut_image import CutImage
 from .method.yolopipeline import YOLOPipeline
@@ -332,8 +333,34 @@ def _blob_name_for_original(user_id: str, image_name: str, filename: str) -> str
 def _blob_name_for_result(user_id: str, image_name: str, filename: str) -> str:
     return f"{_blob_prefix_for_image(user_id, image_name)}/result/{filename}"
 
-def _blob_name_for_resized(user_id: str, image_name: str, filename: str) -> str:
-    return f"{_blob_prefix_for_image(user_id, image_name)}/resized/{filename}"
+def _blob_name_for_display(user_id: str, image_name: str, filename: str):
+    return f"{_blob_prefix_for_image(user_id, image_name)}/display/{filename}"
+
+def _blob_display_url(user_id: str, image_name: str):
+    path = f"{user_id}/images/{image_name}/display/{image_name}_display.jpg"
+
+    client = _blob_service_client()
+    if client is None:
+        return None
+
+    blob_client = client.get_blob_client(
+        container=settings.AZURE_BLOB_CONTAINER_NAME,
+        blob=path
+    )
+
+    if not blob_client.exists():
+        return None
+
+    sas_token = generate_blob_sas(
+        account_name=blob_client.account_name,
+        container_name=settings.AZURE_BLOB_CONTAINER_NAME,
+        blob_name=path,
+        account_key=settings.AZURE_ACCOUNT_KEY,
+        permission=BlobSasPermissions(read=True),
+        expiry=datetime.utcnow() + timedelta(hours=2)
+    )
+
+    return f"{blob_client.url}?{sas_token}"
 
 def _blob_name_for_dzi(user_id: str, image_name: str, relative_path: str) -> str:
     """
@@ -469,31 +496,31 @@ def _blob_original_url(user_id, image_name, filename):
 
     return f"{blob_client.url}?{sas_token}"
 
-def _blob_resized_url(user_id, image_name):
-    path = f"{user_id}/images/{image_name}/resized/{image_name}_resized.png"
+# def _blob_resized_url(user_id, image_name):
+#     path = f"{user_id}/images/{image_name}/resized/{image_name}_resized.png"
 
-    client = _blob_service_client()
-    if client is None:
-        return None
+#     client = _blob_service_client()
+#     if client is None:
+#         return None
 
-    blob_client = client.get_blob_client(
-        container=settings.AZURE_BLOB_CONTAINER_NAME,
-        blob=path
-    )
+#     blob_client = client.get_blob_client(
+#         container=settings.AZURE_BLOB_CONTAINER_NAME,
+#         blob=path
+#     )
 
-    if not blob_client.exists():
-        return None
+#     if not blob_client.exists():
+#         return None
 
-    sas_token = generate_blob_sas(
-        account_name=blob_client.account_name,
-        container_name=settings.AZURE_BLOB_CONTAINER_NAME,
-        blob_name=path,
-        account_key=settings.AZURE_ACCOUNT_KEY,
-        permission=BlobSasPermissions(read=True),
-        expiry=datetime.utcnow() + timedelta(hours=2)
-    )
+#     sas_token = generate_blob_sas(
+#         account_name=blob_client.account_name,
+#         container_name=settings.AZURE_BLOB_CONTAINER_NAME,
+#         blob_name=path,
+#         account_key=settings.AZURE_ACCOUNT_KEY,
+#         permission=BlobSasPermissions(read=True),
+#         expiry=datetime.utcnow() + timedelta(hours=2)
+#     )
 
-    return f"{blob_client.url}?{sas_token}"
+#     return f"{blob_client.url}?{sas_token}"
 
 def _blob_dzi_url(user_id: str, image_name: str, dzi_blob_name: str | None):
     if not dzi_blob_name:
@@ -546,7 +573,8 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
 
     original_filename = payload.get("original_filename", "")
 
-    display_url = _blob_resized_url(user_id, image_name)
+    display_url = _blob_display_url(user_id, image_name)
+
     if not display_url and original_filename:
         display_url = _blob_original_url(user_id, image_name, original_filename) or ""
 
@@ -556,11 +584,24 @@ def _frontend_detect_result_payload(user_id: str, image_name: str, payload: dict
     return {
         "display_url": display_url,
         "display_dzi_url": display_dzi_url or "",
-        "boxes": payload.get("boxes", []),
+
+        # frontend expects "boxes" to be display-scale; if not available, fallback to original-scale boxes
+        "boxes": payload.get("boxes_display") or payload.get("boxes") or [],
+
+        "boxes_display": payload.get("boxes_display") or payload.get("boxes") or [],
+        "boxes_detect": payload.get("boxes_detect") or [],
+        "boxes_original": payload.get("boxes_original") or [],
+
         "orig_size": payload.get("orig_size", []),
+        "detect_size": payload.get("detect_size", []),
         "display_size": payload.get("display_size", []),
+
         "original_filename": original_filename,
         "resolution": payload.get("resolution", None),
+
+        "grayscale_parameters": payload.get("grayscale_parameters"),
+        "image_summary": payload.get("image_summary"),
+        "scale_info": payload.get("scale_info"),
     }
 
 def _upload_file_to_blob(local_path: str, blob_name: str) -> str | None:
@@ -767,7 +808,7 @@ def upload_detection_outputs_to_blob(
     image_dir: str,
     orig_path: str,
     result_json_path: str,
-    resized_path: str | None = None,
+    display_path: str | None = None,
     detect_result_path: str | None = None,
     grayscale_params_path: str | None = None,
     dzi_dir: str | None = None,
@@ -817,8 +858,11 @@ def upload_detection_outputs_to_blob(
         logger.warning("chart png not found: %s", chart_path)
 
     # upload resized display image
-    if resized_path and os.path.exists(resized_path):
-        _upload_file_to_blob(resized_path, _blob_name_for_resized(user_id, image_name, f"{image_name}_resized.png"))
+    if display_path and os.path.exists(display_path):
+        _upload_file_to_blob(
+            display_path,
+            _blob_name_for_display(user_id, image_name, f"{image_name}_display.jpg")
+        )
 
     # upload DZI tiles
     try:
@@ -1078,10 +1122,19 @@ def viewer_state(request):
             "location": location,
             "display_url": result_data.get("display_url", ""),
             "display_dzi_url": result_data.get("display_dzi_url", ""),
+
+            # already display scale
             "boxes": result_data.get("boxes", []),
+            "boxes_display": result_data.get("boxes_display", []),
+            "boxes_detect": result_data.get("boxes_detect", []),
+            "boxes_original": result_data.get("boxes_original", []),
+
             "orig_size": result_data.get("orig_size", []),
+            "detect_size": result_data.get("detect_size", []),
             "display_size": result_data.get("display_size", []),
+
             "resolution": result_data.get("resolution", None),
+            "scale_info": result_data.get("scale_info"),
         })
 
     return JsonResponse({
@@ -1394,7 +1447,6 @@ def _compute_grayscale_preview_meta(image_path: str, params: dict) -> dict:
     Compute global grayscale meta for tile preview.
     Detection will also reuse this meta, so preview and backend output stay consistent.
     """
-    from .method.grayscale import GrayscaleConverter
 
     arr = _sample_image_array_for_meta(image_path, max_side=2500)
 
@@ -1737,11 +1789,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # ---------------------------
         # 0) Initialization
         # ---------------------------
-        # image_dir = _image_dir_by_userid(user_id, image_name)
-        if not os.path.isdir(image_dir):
-            logger.error("Image dir not found: %s", image_dir)
-            _set_progress_stage(image_dir, "error")
-            return
+        image_dir = _image_dir_by_userid(user_id, image_name)
 
         orig_dir = os.path.join(image_dir, "original")
         if not os.path.isdir(orig_dir):
@@ -1749,23 +1797,48 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             _set_progress_stage(image_dir, "error")
             return
 
-        # Get the original image path; assume there's only one image in the original dir
         orig_files = [f for f in os.listdir(orig_dir) if not f.startswith(".")]
         if not orig_files:
-            logger.error("No source image (non-resized) in %s", orig_dir)
+            logger.error("No original image in %s", orig_dir)
             _set_progress_stage(image_dir, "error")
             return
 
         orig_name = orig_files[0]
         orig_path = os.path.join(orig_dir, orig_name)
 
-        # Generate resized image from original image (make its scale 0.464, which is the same as the train set)
-        # current_res = params.get("resolution")
-        # current_res = float(current_res) if current_res not in (None, "", "null") else None
+        # ---------------------------
+        # A) Original size
+        # ---------------------------
+        ow, oh = _image_size_wh(orig_path)
+        orig_size = [oh, ow]   # keep backend convention: [height, width]
+
+        # ---------------------------
+        # B) Display image
+        # ---------------------------
+        display_dir = os.path.join(image_dir, "display")
+        os.makedirs(display_dir, exist_ok=True)
+
+        display_path = _find_first_file(display_dir)
+
+        if not display_path:
+            if ow > 6000 or oh > 6000:
+                display_path = DisplayImageGenerator(
+                    image_path=orig_path,
+                    output_dir=image_dir,
+                ).generate_display_image()
+            else:
+                display_path = orig_path
+
+        dw, dh = _image_size_wh(display_path)
+        display_size = [dh, dw]
+
+        # ---------------------------
+        # C) Detection image
+        # ---------------------------
         raw_resolution = params.get("resolution")
-        user_provided_resolution = raw_resolution not in (None, "", "null")
 
         try:
+            user_provided_resolution = raw_resolution not in (None, "", "null")
             current_res = float(raw_resolution) if user_provided_resolution else 0.464
         except (TypeError, ValueError):
             user_provided_resolution = False
@@ -1775,28 +1848,18 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             user_provided_resolution = False
             current_res = 0.464
 
-        # --- training-scale resize ---
-        if current_res is not None:
-            # resized_path = ImageResizer(
-            #     image_path=orig_path,
-            #     output_dir=orig_dir,
-            #     current_res=current_res,
-            #     target_res=0.464,  # 你 training 的 um/px
-            # ).resize()  # save to original/
-            resized_path = orig_path
+        if user_provided_resolution:
+            detection_image_path = DetectionImageGenerator(
+                image_path=orig_path,
+                output_dir=image_dir,
+                current_res=current_res,
+                target_res=0.464,
+            ).generate_detection_image()
         else:
-            # if user doesn't provide resolution, skip resizing and use original image for the rest of the pipeline
-            resized_path = orig_path
+            detection_image_path = orig_path
 
-        orig_path = resized_path
-        ow, oh = _image_size_wh(orig_path)
-
-        # Decide which image to show in the viewer (if any side > 20000, create a half-size display image)
-        if oh > 20000 or ow > 20000:
-            disp_path = DisplayImageGenerator(orig_path, image_dir).generate_display_image()
-            logger.info("Resized display image created: %s", disp_path)
-        else:
-            disp_path = orig_path
+        detect_w, detect_h = _image_size_wh(detection_image_path)
+        detect_size = [detect_h, detect_w]
 
         init_stage_end = time.perf_counter()
         logger.info("Initialization done")
@@ -1860,7 +1923,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             }
 
         gcvt = GrayscaleConverter(
-            orig_path,
+            detection_image_path,
             image_dir,
             p_low=p_low,
             p_high=p_high,
@@ -1912,9 +1975,23 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
 
         model = get_yolo_model()
         patches_dir = os.path.join(image_dir, "patches")
-        pipeline = YOLOPipeline(model, patches_dir,
-                                orig_path, gray_path, image_dir)
+        pipeline = YOLOPipeline(
+            model,
+            patches_dir,
+            detection_image_path,
+            orig_path,
+            gray_path,
+            image_dir,
+            result_stem=os.path.splitext(orig_name)[0],
+
+            # YOLO detections are detection-scale first
+            result_boxes_size=detect_size,
+
+            # downloadable xxx_results.json should be original scale
+            result_output_size=orig_size,
+        )
         detections, annotated_img_path_orig, annotated_img_path_gray = pipeline.run()
+
         gc.collect()
         yolo_stage_end = time.perf_counter()
         logger.info("YOLO inference done (boxes=%d)", len(detections))
@@ -1927,13 +2004,13 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         proc_stage_start = time.perf_counter()
         _set_progress_stage(image_dir, "proc")  # enter stage 4) proc
 
-        dw, dh = _image_size_wh(disp_path)  # display image (w, h)
+        dw, dh = _image_size_wh(display_path) # display image (w, h)
 
         display_dzi_blob_name = None
         dzi_dir = None
-
+        
         try:
-            display_dzi_path, dzi_dir = generate_deepzoom_image(disp_path, image_dir)
+            display_dzi_path, dzi_dir = generate_deepzoom_image(display_path, image_dir)
 
             if display_dzi_path and dzi_dir:
                 rel_dzi_path = os.path.relpath(display_dzi_path, dzi_dir).replace("\\", "/")
@@ -1991,19 +2068,54 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             total_cell_count=len(detections),
         )
         
+        boxes_detect = detections
+
+        boxes_display = _scale_boxes(
+            boxes=boxes_detect,
+            from_size=detect_size,
+            to_size=display_size,
+        )
+
+        boxes_original = _scale_boxes(
+            boxes=boxes_detect,
+            from_size=detect_size,
+            to_size=orig_size,
+        )
+
         result = {
-            "boxes": detections,
-            "orig_size": [ow, oh],
-            "display_size": [dw, dh],
+            # frontend expects "boxes" to be display-scale
+            "boxes": boxes_display,
+
+            # explicit scale versions
+            "boxes_detect": boxes_detect,
+            "boxes_display": boxes_display,
+            "boxes_original": boxes_original,
+
+            # all sizes use [height, width]
+            "orig_size": orig_size,
+            "detect_size": detect_size,
+            "display_size": display_size,
+
             "original_filename": orig_name,
             "resolution": current_res,
+
             "grayscale_parameters": grayscale_parameters,
             "image_summary": image_summary,
+
             "display_dzi_blob_name": display_dzi_blob_name,
+
+            "scale_info": {
+                "box_scale_in_detect_result": "display",
+                "box_scale_in_result_json": "original",
+                "detection_scale": float(current_res) / 0.464 if current_res else 1.0,
+                "display_scale_x": float(display_size[1]) / float(orig_size[1]) if orig_size[1] else 1.0,
+                "display_scale_y": float(display_size[0]) / float(orig_size[0]) if orig_size[0] else 1.0,
+            },
         }
+
         result_path = os.path.join(image_dir, "_detect_result.json")
         with open(result_path, "w", encoding="utf-8") as f:
-            json.dump(result, f)
+            json.dump(result, f, ensure_ascii=False, indent=2)
 
         # Reuse the full results json already generated by YOLOPipeline._save_results()
         download_result_path = os.path.join(
@@ -2041,7 +2153,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 image_dir=image_dir,
                 orig_path=orig_path,
                 result_json_path=download_result_path,
-                resized_path=disp_path,
+                display_path=display_path,
                 detect_result_path=result_path,
                 grayscale_params_path=grayscale_params_path,
                 dzi_dir=dzi_dir,
@@ -2230,6 +2342,17 @@ def format_hms(elapsed: float) -> str:
     m, s = divmod(rem, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
 
+def _find_first_file(folder: str):
+    if not os.path.isdir(folder):
+        return None
+
+    for fn in sorted(os.listdir(folder), key=str.lower):
+        path = os.path.join(folder, fn)
+        if os.path.isfile(path) and not fn.startswith("."):
+            return path
+
+    return None
+
 # helper funtion: upload_image(), detect_image()
 def _image_size_wh(path: str):
     """Read image size using Pillow. Returns (w, h)."""
@@ -2331,6 +2454,51 @@ def _to_media_url(abs_path: str) -> str:
     """Convert absolute path to MEDIA URL usable by frontend."""
     rel = os.path.relpath(abs_path, settings.MEDIA_ROOT).replace('\\', '/')
     return os.path.join(settings.MEDIA_URL, rel)
+
+def _scale_boxes(boxes, from_size, to_size):
+    if not isinstance(boxes, list):
+        return []
+
+    try:
+        from_h, from_w = from_size
+        to_h, to_w = to_size
+
+        from_w = float(from_w or 0)
+        from_h = float(from_h or 0)
+        to_w = float(to_w or 0)
+        to_h = float(to_h or 0)
+
+        if from_w <= 0 or from_h <= 0 or to_w <= 0 or to_h <= 0:
+            return boxes
+
+        scale_x = to_w / from_w
+        scale_y = to_h / from_h
+
+        if abs(scale_x - 1.0) < 1e-9 and abs(scale_y - 1.0) < 1e-9:
+            return boxes
+
+        scaled = []
+
+        for b in boxes:
+            coords = b.get("coords")
+            if not isinstance(coords, list) or len(coords) < 4:
+                continue
+
+            scaled.append({
+                **b,
+                "coords": [
+                    coords[0] * scale_x,
+                    coords[1] * scale_y,
+                    coords[2] * scale_x,
+                    coords[3] * scale_y,
+                ]
+            })
+
+        return scaled
+
+    except Exception:
+        logger.exception("Failed to scale boxes")
+        return boxes
 
 def _grayscale_preview_meta_dir(image_dir: str) -> str:
     d = os.path.join(image_dir, "grayscale_preview_meta")
@@ -2518,6 +2686,9 @@ def rename_image(request):
         old_original = _blob_name_for_original(user_id, old_image_name, original_filename)
         new_original = _blob_name_for_original(user_id, new_image_name, original_filename)
 
+        old_display = _blob_name_for_display(user_id, old_image_name, f"{old_image_name}_display.jpg")
+        new_display = _blob_name_for_display(user_id, new_image_name, f"{new_image_name}_display.jpg")
+
         old_chart = _blob_name_for_result(user_id, old_image_name, f"{old_image_name}_chart.png")
         new_chart = _blob_name_for_result(user_id, new_image_name, f"{new_image_name}_chart.png")
 
@@ -2554,6 +2725,9 @@ def rename_image(request):
         try:
             _copy_blob(old_original, new_original)
 
+            if _blob_exists(old_display):
+                _copy_blob(old_display, new_display)
+
             if _blob_exists(old_chart):
                 _copy_blob(old_chart, new_chart)
 
@@ -2589,7 +2763,9 @@ def rename_image(request):
         _delete_local_image_dir_by_userid(user_id, old_image_name)
         state_rename_image(user_id, old_image_name, new_image_name)
 
-        new_display_url = _blob_original_url(user_id, new_image_name, original_filename) if original_filename else ""
+        new_display_url = _blob_display_url(user_id, new_image_name)
+        if not new_display_url and original_filename:
+            new_display_url = _blob_original_url(user_id, new_image_name, original_filename) or ""
 
         return JsonResponse({
             "success": True,

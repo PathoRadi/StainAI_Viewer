@@ -136,11 +136,11 @@ class DisplayImageGenerator:
         """
         Resize the image by resize_factor and save to the output directory.
         """
-        resized_dir = os.path.join(self.output_dir, "resized")
-        os.makedirs(resized_dir, exist_ok=True)
+        display_dir = os.path.join(self.output_dir, "display")
+        os.makedirs(display_dir, exist_ok=True)
 
         base, _ = os.path.splitext(os.path.basename(self.image_path))
-        out_path = os.path.join(resized_dir, f"{base}_resized.jpg")
+        out_path = os.path.join(display_dir, f"{base}_display.jpg")
 
         if _HAS_VIPS:
             try:

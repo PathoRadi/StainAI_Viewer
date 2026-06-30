@@ -1604,12 +1604,9 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
 
   function handleDetectionResult(d, imageDir) {
-    const boxes         = d.boxes;
-    const [origW,origH] = d.orig_size;
-    const [dispW,dispH] = d.display_size;
-
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
+    const boxes = Array.isArray(d.boxes_display)
+      ? d.boxes_display
+      : (Array.isArray(d.boxes) ? d.boxes : []);
 
     window.currentImageMeta = {
       imageName: imageDir || '',
@@ -1624,18 +1621,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
           : null,
     };
 
-    // scale boxes for viewer display
-    window.bboxData = (scaleX !== 1 || scaleY !== 1)
-      ? boxes.map(b => ({
-          type: b.type,
-          coords: [
-            b.coords[0] * scaleX,
-            b.coords[1] * scaleY,
-            b.coords[2] * scaleX,
-            b.coords[3] * scaleY
-          ]
-        }))
-      : boxes.slice();
+    window.bboxData = boxes.slice();
 
     // UI update
     document.getElementById('drop-zone').style.display = 'none';
@@ -1700,12 +1686,25 @@ export function initProcess(bboxData, historyStack, barChartRef) {
       imageName: d.image_name || imageDir,
       location: d.location || 'images',
       projectName: (d.location && d.location !== 'images') ? d.location : '',
-      displayUrl: d.display_url,
+
+      displayUrl: d.display_url || '',
       displayDziUrl: d.display_dzi_url || '',
+
       boxes: window.bboxData.slice(),
-      origSize: d.orig_size,
-      dispSize: d.display_size,
+
+      // optional debug / future use
+      boxesDisplay: Array.isArray(d.boxes_display) ? d.boxes_display : window.bboxData.slice(),
+      boxesDetect: Array.isArray(d.boxes_detect) ? d.boxes_detect : [],
+      boxesOriginal: Array.isArray(d.boxes_original) ? d.boxes_original : [],
+
+      origSize: Array.isArray(d.orig_size) ? d.orig_size : [0, 0],
+      detectSize: Array.isArray(d.detect_size) ? d.detect_size : [0, 0],
+      dispSize: Array.isArray(d.display_size) ? d.display_size : [0, 0],
+
+      scaleInfo: d.scale_info || null,
+
       demo: !!window.isDemoUpload,
+
       resolution:
         Number.isFinite(Number(d.resolution)) && Number(d.resolution) > 0
           ? Number(d.resolution)
@@ -1791,7 +1790,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     // New detection flow: close modal → show progress → call backend
     closeSettingsModal();
 
-    window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });
+    // window.viewer.open({ type: 'image', url: window.imgPath, buildPyramid: false });
     showProgressOverlay();
     startStageWatcher(imageDir);
     clearBoxes();

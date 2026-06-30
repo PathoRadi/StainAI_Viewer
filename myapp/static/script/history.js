@@ -208,41 +208,6 @@ export function initHistoryHandlers(historyStack) {
     }
   }
 
-  function toDisplayScaleBoxes(item) {
-    const boxes = Array.isArray(item?.boxes) ? item.boxes : [];
-    const origSize = Array.isArray(item?.origSize) ? item.origSize : [];
-    const dispSize = Array.isArray(item?.dispSize) ? item.dispSize : [];
-
-    if (origSize.length < 2 || dispSize.length < 2) {
-      return boxes.slice();
-    }
-
-    const [origW, origH] = origSize;
-    const [dispW, dispH] = dispSize;
-
-    if (!origW || !origH || !dispW || !dispH) {
-      return boxes.slice();
-    }
-
-    const scaleX = dispW / origW;
-    const scaleY = dispH / origH;
-
-    // if no scaling, return original boxes to avoid unnecessary object creation (and potential Konva redraw)
-    if (scaleX === 1 && scaleY === 1) {
-      return boxes.slice();
-    }
-
-    return boxes.map(b => ({
-      ...b,
-      coords: [
-        b.coords[0] * scaleX,
-        b.coords[1] * scaleY,
-        b.coords[2] * scaleX,
-        b.coords[3] * scaleY
-      ]
-    }));
-  }
-
   function openImageWithFallback(item) {
     const viewer = window.viewer;
     if (!viewer) return false;
@@ -319,19 +284,32 @@ export function initHistoryHandlers(historyStack) {
     window.viewer.addOnceHandler('open', () => {
       $('#progress-overlay1').hide().removeClass('active');
 
-      window.bboxData = toDisplayScaleBoxes(item);
+      const boxes = Array.isArray(item.boxesDisplay)
+        ? item.boxesDisplay
+        : (Array.isArray(item.boxes) ? item.boxes : []);
+
+      window.bboxData = boxes.slice();
+
+      const origSize = Array.isArray(item.origSize) ? item.origSize : [0, 0];
 
       window.currentImageMeta = {
         imageName: item.imageName || item.name || item.dir || '',
-        origSize: Array.isArray(item.origSize) ? item.origSize : [0, 0],
+
+        origSize,
+        detectSize: Array.isArray(item.detectSize) ? item.detectSize : [0, 0],
+        dispSize: Array.isArray(item.dispSize) ? item.dispSize : [0, 0],
+
         totalPixels:
-          Array.isArray(item.origSize) && item.origSize.length >= 2
-            ? (Number(item.origSize[0]) || 0) * (Number(item.origSize[1]) || 0)
+          origSize.length >= 2
+            ? (Number(origSize[0]) || 0) * (Number(origSize[1]) || 0)
             : 0,
+
         resolution:
           Number.isFinite(Number(item.resolution)) && Number(item.resolution) > 0
             ? Number(item.resolution)
             : null,
+
+        scaleInfo: item.scaleInfo || null,
       };
 
       try {
