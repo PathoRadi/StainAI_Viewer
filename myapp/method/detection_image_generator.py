@@ -1,7 +1,14 @@
 # myapp/method/detection_image_generator.py
 import os
-import pyvips
 
+try:
+    import pyvips
+    _HAS_VIPS = True
+except Exception:
+    pyvips = None
+    _HAS_VIPS = False
+
+from PIL import Image
 
 class DetectionImageGenerator:
     def __init__(self, image_path, output_dir, current_res=None, target_res=0.464):
