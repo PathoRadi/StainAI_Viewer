@@ -113,12 +113,6 @@ class YOLOPipeline:
             labels
         )
 
-        # annotated_img_path_gray = self.annotate_large_image(
-        #     self.gray_image_path,
-        #     bbox,
-        #     labels
-        # )
-
         chart_path = self.save_full_image_barchart(
             detections,
             self.detection_image_path
@@ -128,7 +122,6 @@ class YOLOPipeline:
         self.log.info("Generating annotated image done")
         gc.collect()
 
-        # return detections, annotated_img_path_orig, annotated_img_path_gray
         return detections, annotated_img_path_orig
         
 
@@ -799,7 +792,7 @@ class YOLOPipeline:
         )
 
         boxes_i = boxes_for_output.astype(np.int32, copy=False)
-        
+
         x1, y1, x2, y2 = boxes_i.T
         w  = (x2 - x1).astype(np.int32)
         h  = (y2 - y1).astype(np.int32)
@@ -1033,7 +1026,7 @@ class YOLOPipeline:
         return out_path
     
     def save_full_image_barchart(self, detections, in_path):
-        out_name = os.path.basename(in_path)
+        out_name = self.project
         out_name = os.path.splitext(out_name)[0]
 
         self.log.info("Entering save_full_image_barchart, _HAS_MPL=%s", _HAS_MPL)

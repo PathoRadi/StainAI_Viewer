@@ -1605,41 +1605,74 @@ def grayscale_preview_meta(request):
         return JsonResponse({"success": False, "message": str(e)}, status=500)
     
 def _extract_region_with_padding(image_path: str, x: int, y: int, w: int, h: int, pad: int):
-    import pyvips
+    read_x = None
+    read_y = None
 
-    img = pyvips.Image.new_from_file(image_path, access="random")
+    # Fast path: pyvips
+    try:
+        import pyvips
 
-    img_w = img.width
-    img_h = img.height
+        img = pyvips.Image.new_from_file(image_path, access="random")
 
-    read_x = max(0, x - pad)
-    read_y = max(0, y - pad)
-    read_r = min(img_w, x + w + pad)
-    read_b = min(img_h, y + h + pad)
+        img_w = img.width
+        img_h = img.height
 
-    read_w = max(1, read_r - read_x)
-    read_h = max(1, read_b - read_y)
+        read_x = max(0, x - pad)
+        read_y = max(0, y - pad)
+        read_r = min(img_w, x + w + pad)
+        read_b = min(img_h, y + h + pad)
 
-    region = img.extract_area(read_x, read_y, read_w, read_h)
+        read_w = max(1, read_r - read_x)
+        read_h = max(1, read_b - read_y)
 
-    if region.bands > 3:
-        region = region[:3]
+        region = img.extract_area(read_x, read_y, read_w, read_h)
 
-    if region.format not in ("uchar",):
-        region = region.cast("uchar")
+        if region.bands > 3:
+            region = region[:3]
 
-    mem = region.write_to_memory()
-    arr = np.frombuffer(mem, dtype=np.uint8)
+        if region.format not in ("uchar",):
+            region = region.cast("uchar")
 
-    if region.bands == 1:
-        arr = arr.reshape(region.height, region.width)
-    else:
-        arr = arr.reshape(region.height, region.width, region.bands)
+        mem = region.write_to_memory()
+        arr = np.frombuffer(mem, dtype=np.uint8)
 
-    inner_left = x - read_x
-    inner_top = y - read_y
+        if region.bands == 1:
+            arr = arr.reshape(region.height, region.width)
+        else:
+            arr = arr.reshape(region.height, region.width, region.bands)
 
-    return arr, inner_left, inner_top
+        inner_left = x - read_x
+        inner_top = y - read_y
+
+        return arr, inner_left, inner_top
+
+    except Exception:
+        logger.warning("pyvips unavailable for preview tile; fallback to PIL", exc_info=True)
+
+    # Fallback: PIL
+    Image.MAX_IMAGE_PIXELS = None
+
+    with Image.open(image_path) as im:
+        img_w, img_h = im.size
+
+        read_x = max(0, x - pad)
+        read_y = max(0, y - pad)
+        read_r = min(img_w, x + w + pad)
+        read_b = min(img_h, y + h + pad)
+
+        crop = im.crop((read_x, read_y, read_r, read_b))
+
+        if crop.mode in ("RGBA", "LA", "P"):
+            crop = crop.convert("RGB")
+        elif crop.mode not in ("RGB", "L"):
+            crop = crop.convert("RGB")
+
+        arr = np.array(crop)
+
+        inner_left = x - read_x
+        inner_top = y - read_y
+
+        return arr, inner_left, inner_top
 
 @require_GET
 def grayscale_preview_tile(request):
