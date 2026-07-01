@@ -2086,6 +2086,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         )
         
         boxes_detect = detections
+        display_size = orig_size
 
         boxes_display = _scale_boxes(
             boxes=boxes_detect,
