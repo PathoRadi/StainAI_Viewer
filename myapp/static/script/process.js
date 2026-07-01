@@ -616,7 +616,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     return Number(val).toFixed(decimals);
   }
 
-  function openSettingsModal(fileName) {
+  async function openSettingsModal(fileName) {
     if (!settingsOverlay) return;
 
     settingsOverlay.hidden = false;
@@ -628,20 +628,60 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     applyParamsToUI(pendingParams);
     syncAllRangeFills();
 
-    // Method 2: use global variables set by Django template (previewUrl, displayUrl, imgPath) to determine the image source for preview (which may be the original image or a placeholder/error image depending on the state)
+    previewBase = null;
+    previewFluoChannelInfo = null;
+
+    const previewSrc =
+      window.previewUrl ||
+      window.displayUrl ||
+      window.imgPath ||
+      '';
+
+    // 不再使用 OSD tile preview
+    if (settingsPreviewOSD) {
+      settingsPreviewOSD.style.display = 'none';
+      settingsPreviewOSD.classList.remove('active');
+
+      try {
+        settingsOSDViewer?.destroy?.();
+      } catch (_) {}
+
+      settingsOSDViewer = null;
+    }
+
     if (settingsPreviewImg) {
-      settingsPreviewImg.removeAttribute('src');
-      settingsPreviewImg.style.display = 'none';
-      settingsPreviewImg.style.visibility = 'hidden';
+      if (previewSrc) {
+        settingsPreviewImg.src = previewSrc;
+        settingsPreviewImg.style.display = 'block';
+        settingsPreviewImg.style.visibility = 'visible';
+      } else {
+        settingsPreviewImg.removeAttribute('src');
+        settingsPreviewImg.style.display = 'none';
+        settingsPreviewImg.style.visibility = 'hidden';
+      }
     }
 
     if (settingsCanvas) {
       settingsCanvas.style.display = 'none';
+
+      const ctx = settingsCanvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, settingsCanvas.width, settingsCanvas.height);
+      }
     }
 
-    if (settingsPreviewOSD) {
-      settingsPreviewOSD.style.display = 'block';
-      settingsPreviewOSD.classList.add('active');
+    let ok = false;
+    if (previewSrc) {
+      ok = await buildPreviewBaseFromBlob(previewSrc);
+    }
+
+    if (ok) {
+      const mode = detectModeFromPreviewBase(previewBase, 110);
+      previewFluoChannelInfo = (mode === 'fluorescence')
+        ? selectFluorescenceChannelFromPreviewBase(previewBase)
+        : null;
+
+      renderRealtimePreview();
     }
   }
 
@@ -1155,10 +1195,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     clearTimeout(previewTimer);
 
     previewTimer = setTimeout(() => {
-      openBackendGrayscaleTilePreview().catch(err => {
-        console.error('Backend tile preview failed:', err);
-      });
-    }, 500);
+      renderRealtimePreview();
+    }, 120);
   }
 
   function renderRealtimePreview() {
@@ -1382,10 +1420,7 @@ export function initProcess(bboxData, historyStack, barChartRef) {
     settingsResetBtn.addEventListener('click', () => {
       pendingParams = defaultParams();
       applyParamsToUI(pendingParams);
-
-      openBackendGrayscaleTilePreview().catch(err => {
-        console.error('Reset backend tile preview failed:', err);
-      });
+      renderRealtimePreview();
     });
   }
 
@@ -1544,6 +1579,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   function resetPendingUpload() {
     window.imgPath = '';
+    window.displayUrl = '';
+    window.previewUrl = '';
     window.isDemoUpload = false;
 
     pendingImageDir = null;
@@ -1640,12 +1677,6 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         pendingParams = defaultParams();
 
         openSettingsModal(file?.name || '');
-
-        setTimeout(() => {
-          openBackendGrayscaleTilePreview().catch(err => {
-            console.error('Initial backend tile preview failed:', err);
-          });
-        }, 0);
       })
       .catch(err => {
         console.error('Upload error:', err);

@@ -1245,16 +1245,20 @@ def upload_image(request):
             ow, oh = _image_size_wh(original_path)
 
             if ow > 6000 or oh > 6000:
-                # Do not generate small preview image anymore.
-                # Grayscale setting modal will use backend tile preview.
-                preview_url = ""
-                display_url = image_url
+                disp_path = DisplayImageGenerator(
+                    image_path=original_path,
+                    output_dir=image_dir,
+                    max_side=4000,
+                ).generate_display_image()
+
+                preview_url = _to_media_url(disp_path)
+                display_url = preview_url
             else:
                 preview_url = image_url
                 display_url = image_url
 
         except Exception:
-            logger.exception("Failed to prepare upload response")
+            logger.exception("Failed to generate preview/display image during upload")
             preview_url = image_url
             display_url = image_url
 
@@ -1263,7 +1267,7 @@ def upload_image(request):
             'preview_url': preview_url,
             'display_url': display_url,
             'image_name': image_name,
-            'orig_size': [ow, oh],
+            'orig_size': [oh, ow],
             'total_pixels': int(ow * oh),
         })
 
@@ -1904,47 +1908,6 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             p_high=p_high,
         )
 
-        preview_meta = None
-
-        try:
-            preview_meta = _get_or_create_grayscale_preview_meta(
-                image_dir,
-                orig_path,
-                {
-                    "p_low": p_low,
-                    "p_high": p_high,
-                    "gamma": gamma,
-                    "gain": gain,
-                    "bg_radius": int(params.get("bg_radius", 101) or 101),
-                    "bg_mode": str(params.get("bg_mode", "subtract") or "subtract"),
-                    "do_bg_correction": bool(params.get("do_bg_correction", True)),
-                }
-            )
-        except Exception:
-            logger.exception("Failed to load grayscale preview meta; fallback to auto full-image grayscale")
-            preview_meta = None
-
-        fixed_meta = None
-        if preview_meta:
-            fixed_meta = {
-                "mode": preview_meta.get("mode"),
-                "channel": preview_meta.get("channel"),
-                "lo": preview_meta.get("lo"),
-                "hi": preview_meta.get("hi"),
-            }
-
-        is_large_image = (ow * oh) > 100_000_000  # 例如超過 100MP 就當大圖
-
-        do_bg_correction = bool(params.get("do_bg_correction", True))
-
-        # 大圖先關掉 full-image background correction，避免卡死
-        if is_large_image:
-            do_bg_correction = False
-            logger.info(
-                "Large image detected (%sx%s); disable background correction for speed",
-                ow, oh
-            )
-
         gcvt = GrayscaleConverter(
             detection_image_path,
             image_dir,
@@ -1953,10 +1916,6 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             gamma=gamma,
             gain=gain,
             write_u8_png=False,
-            bg_radius=int(params.get("bg_radius", 101) or 101),
-            bg_mode=str(params.get("bg_mode", "subtract") or "subtract"),
-            do_bg_correction=do_bg_correction,
-            fixed_meta=fixed_meta,
         )
 
         gcvt.convert_to_grayscale_auto()

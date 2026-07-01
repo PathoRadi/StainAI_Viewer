@@ -1,4 +1,3 @@
-# displayed_image.py
 import os
 
 try:
@@ -9,115 +8,96 @@ except Exception:
 
 from PIL import Image
 
+
 class DisplayImageGenerator:
-    def __init__(self, image_path, output_dir, resize_factor=0.5):
+    def __init__(self, image_path, output_dir, max_side=4000):
         """
-        Initialize the ImageResizer with the path to the image and output directory.
-        Arg:
+        Generate a smaller display / preview image for very large inputs.
+
+        Args:
             image_path: Path to the input image file.
-            output_dir: Directory where the resized image will be saved.
+            output_dir: Directory where the resized image folder will be created.
+            max_side: Maximum allowed width/height of output image.
         """
         self.image_path = image_path
         self.output_dir = output_dir
-        self.resize_factor = resize_factor
+        self.max_side = int(max_side)
 
-    # -------- vips --------
+    def _calc_target_size(self, orig_w, orig_h):
+        if self.max_side <= 0:
+            raise ValueError("max_side must be > 0")
+
+        scale = min(1.0, self.max_side / float(max(orig_w, orig_h)))
+        new_w = max(int(round(orig_w * scale)), 1)
+        new_h = max(int(round(orig_h * scale)), 1)
+        return new_w, new_h, scale
+
     def _generate_with_vips(self, src_path, dst_path):
-        # Validate resize factor
-        # For factor < 1: use thumbnail (efficient, avoids full image decode)
-        # For factor >= 1: read and resize (maintains aspect ratio)
-        # Output: JPEG with Q=90, progressive encoding
-        # Handle alpha channel by flattening to white background
-        # Ensure final output is 8-bit uchar format
-        if self.resize_factor <= 0:
-            raise ValueError("resize_factor must be > 0")
-
-        # try to read image header first to get dimensions without full decode
-        header = pyvips.Image.new_from_file(src_path, access="sequential", memory=False, fail=False)
+        header = pyvips.Image.new_from_file(
+            src_path,
+            access="sequential",
+            memory=False,
+            fail=False
+        )
         orig_w, orig_h = int(header.width), int(header.height)
-        new_w = max(int(orig_w * self.resize_factor), 1)
-        new_h = max(int(orig_h * self.resize_factor), 1)
+        new_w, new_h, scale = self._calc_target_size(orig_w, orig_h)
 
-        # factor < 1 use thumbnail for efficient downscaling; factor >= 1 read and resize
-        if self.resize_factor < 1.0:
-            # libvips thumbnail optimizes downscaling with fast integer scaling and resampling
-            # To maintain aspect ratio, target the smaller side to avoid distortion
-            # vips scales proportionally based on original aspect ratio; minor 1-2px side differences are acceptable
-            # For exact (new_w, new_h) pixels, use the general resize branch instead
-            shrink_w = new_w
-            shrink_h = new_h
-            # Write directly to file, avoid creating large intermediate images
-            # Generate to temp first, then post-process alpha and color
-            thumb = pyvips.Image.thumbnail(src_path, shrink_w, height=shrink_h, auto_rotate=True)
-            # use thumbnail's auto_rotate to handle EXIF orientation; if it fails, fallback to normal read and resize
-            if thumb.hasalpha():
-                thumb = thumb.flatten(background=[255, 255, 255])
+        if scale >= 1.0:
+            im = pyvips.Image.new_from_file(src_path, access="sequential")
 
-            # convert to 8-bit
-            if thumb.format != "uchar":
-                thumb = thumb.cast("uchar")
+            if im.hasalpha():
+                im = im.flatten(background=[255, 255, 255])
 
-            # Convert to sRGB (some images have ICC profiles; converting to standard color space before JPEG save is more stable)
-            if thumb.interpretation not in (pyvips.Interpretation.srgb, pyvips.Interpretation.B_W):
+            if im.format != "uchar":
+                im = im.cast("uchar")
+
+            if im.interpretation not in (
+                pyvips.Interpretation.srgb,
+                pyvips.Interpretation.B_W
+            ):
                 try:
-                    thumb = thumb.colourspace(pyvips.Interpretation.srgb)
+                    im = im.colourspace(pyvips.Interpretation.srgb)
                 except Exception:
                     pass
 
-            thumb.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
+            im.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
             return dst_path
 
-        # factor >= 1： read full image and resize (maintains aspect ratio)
-        im = pyvips.Image.new_from_file(src_path, access="sequential")
-        # white background for alpha
-        if im.hasalpha():
-            im = im.flatten(background=[255, 255, 255])
+        thumb = pyvips.Image.thumbnail(
+            src_path,
+            new_w,
+            height=new_h,
+            auto_rotate=True
+        )
 
-        # scale to new size; vips maintains aspect ratio
-        im = im.resize(self.resize_factor)
+        if thumb.hasalpha():
+            thumb = thumb.flatten(background=[255, 255, 255])
 
-        # convert to 8-bit
-        if im.format != "uchar":
-            im = im.cast("uchar")
+        if thumb.format != "uchar":
+            thumb = thumb.cast("uchar")
 
-        # convert to sRGB (some images have ICC profiles; 
-        # converting to standard color space before JPEG save is more stable)
-        if im.interpretation not in (pyvips.Interpretation.srgb, pyvips.Interpretation.B_W):
+        if thumb.interpretation not in (
+            pyvips.Interpretation.srgb,
+            pyvips.Interpretation.B_W
+        ):
             try:
-                im = im.colourspace(pyvips.Interpretation.srgb)
+                thumb = thumb.colourspace(pyvips.Interpretation.srgb)
             except Exception:
                 pass
 
-        im.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
+        thumb.jpegsave(dst_path, Q=90, optimize_coding=True, interlace=True)
         return dst_path
 
-    # -------- PIL --------
     def _generate_with_pil(self, src_path, dst_path):
-        """
-        Generate a JPEG image from the source path using PIL.
+        Image.MAX_IMAGE_PIXELS = None
 
-        Resizes the image by self.resize_factor, chooses LANCZOS for normal sizes
-        and BILINEAR for extremely large images, and ensures the saved output is
-        RGB with a white background for images that have transparency.
-
-        Parameters:
-            src_path (str): Path to the source image.
-            dst_path (str): Path where the generated JPEG will be saved.
-
-        Returns:
-            str: The destination path.
-        """
         with Image.open(src_path) as im:
             orig_w, orig_h = im.size
-            new_w = max(int(orig_w * self.resize_factor), 1)
-            new_h = max(int(orig_h * self.resize_factor), 1)
+            new_w, new_h, _ = self._calc_target_size(orig_w, orig_h)
 
-            # For very large images, LANCZOS can be extremely slow; 
-            # BILINEAR is faster and still decent quality for large downscaling
-            resample = Image.LANCZOS if max(orig_w, orig_h) <= 20000 else Image.BILINEAR
+            resample = Image.Resampling.BILINEAR if max(orig_w, orig_h) > 20000 else Image.Resampling.LANCZOS
             im_resized = im.resize((new_w, new_h), resample=resample)
 
-            # JPEG must be RGB; if image has alpha, composite onto white background
             if im_resized.mode in ("RGBA", "LA", "P"):
                 bg = Image.new("RGB", im_resized.size, (255, 255, 255))
                 if im_resized.mode in ("RGBA", "LA"):
@@ -128,13 +108,19 @@ class DisplayImageGenerator:
             elif im_resized.mode != "RGB":
                 im_resized = im_resized.convert("RGB")
 
-            im_resized.save(dst_path, format="JPEG", quality=90, optimize=True, progressive=True)
+            im_resized.save(
+                dst_path,
+                format="JPEG",
+                quality=90,
+                optimize=True,
+                progressive=True
+            )
 
         return dst_path
 
     def generate_display_image(self):
         """
-        Resize the image by resize_factor and save to the output directory.
+        Resize the image to fit within max_side and save to output_dir/display.
         """
         display_dir = os.path.join(self.output_dir, "display")
         os.makedirs(display_dir, exist_ok=True)
@@ -146,7 +132,6 @@ class DisplayImageGenerator:
             try:
                 return self._generate_with_vips(self.image_path, out_path)
             except Exception:
-                # In case of any error with vips (e.g., unsupported format, memory issues), fallback to PIL
                 pass
 
         return self._generate_with_pil(self.image_path, out_path)
