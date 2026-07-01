@@ -1933,6 +1933,18 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 "hi": preview_meta.get("hi"),
             }
 
+        is_large_image = (ow * oh) > 100_000_000  # 例如超過 100MP 就當大圖
+
+        do_bg_correction = bool(params.get("do_bg_correction", True))
+
+        # 大圖先關掉 full-image background correction，避免卡死
+        if is_large_image:
+            do_bg_correction = False
+            logger.info(
+                "Large image detected (%sx%s); disable background correction for speed",
+                ow, oh
+            )
+
         gcvt = GrayscaleConverter(
             detection_image_path,
             image_dir,
@@ -1943,7 +1955,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             write_u8_png=False,
             bg_radius=int(params.get("bg_radius", 101) or 101),
             bg_mode=str(params.get("bg_mode", "subtract") or "subtract"),
-            do_bg_correction=bool(params.get("do_bg_correction", True)),
+            do_bg_correction=do_bg_correction,
             fixed_meta=fixed_meta,
         )
 
