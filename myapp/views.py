@@ -1813,12 +1813,14 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
 
         orig_name = orig_files[0]
         orig_path = os.path.join(orig_dir, orig_name)
+        logger.info("Get Original Image Info Done")
 
         # ---------------------------
         # A) Original size
         # ---------------------------
         ow, oh = _image_size_wh(orig_path)
         orig_size = [oh, ow]   # keep backend convention: [height, width]
+        logger.info("Get Original Image Size Done")
 
         # ---------------------------
         # B) Display image
@@ -1870,6 +1872,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         detect_size = [detect_h, detect_w]
 
         init_stage_end = time.perf_counter()
+        logger.info("Create detection image done")
         logger.info("Initialization done")
 
 
