@@ -496,32 +496,6 @@ def _blob_original_url(user_id, image_name, filename):
 
     return f"{blob_client.url}?{sas_token}"
 
-# def _blob_resized_url(user_id, image_name):
-#     path = f"{user_id}/images/{image_name}/resized/{image_name}_resized.png"
-
-#     client = _blob_service_client()
-#     if client is None:
-#         return None
-
-#     blob_client = client.get_blob_client(
-#         container=settings.AZURE_BLOB_CONTAINER_NAME,
-#         blob=path
-#     )
-
-#     if not blob_client.exists():
-#         return None
-
-#     sas_token = generate_blob_sas(
-#         account_name=blob_client.account_name,
-#         container_name=settings.AZURE_BLOB_CONTAINER_NAME,
-#         blob_name=path,
-#         account_key=settings.AZURE_ACCOUNT_KEY,
-#         permission=BlobSasPermissions(read=True),
-#         expiry=datetime.utcnow() + timedelta(hours=2)
-#     )
-
-#     return f"{blob_client.url}?{sas_token}"
-
 def _blob_dzi_url(user_id: str, image_name: str, dzi_blob_name: str | None):
     if not dzi_blob_name:
         return None
@@ -809,7 +783,7 @@ def upload_detection_outputs_to_blob(
     image_dir: str,
     orig_path: str,
     result_json_path: str,
-    display_path: str | None = None,
+    # display_path: str | None = None,
     detect_result_path: str | None = None,
     grayscale_params_path: str | None = None,
     dzi_dir: str | None = None,
@@ -859,11 +833,11 @@ def upload_detection_outputs_to_blob(
         logger.warning("chart png not found: %s", chart_path)
 
     # upload resized display image
-    if display_path and os.path.exists(display_path):
-        _upload_file_to_blob(
-            display_path,
-            _blob_name_for_display(user_id, image_name, f"{image_name}_display.jpg")
-        )
+    # if display_path and os.path.exists(display_path):
+    #     _upload_file_to_blob(
+    #         display_path,
+    #         _blob_name_for_display(user_id, image_name, f"{image_name}_display.jpg")
+    #     )
 
     # upload DZI tiles
     try:
@@ -1849,22 +1823,22 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # ---------------------------
         # B) Display image
         # ---------------------------
-        display_dir = os.path.join(image_dir, "display")
-        os.makedirs(display_dir, exist_ok=True)
+        # display_dir = os.path.join(image_dir, "display")
+        # os.makedirs(display_dir, exist_ok=True)
 
-        display_path = _find_first_file(display_dir)
+        # display_path = _find_first_file(display_dir)
 
-        if not display_path:
-            if ow > 6000 or oh > 6000:
-                display_path = DisplayImageGenerator(
-                    image_path=orig_path,
-                    output_dir=image_dir,
-                ).generate_display_image()
-            else:
-                display_path = orig_path
+        # if not display_path:
+        #     if ow > 6000 or oh > 6000:
+        #         display_path = DisplayImageGenerator(
+        #             image_path=orig_path,
+        #             output_dir=image_dir,
+        #         ).generate_display_image()
+        #     else:
+        #         display_path = orig_path
 
-        dw, dh = _image_size_wh(display_path)
-        display_size = [dh, dw]
+        # dw, dh = _image_size_wh(display_path)
+        # display_size = [dh, dw]
 
         # ---------------------------
         # C) Detection image
@@ -2039,9 +2013,9 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         proc_stage_start = time.perf_counter()
         _set_progress_stage(image_dir, "proc")  # enter stage 4) proc
 
-        dw, dh = _image_size_wh(display_path) # display image (w, h)
+        # dw, dh = _image_size_wh(display_path) # display image (w, h)
 
-        display_dzi_blob_name = None
+        # display_dzi_blob_name = None
         dzi_dir = None
         
         try:
@@ -2193,7 +2167,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 image_dir=image_dir,
                 orig_path=orig_path,
                 result_json_path=download_result_path,
-                display_path=display_path,
+                # display_path=display_path,
                 detect_result_path=result_path,
                 grayscale_params_path=grayscale_params_path,
                 dzi_dir=dzi_dir,
