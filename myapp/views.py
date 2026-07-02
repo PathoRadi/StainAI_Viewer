@@ -405,18 +405,21 @@ def _upload_json_to_blob(blob_name: str, payload: dict) -> str | None:
 
 def _delete_blob_prefix(prefix: str, batch_size: int = 256) -> dict:
     """
-    Stable and fast synchronous blob folder delete.
+    Delete an Azure Blob virtual folder robustly.
 
-    - Synchronous: delete_image waits until Azure delete request finishes.
-    - Batch delete: much faster than one-by-one delete.
-    - Exact folder only: avoids deleting CR1 slide 10_n60 when deleting CR1 slide 10.
-    - No verification list after delete: avoids modal hanging for DZI folders.
+    Azure Blob folders are virtual. The folder disappears only when:
+    - all blobs under prefix/ are deleted
+    - optional folder marker blobs are deleted, e.g.
+      4/images/image_name
+      4/images/image_name/
+      4/images/image_name/dzi/
     """
     client = _blob_service_client()
     if client is None:
         return {
             "found": 0,
             "deleted": 0,
+            "remaining": 0,
             "failed": 0,
             "errors": ["Blob client is not configured"],
         }
@@ -429,79 +432,95 @@ def _delete_blob_prefix(prefix: str, batch_size: int = 256) -> dict:
 
     exact_folder_prefix = clean_prefix + "/"
 
-    candidates = []
+    candidates = set()
 
-    # Use clean_prefix first so root marker can be included.
-    # Then filter exact folder only.
+    # 1) Add possible folder marker blobs.
+    # These may or may not exist, but trying to delete them is safe.
+    candidates.add(clean_prefix)
+    candidates.add(exact_folder_prefix)
+
+    # 2) Add every real blob under this exact image folder.
+    # Use clean_prefix first, then exact-filter to avoid deleting similar names:
+    # CR1 slide 10 should not delete CR1 slide 10_n60.
     for blob in container_client.list_blobs(name_starts_with=clean_prefix):
         name = blob.name
 
         if name == clean_prefix or name.startswith(exact_folder_prefix):
-            candidates.append(name)
+            candidates.add(name)
+
+    # Delete deepest paths first.
+    candidates = sorted(candidates, key=lambda x: x.count("/"), reverse=True)
 
     stats = {
         "found": len(candidates),
         "deleted": 0,
+        "remaining": 0,
         "failed": 0,
         "errors": [],
     }
 
     logger.info(
-        "Blob delete start prefix=%s found=%s",
+        "Blob folder delete start prefix=%s candidates=%s",
         clean_prefix,
         len(candidates),
     )
 
-    if not candidates:
-        return stats
-
-    for i in range(0, len(candidates), batch_size):
-        batch = candidates[i:i + batch_size]
-
+    # 3) Delete one by one.
+    # For your case, correctness is more important than fancy batch behavior.
+    for name in candidates:
         try:
-            container_client.delete_blobs(
-                *batch,
+            container_client.delete_blob(
+                name,
                 delete_snapshots="include",
-                raise_on_any_failure=True,
             )
-            stats["deleted"] += len(batch)
+            stats["deleted"] += 1
 
         except ResourceNotFoundError:
-            # Already gone counts as deleted.
-            stats["deleted"] += len(batch)
+            # Already gone is OK.
+            stats["deleted"] += 1
 
         except Exception as e:
-            logger.exception(
-                "Batch blob delete failed prefix=%s batch_start=%s batch_count=%s",
+            # Some Azure folder marker paths may throw even though normal files are gone.
+            # Do not immediately fail here. Verify after deletion.
+            stats["errors"].append(f"{name}: {e}")
+            logger.warning(
+                "Blob delete skipped/failed name=%s prefix=%s",
+                name,
                 clean_prefix,
-                i,
-                len(batch),
+                exc_info=True,
             )
 
-            # Fallback one-by-one for this failed batch only.
-            for name in batch:
-                try:
-                    container_client.delete_blob(
-                        name,
-                        delete_snapshots="include",
-                    )
-                    stats["deleted"] += 1
+    # 4) Verify only real remaining blobs under exact folder.
+    remaining = []
 
-                except ResourceNotFoundError:
-                    stats["deleted"] += 1
+    for blob in container_client.list_blobs(name_starts_with=clean_prefix):
+        name = blob.name
 
-                except Exception as one_e:
-                    stats["failed"] += 1
-                    stats["errors"].append(f"{name}: {one_e}")
-                    logger.exception("Failed to delete blob: %s", name)
+        if name == clean_prefix or name.startswith(exact_folder_prefix):
+            remaining.append(name)
 
-    logger.info(
-        "Blob delete done prefix=%s found=%s deleted=%s failed=%s",
-        clean_prefix,
-        stats["found"],
-        stats["deleted"],
-        stats["failed"],
-    )
+    stats["remaining"] = len(remaining)
+
+    if remaining:
+        stats["failed"] = len(remaining)
+        stats["errors"].extend([
+            f"Still exists after delete: {name}"
+            for name in remaining[:30]
+        ])
+
+        logger.warning(
+            "Blob folder delete incomplete prefix=%s remaining=%s first_remaining=%s",
+            clean_prefix,
+            len(remaining),
+            remaining[:10],
+        )
+    else:
+        stats["failed"] = 0
+        logger.info(
+            "Blob folder delete complete prefix=%s deleted=%s",
+            clean_prefix,
+            stats["deleted"],
+        )
 
     return stats
 
