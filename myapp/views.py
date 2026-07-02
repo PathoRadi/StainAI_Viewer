@@ -2931,7 +2931,7 @@ def reset_media(request):
 
 
 # ---------------------------
-# Delete image
+# Delete image mod
 # ---------------------------
 @csrf_exempt
 @require_POST
