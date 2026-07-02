@@ -403,16 +403,23 @@ def _upload_json_to_blob(blob_name: str, payload: dict) -> str | None:
     blob.upload_blob(body, overwrite=True)
     return blob.url
 
-def _delete_blob_prefix(prefix: str, batch_size: int = 256, max_retries: int = 3) -> dict:
+def _delete_blob_prefix(prefix: str, max_retries: int = 3) -> dict:
     """
-    Robustly delete all blobs under a virtual folder prefix.
+    Reliably delete all blobs under an image virtual folder.
+
+    This version intentionally uses one-by-one delete first.
+    Reason:
+    - Azure batch delete can report partial behavior unclearly when raise_on_any_failure=False.
+    - We need deletion correctness more than speed here.
     """
     client = _blob_service_client()
     if client is None:
         return {
+            "found": 0,
             "deleted": 0,
+            "remaining": 0,
             "failed": 0,
-            "errors": [],
+            "errors": ["Blob client is not configured"],
         }
 
     container_client = client.get_container_client(settings.AZURE_BLOB_CONTAINER_NAME)
@@ -421,90 +428,102 @@ def _delete_blob_prefix(prefix: str, batch_size: int = 256, max_retries: int = 3
     if not clean_prefix:
         raise ValueError("Refusing to delete empty blob prefix")
 
-    folder_prefix = clean_prefix + "/"
+    exact_folder_prefix = clean_prefix + "/"
 
     stats = {
+        "found": 0,
         "deleted": 0,
+        "remaining": 0,
         "failed": 0,
         "errors": [],
     }
 
-    def flush_batch(names: list[str]):
-        if not names:
-            return
+    # Important:
+    # List using clean_prefix, then filter exact folder.
+    # This lets us also catch root marker blob named exactly clean_prefix,
+    # but avoids deleting similarly named folders like:
+    #   CR1 slide 10_n60
+    all_candidates = []
 
+    for blob in container_client.list_blobs(name_starts_with=clean_prefix):
+        name = blob.name
+
+        if name == clean_prefix or name.startswith(exact_folder_prefix):
+            all_candidates.append(name)
+
+    stats["found"] = len(all_candidates)
+
+    logger.info(
+        "Delete blob prefix start prefix=%s found=%s",
+        clean_prefix,
+        stats["found"],
+    )
+
+    for name in all_candidates:
+        deleted = False
         last_error = None
 
         for attempt in range(1, max_retries + 1):
             try:
-                container_client.delete_blobs(
-                    *names,
-                    raise_on_any_failure=False
+                container_client.delete_blob(
+                    name,
+                    delete_snapshots="include",
                 )
-                stats["deleted"] += len(names)
-                return
+                stats["deleted"] += 1
+                deleted = True
+                break
 
             except ResourceNotFoundError:
-                stats["deleted"] += len(names)
-                return
+                # Already gone = success
+                stats["deleted"] += 1
+                deleted = True
+                break
 
             except Exception as e:
                 last_error = e
                 logger.warning(
-                    "Batch delete failed for prefix=%s attempt=%s/%s count=%s",
-                    folder_prefix,
+                    "Delete blob failed attempt=%s/%s blob=%s",
                     attempt,
                     max_retries,
-                    len(names),
-                    exc_info=True
+                    name,
+                    exc_info=True,
                 )
                 time.sleep(min(2 ** attempt, 8))
 
-        # fallback: one-by-one delete
-        for name in names:
-            ok = False
+        if not deleted:
+            stats["failed"] += 1
+            stats["errors"].append(f"{name}: {last_error}")
 
-            for attempt in range(1, max_retries + 1):
-                try:
-                    container_client.delete_blob(name)
-                    stats["deleted"] += 1
-                    ok = True
-                    break
+    # Verify after delete.
+    remaining = []
 
-                except ResourceNotFoundError:
-                    stats["deleted"] += 1
-                    ok = True
-                    break
+    for blob in container_client.list_blobs(name_starts_with=clean_prefix):
+        name = blob.name
 
-                except Exception as e:
-                    last_error = e
-                    time.sleep(min(2 ** attempt, 8))
+        if name == clean_prefix or name.startswith(exact_folder_prefix):
+            remaining.append(name)
 
-            if not ok:
-                stats["failed"] += 1
-                msg = f"{name}: {last_error}"
-                stats["errors"].append(msg)
-                logger.warning("Failed to delete blob after retries: %s", msg)
+    stats["remaining"] = len(remaining)
 
-    batch = []
+    if remaining:
+        stats["failed"] += len(remaining)
+        stats["errors"].extend([
+            f"Still exists after delete: {name}"
+            for name in remaining[:20]
+        ])
 
-    for blob in container_client.list_blobs(name_starts_with=folder_prefix):
-        batch.append(blob.name)
-
-        if len(batch) >= batch_size:
-            flush_batch(batch)
-            batch = []
-
-    flush_batch(batch)
-
-    # delete optional root marker
-    try:
-        container_client.delete_blob(clean_prefix)
-        stats["deleted"] += 1
-    except ResourceNotFoundError:
-        pass
-    except Exception:
-        logger.debug("Root marker delete skipped: %s", clean_prefix, exc_info=True)
+        logger.warning(
+            "Delete blob prefix incomplete prefix=%s remaining=%s first_remaining=%s",
+            clean_prefix,
+            len(remaining),
+            remaining[:10],
+        )
+    else:
+        logger.info(
+            "Delete blob prefix complete prefix=%s deleted=%s",
+            clean_prefix,
+            stats["deleted"],
+        )
 
     return stats
 
@@ -2966,13 +2985,25 @@ def delete_image(request):
         # If this fails, do NOT remove the image from state/UI.
         blob_stats = _delete_blob_prefix(prefix)
 
+        found = int(blob_stats.get("found") or 0)
+        remaining = int(blob_stats.get("remaining") or 0)
         failed = int(blob_stats.get("failed") or 0)
-        if failed > 0:
+
+        if remaining > 0 or failed > 0:
             return JsonResponse({
                 "success": False,
-                "message": f"Blob delete partially failed: {failed} file(s)",
+                "message": f"Blob delete failed. Remaining blob(s): {remaining}",
                 "blob_delete": blob_stats,
             }, status=500)
+
+        logger.info(
+            "delete_image blob delete result image=%s found=%s deleted=%s remaining=%s failed=%s",
+            image_name,
+            found,
+            blob_stats.get("deleted"),
+            remaining,
+            failed,
+        )
 
         # 2) Delete local cache/workspace.
         local_deleted = _delete_local_image_dir_by_userid(user_id, image_name)
