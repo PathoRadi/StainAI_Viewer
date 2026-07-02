@@ -402,35 +402,110 @@ def _upload_json_to_blob(blob_name: str, payload: dict) -> str | None:
     blob.upload_blob(body, overwrite=True)
     return blob.url
 
-def _delete_blob_prefix(prefix: str):
+def _delete_blob_prefix(prefix: str, batch_size: int = 256, max_retries: int = 3) -> dict:
+    """
+    Robustly delete all blobs under a virtual folder prefix.
+    """
     client = _blob_service_client()
     if client is None:
-        return
+        return {
+            "deleted": 0,
+            "failed": 0,
+            "errors": [],
+        }
 
-    container = settings.AZURE_BLOB_CONTAINER_NAME
-    container_client = client.get_container_client(container)
+    container_client = client.get_container_client(settings.AZURE_BLOB_CONTAINER_NAME)
 
-    folder_prefix = prefix.rstrip("/") + "/"
+    clean_prefix = str(prefix or "").strip().strip("/")
+    if not clean_prefix:
+        raise ValueError("Refusing to delete empty blob prefix")
 
-    blobs = list(container_client.list_blobs(name_starts_with=folder_prefix))
-    if not blobs:
-        return
+    folder_prefix = clean_prefix + "/"
 
-    blob_names = sorted((b.name for b in blobs), key=lambda x: x.count('/'), reverse=True)
+    stats = {
+        "deleted": 0,
+        "failed": 0,
+        "errors": [],
+    }
 
-    for name in blob_names:
-        try:
-            container_client.delete_blob(name)
-        except Exception:
-            logger.exception("Failed to delete blob: %s", name)
-            raise
+    def flush_batch(names: list[str]):
+        if not names:
+            return
 
-    root_name = prefix.rstrip("/")
+        last_error = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                container_client.delete_blobs(
+                    *names,
+                    raise_on_any_failure=False
+                )
+                stats["deleted"] += len(names)
+                return
+
+            except ResourceNotFoundError:
+                stats["deleted"] += len(names)
+                return
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "Batch delete failed for prefix=%s attempt=%s/%s count=%s",
+                    folder_prefix,
+                    attempt,
+                    max_retries,
+                    len(names),
+                    exc_info=True
+                )
+                time.sleep(min(2 ** attempt, 8))
+
+        # fallback: one-by-one delete
+        for name in names:
+            ok = False
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    container_client.delete_blob(name)
+                    stats["deleted"] += 1
+                    ok = True
+                    break
+
+                except ResourceNotFoundError:
+                    stats["deleted"] += 1
+                    ok = True
+                    break
+
+                except Exception as e:
+                    last_error = e
+                    time.sleep(min(2 ** attempt, 8))
+
+            if not ok:
+                stats["failed"] += 1
+                msg = f"{name}: {last_error}"
+                stats["errors"].append(msg)
+                logger.warning("Failed to delete blob after retries: %s", msg)
+
+    batch = []
+
+    for blob in container_client.list_blobs(name_starts_with=folder_prefix):
+        batch.append(blob.name)
+
+        if len(batch) >= batch_size:
+            flush_batch(batch)
+            batch = []
+
+    flush_batch(batch)
+
+    # delete optional root marker
     try:
-        container_client.delete_blob(root_name)
-    except Exception:
+        container_client.delete_blob(clean_prefix)
+        stats["deleted"] += 1
+    except ResourceNotFoundError:
         pass
+    except Exception:
+        logger.debug("Root marker delete skipped: %s", clean_prefix, exc_info=True)
 
+    return stats
 
 def _copy_blob(src_blob_name: str, dst_blob_name: str):
     client = _blob_service_client()
@@ -477,41 +552,66 @@ def _read_detect_result_from_blob(user_id: str, image_name: str) -> dict | None:
 
 def _delete_local_image_dir_by_userid(user_id: str, image_name: str, max_retries: int = 3) -> bool:
     """
-    Delete local image workspace more safely.
+    Delete local image workspace safely.
 
-    This handles cases where a file is temporarily locked by PIL/OpenSeadragon/upload thread.
+    Local image folders are only cache/workspace.
+    If files disappear during deletion, treat them as already deleted.
     """
     image_dir = _image_dir_by_userid(user_id, image_name)
 
-    if not os.path.exists(image_dir):
+    if not os.path.lexists(image_dir):
         return True
 
     def on_rm_error(func, path, exc_info):
+        # Race condition: another cleanup may already have removed this file.
+        if not os.path.lexists(path):
+            return
+
         try:
             os.chmod(path, 0o700)
-            func(path)
+        except FileNotFoundError:
+            return
         except Exception:
-            logger.warning("Failed local remove retry path=%s", path, exc_info=True)
+            logger.debug("chmod skipped during local cleanup: %s", path, exc_info=True)
+
+        try:
+            func(path)
+        except FileNotFoundError:
+            return
+        except Exception:
+            logger.debug("remove retry skipped during local cleanup: %s", path, exc_info=True)
 
     for attempt in range(1, max_retries + 1):
-        try:
-            shutil.rmtree(image_dir, onerror=on_rm_error)
+        if not os.path.lexists(image_dir):
             return True
+
+        try:
+            shutil.rmtree(image_dir, ignore_errors=False, onerror=on_rm_error)
+
+            if not os.path.lexists(image_dir):
+                return True
+
         except FileNotFoundError:
             return True
+
         except Exception:
-            logger.warning(
-                "Local image dir delete failed attempt=%s/%s path=%s",
+            logger.debug(
+                "Local image dir cleanup retry attempt=%s/%s path=%s",
                 attempt,
                 max_retries,
                 image_dir,
                 exc_info=True
             )
-            time.sleep(min(0.5 * attempt, 2))
 
-    # Do not crash delete_image just because local cache cleanup failed.
-    logger.warning("Local image dir still exists after retries: %s", image_dir)
-    return False
+        time.sleep(min(0.3 * attempt, 1.5))
+
+    # Final best-effort cleanup. Do not throw.
+    try:
+        shutil.rmtree(image_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+    return not os.path.lexists(image_dir)
 
 def _delete_image_blobs_background(user_id: str, image_name: str):
     """
@@ -522,7 +622,12 @@ def _delete_image_blobs_background(user_id: str, image_name: str):
     prefix = _blob_prefix_for_image(user_id, image_name)
 
     try:
-        stats = _delete_blob_prefix(prefix)
+        stats = _delete_blob_prefix(prefix) or {
+            "deleted": None,
+            "failed": 0,
+            "errors": [],
+        }
+
         logger.info(
             "Background blob delete finished image=%s user=%s deleted=%s failed=%s",
             image_name,
