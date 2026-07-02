@@ -3132,6 +3132,9 @@ def rename_project(request):
         logger.exception("rename_project failed")
         return JsonResponse({"success": False, "message": "rename failed"}, status=500)
 
+# ---------------------------
+# Delete project
+# ---------------------------
 @csrf_exempt
 @require_POST
 def delete_project(request):
