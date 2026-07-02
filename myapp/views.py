@@ -36,6 +36,7 @@ from azure.storage.blob import (
     ContainerSasPermissions,
 )
 from azure.core.exceptions import ResourceNotFoundError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
@@ -773,29 +774,68 @@ def _upload_dzi_directory_to_blob(
     user_id: str,
     image_name: str,
     dzi_dir: str | None,
+    max_workers: int = 6,
 ):
     """
-    Upload all files inside local image_dir/dzi/ to Azure Blob.
+    Upload DZI files to Azure Blob in parallel.
 
-    Local:
-      image_dir/dzi/<stem>.dzi
-      image_dir/dzi/<stem>_files/...
-
-    Blob:
-      <user_id>/images/<image_name>/dzi/<stem>.dzi
-      <user_id>/images/<image_name>/dzi/<stem>_files/...
+    This is much faster than uploading thousands of tiles one by one.
     """
     if not dzi_dir or not os.path.isdir(dzi_dir):
         return
 
+    client = _blob_service_client()
+    if client is None:
+        return
+
+    container = settings.AZURE_BLOB_CONTAINER_NAME
+
+    upload_jobs = []
+
     for root, _, files in os.walk(dzi_dir):
         for fn in files:
             local_path = os.path.join(root, fn)
-
             rel_path = os.path.relpath(local_path, dzi_dir).replace("\\", "/")
             blob_name = _blob_name_for_dzi(user_id, image_name, rel_path)
+            upload_jobs.append((local_path, blob_name))
 
-            _upload_file_to_blob(local_path, blob_name)
+    if not upload_jobs:
+        return
+
+    t0 = time.perf_counter()
+
+    def upload_one(job):
+        local_path, blob_name = job
+        blob = client.get_blob_client(container=container, blob=blob_name)
+
+        with open(local_path, "rb") as f:
+            blob.upload_blob(
+                f,
+                overwrite=True,
+                max_concurrency=1,
+            )
+
+        return blob_name
+
+    uploaded = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(upload_one, job) for job in upload_jobs]
+
+        for fut in as_completed(futures):
+            try:
+                fut.result()
+                uploaded += 1
+            except Exception:
+                logger.exception("Failed to upload one DZI tile for image=%s", image_name)
+
+    logger.info(
+        "DZI upload complete image=%s files=%s time=%s workers=%s",
+        image_name,
+        uploaded,
+        format_hms(time.perf_counter() - t0),
+        max_workers,
+    )
 
 def _safe_json_value(value):
     """
@@ -2547,19 +2587,19 @@ def generate_upload_preview_image(image_path: str, image_dir: str, max_side: int
 
     return preview_path
 
-def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None, str | None]:
+def generate_deepzoom_image(
+    image_path: str,
+    image_dir: str,
+    tile_size: int = 512,
+    jpeg_quality: int = 78,
+) -> tuple[str | None, str | None]:
     """
     Generate Deep Zoom Image tiles for OpenSeadragon.
 
-    Output:
-      image_dir/dzi/<stem>.dzi
-      image_dir/dzi/<stem>_files/...
-
-    Returns:
-      (dzi_path, dzi_dir)
-
-    If pyvips/libvips is not available, return (None, None)
-    so the app can safely fall back to normal display_url.
+    Faster version:
+    - tile_size 512 reduces tile count by ~4x compared with 256.
+    - lower JPEG quality reduces disk I/O and upload time.
+    - skip if existing .dzi is already generated.
     """
     try:
         import pyvips
@@ -2578,13 +2618,32 @@ def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None
         if os.path.exists(dzi_path):
             return dzi_path, dzi_dir
 
+        t0 = time.perf_counter()
+
+        # sequential is usually best for full-image pyramid generation
         img = pyvips.Image.new_from_file(image_path, access="sequential")
+
+        # If image has alpha or extra channels, keep only first 3 channels.
+        if img.bands > 3:
+            img = img[:3]
+
+        # Cast uncommon formats to uchar for faster JPEG tile writing.
+        if img.format != "uchar":
+            img = img.cast("uchar")
 
         img.dzsave(
             dzi_base,
-            tile_size=256,
+            tile_size=tile_size,
             overlap=0,
-            suffix=".jpg[Q=85]"
+            suffix=f".jpg[Q={jpeg_quality},strip,optimize_coding=false]",
+        )
+
+        logger.info(
+            "DeepZoom tiles created in %s: path=%s tile_size=%s Q=%s",
+            format_hms(time.perf_counter() - t0),
+            dzi_path,
+            tile_size,
+            jpeg_quality,
         )
 
         return dzi_path, dzi_dir
@@ -2592,7 +2651,7 @@ def generate_deepzoom_image(image_path: str, image_dir: str) -> tuple[str | None
     except Exception:
         logger.exception("Failed to generate DeepZoom tiles for %s", image_path)
         return None, None
-    
+
 # helper funtion: upload_image(), detect_image()
 def _to_media_url(abs_path: str) -> str:
     """Convert absolute path to MEDIA URL usable by frontend."""
