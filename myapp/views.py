@@ -35,6 +35,7 @@ from azure.storage.blob import (
     generate_container_sas,
     ContainerSasPermissions,
 )
+from azure.core.exceptions import ResourceNotFoundError
 
 # Your method / pipeline
 from .method.display_image_generator import DisplayImageGenerator
@@ -409,7 +410,9 @@ def _delete_blob_prefix(prefix: str):
     container = settings.AZURE_BLOB_CONTAINER_NAME
     container_client = client.get_container_client(container)
 
-    blobs = list(container_client.list_blobs(name_starts_with=prefix))
+    folder_prefix = prefix.rstrip("/") + "/"
+
+    blobs = list(container_client.list_blobs(name_starts_with=folder_prefix))
     if not blobs:
         return
 
@@ -422,12 +425,12 @@ def _delete_blob_prefix(prefix: str):
             logger.exception("Failed to delete blob: %s", name)
             raise
 
-    # 額外清一次 root marker（若存在）
     root_name = prefix.rstrip("/")
     try:
         container_client.delete_blob(root_name)
     except Exception:
         pass
+
 
 def _copy_blob(src_blob_name: str, dst_blob_name: str):
     client = _blob_service_client()
@@ -465,15 +468,82 @@ def _list_blob_names(prefix: str) -> list[str]:
     container_client = _blob_container_client()
     if container_client is None:
         return []
-    return [b.name for b in container_client.list_blobs(name_starts_with=prefix)]
+
+    folder_prefix = str(prefix or "").rstrip("/") + "/"
+    return [b.name for b in container_client.list_blobs(name_starts_with=folder_prefix)]
 
 def _read_detect_result_from_blob(user_id: str, image_name: str) -> dict | None:
     return _download_json_from_blob(_blob_name_for_detect_result(user_id, image_name))
 
-def _delete_local_image_dir_by_userid(user_id: str, image_name: str):
+def _delete_local_image_dir_by_userid(user_id: str, image_name: str, max_retries: int = 3) -> bool:
+    """
+    Delete local image workspace more safely.
+
+    This handles cases where a file is temporarily locked by PIL/OpenSeadragon/upload thread.
+    """
     image_dir = _image_dir_by_userid(user_id, image_name)
-    if os.path.isdir(image_dir):
-        shutil.rmtree(image_dir, ignore_errors=True)
+
+    if not os.path.exists(image_dir):
+        return True
+
+    def on_rm_error(func, path, exc_info):
+        try:
+            os.chmod(path, 0o700)
+            func(path)
+        except Exception:
+            logger.warning("Failed local remove retry path=%s", path, exc_info=True)
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            shutil.rmtree(image_dir, onerror=on_rm_error)
+            return True
+        except FileNotFoundError:
+            return True
+        except Exception:
+            logger.warning(
+                "Local image dir delete failed attempt=%s/%s path=%s",
+                attempt,
+                max_retries,
+                image_dir,
+                exc_info=True
+            )
+            time.sleep(min(0.5 * attempt, 2))
+
+    # Do not crash delete_image just because local cache cleanup failed.
+    logger.warning("Local image dir still exists after retries: %s", image_dir)
+    return False
+
+def _delete_image_blobs_background(user_id: str, image_name: str):
+    """
+    Background cleanup for Azure blobs.
+
+    The frontend does not need to wait for thousands of DZI tiles to be deleted.
+    """
+    prefix = _blob_prefix_for_image(user_id, image_name)
+
+    try:
+        stats = _delete_blob_prefix(prefix)
+        logger.info(
+            "Background blob delete finished image=%s user=%s deleted=%s failed=%s",
+            image_name,
+            user_id,
+            stats.get("deleted"),
+            stats.get("failed"),
+        )
+
+        if stats.get("failed"):
+            logger.warning(
+                "Background blob delete partial failure image=%s errors=%s",
+                image_name,
+                stats.get("errors", [])[:10],
+            )
+
+    except Exception:
+        logger.exception(
+            "Background blob delete failed image=%s user=%s",
+            image_name,
+            user_id,
+        )
 
 def _blob_original_url(user_id, image_name, filename):
     path = f"{user_id}/images/{image_name}/original/{filename}"
@@ -1827,27 +1897,7 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         logger.info("Get Original Image Size Done")
 
         # ---------------------------
-        # B) Display image
-        # ---------------------------
-        # display_dir = os.path.join(image_dir, "display")
-        # os.makedirs(display_dir, exist_ok=True)
-
-        # display_path = _find_first_file(display_dir)
-
-        # if not display_path:
-        #     if ow > 6000 or oh > 6000:
-        #         display_path = DisplayImageGenerator(
-        #             image_path=orig_path,
-        #             output_dir=image_dir,
-        #         ).generate_display_image()
-        #     else:
-        #         display_path = orig_path
-
-        # dw, dh = _image_size_wh(display_path)
-        # display_size = [dh, dw]
-
-        # ---------------------------
-        # C) Detection image
+        # B) Detection image
         # ---------------------------
         raw_resolution = params.get("resolution")
 
@@ -2733,23 +2783,41 @@ def delete_image(request):
         body = {}
 
     try:
-        image_name = (body.get("image_name") or request.POST.get("image_name") or request.GET.get("image") or "").strip()
+        image_name = (
+            body.get("image_name")
+            or request.POST.get("image_name")
+            or request.GET.get("image")
+            or ""
+        ).strip()
+
         if not image_name:
             return JsonResponse({"success": False, "message": "image_name required"}, status=400)
 
-        prefix = _blob_prefix_for_image(user_id, image_name)
-        blob_names = _list_blob_names(prefix)
-        if not blob_names:
-            # 即使 blob 沒了，也仍然清 state，避免前端殘留
-            state_delete_image(user_id, image_name)
-            _delete_local_image_dir_by_userid(user_id, image_name)
-            return JsonResponse({"success": True, "message": "Image already removed"})
+        # Basic safety: avoid weird path/prefix values.
+        if "/" in image_name or "\\" in image_name:
+            return JsonResponse({"success": False, "message": "invalid image_name"}, status=400)
 
-        _delete_blob_prefix(prefix)
-        _delete_local_image_dir_by_userid(user_id, image_name)
+        # 1) Remove from persistent state first.
+        # This makes the UI deletion stable even for huge DZI folders.
         state_delete_image(user_id, image_name)
 
-        return JsonResponse({"success": True, "image_name": image_name})
+        # 2) Close/remove local workspace cache.
+        local_deleted = _delete_local_image_dir_by_userid(user_id, image_name)
+
+        # 3) Delete Azure blobs in background because huge images may contain thousands of DZI tiles.
+        th = threading.Thread(
+            target=_delete_image_blobs_background,
+            args=(user_id, image_name),
+            daemon=True
+        )
+        th.start()
+
+        return JsonResponse({
+            "success": True,
+            "image_name": image_name,
+            "local_deleted": local_deleted,
+            "blob_delete": "scheduled",
+        })
 
     except Exception as e:
         logger.exception("delete_image failed")
