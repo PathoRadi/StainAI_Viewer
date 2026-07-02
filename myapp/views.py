@@ -2957,30 +2957,34 @@ def delete_image(request):
         if not image_name:
             return JsonResponse({"success": False, "message": "image_name required"}, status=400)
 
-        # Basic safety: avoid weird path/prefix values.
         if "/" in image_name or "\\" in image_name:
             return JsonResponse({"success": False, "message": "invalid image_name"}, status=400)
 
-        # 1) Remove from persistent state first.
-        # This makes the UI deletion stable even for huge DZI folders.
-        state_delete_image(user_id, image_name)
+        prefix = _blob_prefix_for_image(user_id, image_name)
 
-        # 2) Close/remove local workspace cache.
+        # 1) Delete Azure Blob first.
+        # If this fails, do NOT remove the image from state/UI.
+        blob_stats = _delete_blob_prefix(prefix)
+
+        failed = int(blob_stats.get("failed") or 0)
+        if failed > 0:
+            return JsonResponse({
+                "success": False,
+                "message": f"Blob delete partially failed: {failed} file(s)",
+                "blob_delete": blob_stats,
+            }, status=500)
+
+        # 2) Delete local cache/workspace.
         local_deleted = _delete_local_image_dir_by_userid(user_id, image_name)
 
-        # 3) Delete Azure blobs in background because huge images may contain thousands of DZI tiles.
-        th = threading.Thread(
-            target=_delete_image_blobs_background,
-            args=(user_id, image_name),
-            daemon=True
-        )
-        th.start()
+        # 3) Remove from persistent state only after blob delete succeeded.
+        state_delete_image(user_id, image_name)
 
         return JsonResponse({
             "success": True,
             "image_name": image_name,
             "local_deleted": local_deleted,
-            "blob_delete": "scheduled",
+            "blob_delete": blob_stats,
         })
 
     except Exception as e:
