@@ -26,7 +26,7 @@ from django.http import (
     JsonResponse, FileResponse, HttpResponse, HttpResponseNotFound,
     HttpResponseBadRequest, HttpResponseServerError, HttpResponseNotAllowed
 )
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_GET
 from azure.storage.blob import (
     BlobServiceClient,
@@ -1221,9 +1221,10 @@ def get_global_rois(request):
 # ---------------------------
 # Views
 # ---------------------------
+@ensure_csrf_cookie
 def display_image(request):
     """
-    Just render the HTML page; image will be loaded via JS
+    Render Viewer page and ensure the browser receives a CSRF cookie.
     """
     return render(request, 'display_image.html')
 
