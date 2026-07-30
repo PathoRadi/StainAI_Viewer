@@ -204,7 +204,7 @@ def viewer_login_bridge(request):
         "lastname": payload.get("lastname", ""),
     }
 
-    # 驗證成功後進 viewer 首頁
+    # Redirect to root page after successful login
     return redirect("/")
 
 @require_GET
@@ -222,6 +222,7 @@ def current_viewer_user(request):
         "user": viewer_user,
     })
 
+@require_POST
 def viewer_logout_silent(request):
     request.session.flush()
     return JsonResponse({"success": True})
@@ -873,13 +874,6 @@ def upload_detection_outputs_to_blob(
         _upload_file_to_blob(chart_path, _blob_name_for_result(user_id, image_name, f"{image_name}_chart.png"))
     else:
         logger.warning("chart png not found: %s", chart_path)
-
-    # upload resized display image
-    # if display_path and os.path.exists(display_path):
-    #     _upload_file_to_blob(
-    #         display_path,
-    #         _blob_name_for_display(user_id, image_name, f"{image_name}_display.jpg")
-    #     )
 
     # upload DZI tiles
     try:
@@ -2781,7 +2775,7 @@ def delete_image(request):
         prefix = _blob_prefix_for_image(user_id, image_name)
         blob_names = _list_blob_names(prefix)
         if not blob_names:
-            # 即使 blob 沒了，也仍然清 state，避免前端殘留
+            # If the blob folder does not exist, we still want to clean up local files and state.
             state_delete_image(user_id, image_name)
             _delete_local_image_dir_by_userid(user_id, image_name)
             return JsonResponse({"success": True, "message": "Image already removed"})
@@ -2884,7 +2878,7 @@ def rename_image(request):
         old_detect = _blob_name_for_detect_result(user_id, old_image_name)
         new_detect = _blob_name_for_detect_result(user_id, new_image_name)
 
-        # 檢查來源是否存在
+        # Check that required source blobs exist before attempting to copy
         required_sources = [old_original, old_detect]
         for src in required_sources:
             if not _blob_exists(src):
@@ -3004,7 +2998,7 @@ def delete_project(request):
 
         image_names = list(proj.get("images", []))
 
-        # 先刪掉此 project 裡所有 image 的 blob/local/state
+        # Delete all images in the project
         for image_name in image_names:
             try:
                 _delete_blob_prefix(_blob_prefix_for_image(user_id, image_name))
@@ -3019,7 +3013,7 @@ def delete_project(request):
 
             state_delete_image(user_id, image_name)
 
-        # 再把空 project 從 state 移除
+        # Remove the project entry from the viewer state
         state = load_viewer_state_from_blob(user_id)
         state["projects"] = [
             p for p in state.get("projects", [])

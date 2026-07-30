@@ -44,4 +44,9 @@ urlpatterns = [
     path("processing-stats/", views.processing_stats, name="processing_stats"),
     path("grayscale_preview_meta/", views.grayscale_preview_meta, name="grayscale_preview_meta"),
     path("grayscale_preview_tile/", views.grayscale_preview_tile, name="grayscale_preview_tile"),
+    path(
+        "api/viewer-logout/",
+        views.viewer_logout_silent,
+        name="viewer_logout_silent",
+    ),
 ]

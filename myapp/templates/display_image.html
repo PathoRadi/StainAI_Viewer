@@ -50,7 +50,7 @@
         <div class="processed-stats-value" id="global-images-processed-count">0</div>
       </div>
       <!-- Login info -->
-      <div id="viewer-account-container" class="viewer-account-container viewer-hidden">
+      <!-- <div id="viewer-account-container" class="viewer-account-container viewer-hidden">
         <div id="viewer-account-card" class="viewer-account-card">
           <img
             src="{% static 'logo/account_icon_w.png' %}"
@@ -59,7 +59,59 @@
           />
           <span id="viewer-account-name" class="viewer-account-name"></span>
         </div>
+      </div> -->
+      <div id="viewer-account-container" class="viewer-account-container">
+        <button
+          id="viewer-account-card"
+          class="viewer-account-card"
+          type="button"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          <img
+            src="{% static 'logo/account_icon_w.png' %}"
+            alt=""
+            class="viewer-account-avatar"
+          />
+
+          <span id="viewer-account-name" class="viewer-account-name">
+            Sign In
+          </span>
+
+          <span class="viewer-account-chevron">▾</span>
+        </button>
+
+        <div
+          id="viewer-account-menu"
+          class="viewer-account-menu"
+          hidden
+        >
+          <div
+            id="viewer-account-email"
+            class="viewer-account-email"
+            hidden
+          ></div>
+
+          <button
+            id="viewer-login-btn"
+            class="viewer-account-menu-btn"
+            type="button"
+            hidden
+          >
+            Log In
+          </button>
+
+          <button
+            id="viewer-logout-btn"
+            class="viewer-account-menu-btn viewer-logout-btn"
+            type="button"
+            hidden
+          >
+            Log Out
+          </button>
+        </div>
       </div>
+
       <!-- Add New Project -->
       <button id="new-project-btn" class="new-project-btn" type="button">
         <span class="btn-plus">+</span>
@@ -446,6 +498,7 @@
     const PROCESSING_STATS_URL = "{% url 'myapp:processing_stats' %}";
     const GRAYSCALE_PREVIEW_META_URL = "{% url 'myapp:grayscale_preview_meta' %}";
     const GRAYSCALE_PREVIEW_TILE_URL = "{% url 'myapp:grayscale_preview_tile' %}";
+    const VIEWER_LOGOUT_URL = "{% url 'myapp:viewer_logout_silent' %}";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
     window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";
@@ -453,6 +506,10 @@
     window.addEventListener('beforeunload', () => {
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });
+
+    const PRBASE_LOGIN_URL =
+    "https://imaging.howard.edu/stainai/user/signin?return_url=" +
+    encodeURIComponent(window.location.origin + "/");
   </script>
   <script type="module" src="{% static 'script/script.js' %}"></script>
 </body>

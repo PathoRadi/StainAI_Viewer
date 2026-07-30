@@ -7,6 +7,7 @@ window.showAllBoxes = showAllBoxes;
 import { layerManagerApi } from './layerManager.js';
 import { initROI, loadGlobalROIs} from './roi.js';
 import { updateProjectsUI, initProjectHandlers } from './project.js';
+import { csrftoken } from './cookie.js';
 import html2canvas from 'https://cdn.skypack.dev/html2canvas';
 
 (function($){
@@ -55,36 +56,35 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     // ──────── Check Viewer Authentication ────────
     const auth = await getCurrentViewerUser();
 
-    if (!auth.authenticated) {
-      const dropZone = document.getElementById('drop-zone');
-      const mainContainer = document.querySelector('.main-container');
-      const accountContainer = document.getElementById('viewer-account-container');
+  if (!auth.authenticated) {
+    const dropZone = document.getElementById('drop-zone');
+    const mainContainer = document.querySelector('.main-container');
 
-      if (dropZone) {
-        dropZone.innerHTML = `
-          <div style="text-align:center; color:white;">
-            <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
-              Please sign in from the main site first
-            </div>
-            <div style="font-size:14px; opacity:0.85;">
-              Viewer access requires an active signed-in session.
-            </div>
+    initViewerUserCard(null);
+
+    if (dropZone) {
+      dropZone.innerHTML = `
+        <div style="text-align:center; color:white;">
+          <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
+            Please sign in to use StainAI Viewer
           </div>
-        `;
-        dropZone.style.display = 'flex';
-      }
 
-      if (mainContainer) {
-        mainContainer.hidden = true;
-      }
+          <div style="font-size:14px; opacity:0.85;">
+            Click the account menu in the upper-left corner to log in.
+          </div>
+        </div>
+      `;
 
-      if (accountContainer) {
-        accountContainer.classList.add("viewer-hidden");
-      }
-
-      return;
+      dropZone.style.display = 'flex';
     }
-    initViewerUserCard(auth.user);
+
+    if (mainContainer) {
+      mainContainer.hidden = true;
+    }
+
+    return;
+  }
+  initViewerUserCard(auth.user);
 
     // ──────── Globals ────────
     window.bboxData     = [];
@@ -924,30 +924,220 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   // =========================
   // ===== Account Menu  =====
   // =========================
+
+  function closeViewerAccountMenu() {
+    const card = document.getElementById("viewer-account-card");
+    const menu = document.getElementById("viewer-account-menu");
+
+    if (!card || !menu) return;
+
+    menu.hidden = true;
+    card.setAttribute("aria-expanded", "false");
+    card.classList.remove("active");
+  }
+
+  function toggleViewerAccountMenu() {
+    const card = document.getElementById("viewer-account-card");
+    const menu = document.getElementById("viewer-account-menu");
+
+    if (!card || !menu) return;
+
+    const shouldOpen = menu.hidden;
+
+    menu.hidden = !shouldOpen;
+    card.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+    card.classList.toggle("active", shouldOpen);
+  }
+
   function renderViewerUserCard(user) {
     const container = document.getElementById("viewer-account-container");
     const nameEl = document.getElementById("viewer-account-name");
+    const emailEl = document.getElementById("viewer-account-email");
+    const loginBtn = document.getElementById("viewer-login-btn");
+    const logoutBtn = document.getElementById("viewer-logout-btn");
 
-    if (!container || !nameEl) return;
+    if (
+      !container ||
+      !nameEl ||
+      !emailEl ||
+      !loginBtn ||
+      !logoutBtn
+    ) {
+      return;
+    }
 
     const fullName =
-      `${user.firstname || ""} ${user.lastname || ""}`.trim() || user.email;
+      `${user?.firstname || ""} ${user?.lastname || ""}`.trim() ||
+      user?.email ||
+      "Account";
 
     nameEl.textContent = fullName;
+
+    if (user?.email) {
+      emailEl.textContent = user.email;
+      emailEl.hidden = false;
+    } else {
+      emailEl.textContent = "";
+      emailEl.hidden = true;
+    }
+
+    loginBtn.hidden = true;
+    logoutBtn.hidden = false;
+
     container.classList.remove("viewer-hidden");
+    container.dataset.authenticated = "true";
   }
 
-  function hideViewerUserCard() {
+  function renderViewerGuestCard() {
     const container = document.getElementById("viewer-account-container");
-    if (!container) return;
-    container.classList.add("viewer-hidden");
+    const nameEl = document.getElementById("viewer-account-name");
+    const emailEl = document.getElementById("viewer-account-email");
+    const loginBtn = document.getElementById("viewer-login-btn");
+    const logoutBtn = document.getElementById("viewer-logout-btn");
+
+    if (
+      !container ||
+      !nameEl ||
+      !emailEl ||
+      !loginBtn ||
+      !logoutBtn
+    ) {
+      return;
+    }
+
+    nameEl.textContent = "Sign In";
+
+    emailEl.textContent = "";
+    emailEl.hidden = true;
+
+    loginBtn.hidden = false;
+    logoutBtn.hidden = true;
+
+    container.classList.remove("viewer-hidden");
+    container.dataset.authenticated = "false";
+  }
+
+  async function logoutViewerUser() {
+    const logoutBtn = document.getElementById("viewer-logout-btn");
+
+    if (logoutBtn) {
+      logoutBtn.disabled = true;
+      logoutBtn.textContent = "Logging out...";
+    }
+
+    try {
+      const response = await fetch(VIEWER_LOGOUT_URL, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+
+      let data = {};
+
+      try {
+        data = await response.json();
+      } catch (_) {
+        data = {};
+      }
+
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.message || `Logout failed (${response.status})`);
+      }
+
+      window.location.replace(`/?logged_out=1&t=${Date.now()}`);
+    } catch (error) {
+      console.error("Viewer logout failed:", error);
+      alert("Log out failed. Please try again.");
+
+      if (logoutBtn) {
+        logoutBtn.disabled = false;
+        logoutBtn.textContent = "Log Out";
+      }
+    }
   }
 
   function initViewerUserCard(user) {
+    const card = document.getElementById("viewer-account-card");
+    const menu = document.getElementById("viewer-account-menu");
+    const loginBtn = document.getElementById("viewer-login-btn");
+    const logoutBtn = document.getElementById("viewer-logout-btn");
+
+    if (!card || !menu || !loginBtn || !logoutBtn) {
+      return;
+    }
+
     if (user) {
       renderViewerUserCard(user);
     } else {
-      hideViewerUserCard();
+      renderViewerGuestCard();
+    }
+
+    card.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleViewerAccountMenu();
+    };
+
+    menu.onclick = function (event) {
+      event.stopPropagation();
+    };
+
+    loginBtn.onclick = function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      closeViewerAccountMenu();
+
+      if (
+        typeof PRBASE_LOGIN_URL !== "undefined" &&
+        PRBASE_LOGIN_URL
+      ) {
+        window.location.href = PRBASE_LOGIN_URL;
+      } else {
+        console.error("PRBASE_LOGIN_URL is not configured.");
+        alert("Login URL is not configured.");
+      }
+    };
+
+    logoutBtn.onclick = async function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      closeViewerAccountMenu();
+      await logoutViewerUser();
+    };
+
+    document.removeEventListener(
+      "click",
+      window.__viewerAccountOutsideClickHandler
+    );
+
+    window.__viewerAccountOutsideClickHandler = function (event) {
+      const container = document.getElementById(
+        "viewer-account-container"
+      );
+
+      if (!container?.contains(event.target)) {
+        closeViewerAccountMenu();
+      }
+    };
+
+    document.addEventListener(
+      "click",
+      window.__viewerAccountOutsideClickHandler
+    );
+
+    if (!window.__viewerAccountEscapeBound) {
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeViewerAccountMenu();
+        }
+      });
+
+      window.__viewerAccountEscapeBound = true;
     }
   }
 })(jQuery);
