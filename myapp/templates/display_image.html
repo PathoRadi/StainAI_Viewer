@@ -499,6 +499,8 @@
     const GRAYSCALE_PREVIEW_META_URL = "{% url 'myapp:grayscale_preview_meta' %}";
     const GRAYSCALE_PREVIEW_TILE_URL = "{% url 'myapp:grayscale_preview_tile' %}";
     const VIEWER_LOGOUT_URL = "{% url 'myapp:viewer_logout_silent' %}";
+    const PRBASE_LOGIN_URL ="https://imaging.howard.edu/stainai/user/signin?redirect=viewer";
+    const PRBASE_LOGOUT_URL ="https://imaging.howard.edu/stainai/user/logout-viewer";
 
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
     window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";
@@ -507,11 +509,7 @@
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });
 
-    // const PRBASE_LOGIN_URL =
-    // "https://imaging.howard.edu/stainai/user/signin?return_url=" +
-    // encodeURIComponent(window.location.origin + "/");
-    const PRBASE_LOGIN_URL =
-    "https://imaging.howard.edu/stainai/user/signin?redirect=viewer"
+    
   </script>
   <script type="module" src="{% static 'script/script.js' %}"></script>
 </body>

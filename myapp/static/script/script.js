@@ -1036,7 +1036,8 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         },
       });
 
-      const contentType = response.headers.get("content-type") || "";
+      const contentType =
+        response.headers.get("content-type") || "";
 
       let data = {};
       let responseText = "";
@@ -1061,10 +1062,25 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
       }
 
       if (data.success !== true) {
-        throw new Error(data.message || "Logout response was unsuccessful.");
+        throw new Error(
+          data.message || "Logout response was unsuccessful."
+        );
       }
 
-      window.location.replace(`/?logged_out=1&t=${Date.now()}`);
+      /*
+        1) If PRBASE_LOGOUT_URL is defined, redirect to that URL (e.g., for SSO logout).
+        2) Otherwise, redirect to the homepage with a query parameter indicating logout.
+      */
+      if (
+        typeof PRBASE_LOGOUT_URL !== "undefined" &&
+        PRBASE_LOGOUT_URL
+      ) {
+        window.location.replace(PRBASE_LOGOUT_URL);
+      } else {
+        window.location.replace(
+          `/?logged_out=1&t=${Date.now()}`
+        );
+      }
     } catch (error) {
       console.error("Viewer logout failed:", error);
       alert(error.message || "Log out failed. Please try again.");
