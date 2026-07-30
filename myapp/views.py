@@ -225,8 +225,17 @@ def current_viewer_user(request):
 @require_POST
 def viewer_logout_silent(request):
     request.session.flush()
-    return JsonResponse({"success": True})
 
+    response = JsonResponse({
+        "success": True
+    })
+
+    response["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
+    response["Pragma"] = "no-cache"
+
+    return response
 
 
 # ---------------------------

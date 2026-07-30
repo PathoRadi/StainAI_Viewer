@@ -1031,26 +1031,43 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         credentials: "same-origin",
         cache: "no-store",
         headers: {
+          "X-CSRFToken": csrftoken,
           "X-Requested-With": "XMLHttpRequest",
         },
       });
 
-      let data = {};
+      const contentType = response.headers.get("content-type") || "";
 
-      try {
+      let data = {};
+      let responseText = "";
+
+      if (contentType.includes("application/json")) {
         data = await response.json();
-      } catch (_) {
-        data = {};
+      } else {
+        responseText = await response.text();
       }
 
-      if (!response.ok || data.success !== true) {
-        throw new Error(data.message || `Logout failed (${response.status})`);
+      if (!response.ok) {
+        console.error("Logout HTTP error:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: responseText || data,
+        });
+
+        throw new Error(
+          data.message ||
+          `Logout failed (${response.status} ${response.statusText})`
+        );
+      }
+
+      if (data.success !== true) {
+        throw new Error(data.message || "Logout response was unsuccessful.");
       }
 
       window.location.replace(`/?logged_out=1&t=${Date.now()}`);
     } catch (error) {
       console.error("Viewer logout failed:", error);
-      alert("Log out failed. Please try again.");
+      alert(error.message || "Log out failed. Please try again.");
 
       if (logoutBtn) {
         logoutBtn.disabled = false;
