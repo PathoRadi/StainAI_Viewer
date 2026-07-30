@@ -408,19 +408,41 @@ export function initHistoryHandlers(historyStack) {
       stabilizeViewerAndRender(window.bboxData, async () => {
         if (window.chartRefs && window.chartRefs.length) {
           window.chartRefs.forEach((chart, i) => {
-            initCheckboxes(window.bboxData, chart);
-            $('#Checkbox_CellCount').prop('checked', false);
-            $('#checkbox_All').prop('checked', true);
-            $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-              .prop('checked', true);
+            if (!chart) return;
 
             if (i === 0) {
+              initCheckboxes(window.bboxData, chart);
+
+              $('#Checkbox_CellCount').prop('checked', false);
+              $('#checkbox_All').prop('checked', true);
+              $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
+                .prop('checked', true);
+
               updateChart(window.bboxData, chart);
             } else {
+              chart.$rawCounts = [0, 0, 0, 0, 0, 0];
+              chart.$areaPixels = 0;
               chart.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
               chart.update();
 
-              const panel = document.getElementById(`roi-container${i+1}`);
+              const chartIdx = i + 1;
+
+              const areaEl = document.getElementById(`chart-area-value${chartIdx}`);
+              const totalEl = document.getElementById(`chart-total-value${chartIdx}`);
+
+              if (areaEl) {
+                const resolution = Number(window.currentImageMeta?.resolution);
+                areaEl.textContent =
+                  Number.isFinite(resolution) && resolution > 0
+                    ? '0 µm²'
+                    : '0 px²';
+              }
+
+              if (totalEl) {
+                totalEl.textContent = '0';
+              }
+
+              const panel = document.getElementById(`roi-container${chartIdx}`);
               if (panel) {
                 $(panel).find('.roi-checkbox').prop('checked', false);
               }
