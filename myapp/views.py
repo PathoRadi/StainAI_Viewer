@@ -222,6 +222,7 @@ def current_viewer_user(request):
         "user": viewer_user,
     })
 
+@csrf_exempt
 @require_POST
 def viewer_logout_silent(request):
     request.session.flush()
