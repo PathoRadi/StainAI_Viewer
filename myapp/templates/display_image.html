@@ -507,9 +507,11 @@
       navigator.sendBeacon("{% url 'myapp:reset_media' %}");
     });
 
+    // const PRBASE_LOGIN_URL =
+    // "https://imaging.howard.edu/stainai/user/signin?return_url=" +
+    // encodeURIComponent(window.location.origin + "/");
     const PRBASE_LOGIN_URL =
-    "https://imaging.howard.edu/stainai/user/signin?return_url=" +
-    encodeURIComponent(window.location.origin + "/");
+    "https://imaging.howard.edu/stainai/user/signin?redirect=viewer"
   </script>
   <script type="module" src="{% static 'script/script.js' %}"></script>
 </body>
