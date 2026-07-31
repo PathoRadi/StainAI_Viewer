@@ -49,4 +49,21 @@ urlpatterns = [
         views.viewer_logout_silent,
         name="viewer_logout_silent",
     ),
+    path(
+        "auth/login-bridge/",
+        views.viewer_login_bridge,
+        name="viewer_login_bridge",
+    ),
+
+    path(
+        "auth/logout-silent/",
+        views.viewer_logout_silent,
+        name="viewer_logout_silent",
+    ),
+
+    path(
+        "auth/logout-bridge/",
+        views.viewer_logout_bridge,
+        name="viewer_logout_bridge",
+    ),
 ]

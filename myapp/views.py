@@ -238,6 +238,26 @@ def viewer_logout_silent(request):
 
     return response
 
+@require_GET
+def viewer_logout_bridge(request):
+    """
+    Top-level logout endpoint used by PRBase.
+
+    Clear the Viewer Django session, then return to the PRBase homepage.
+    """
+    request.session.flush()
+
+    response = redirect(
+        "https://imaging.howard.edu/stainai?logged_out=1"
+    )
+
+    response["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
+    response["Pragma"] = "no-cache"
+
+    return response
+
 
 # ---------------------------
 # Lazy loader for YOLO
