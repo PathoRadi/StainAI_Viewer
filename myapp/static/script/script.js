@@ -665,9 +665,11 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         });
       }
 
+      const $demoBtn = $('.demo-btn');
       const $demoImg = $('#demo-preview-img');
       const $dropZone = $('#drop-zone');
-      if (!$demoImg.length || !$dropZone.length) return;
+
+      if (!$demoBtn.length || !$demoImg.length || !$dropZone.length) return;
 
       // Disable default dragging of the demo image itself to avoid browser glitches.
       $demoImg.attr('draggable', false)
@@ -689,44 +691,71 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         return;
       }
 
-      // CASE 5 — Click on demo thumbnail:
-      $demoImg
+      // CASE 5 — Click Demo button
+      $demoBtn
         .off('click.demo')
-        .on('click.demo', async () => {
+        .on('click.demo', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
 
-            // ✅ Case 1: demo already detected (history contains demo)
-            const demoIdx = historyStack.findIndex(it =>
-            it && (it.demo === true || String(it.name || '').toLowerCase() === 'demo.jpg')
-            );
+          if ($demoBtn.prop('disabled')) return;
 
-            if (demoIdx !== -1 && typeof window.loadHistoryItemByIndex === 'function') {
-            window.loadHistoryItemByIndex(demoIdx);
+          $demoBtn.prop('disabled', true);
 
-            // Sync the left history UI to select the demo
-            setTimeout(() => {
-              $('.history-item').removeClass('selected');
-              $(`.history-item[data-idx="${demoIdx}"]`).addClass('selected');
-            }, 0);
-
-            return;
-            }
-
-          // ✅ Case 2: demo not yet detected (history has no demo)
-          // Go back to homepage; after upload, settings modal will pop up automatically
           try {
+            /*
+            * 1) Hide main-container (if any) and show drop-zone
+            * 2) Fetch demo image as Blob
+            * 3) Create a File object and pass to uploadFn (which handles preview + upload)
+            */
             window.hideMain?.();
             $('#drop-zone').show();
 
-            const resp = await fetch(DEMO_URL, { credentials: 'same-origin' });
-            const blob = await resp.blob();
-            const file = new File([blob], 'demo.jpg', { type: blob.type || 'image/jpeg' });
+            const resp = await fetch(DEMO_URL, {
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
 
-            window.resetPendingUpload?.(); // clear old preview + reset previous temp upload
+            if (!resp.ok) {
+              throw new Error(`Demo fetch failed: HTTP ${resp.status}`);
+            }
+
+            const blob = await resp.blob();
+
+            const file = new File(
+              [blob],
+              'demo.jpg',
+              {
+                type: blob.type || 'image/jpeg'
+              }
+            );
+
+            // Clear any previous pending upload (preview + temp upload) before starting a new one
+            window.resetPendingUpload?.();
+
+            // Set a global flag to indicate that this is a demo upload, 
+            // so that downstream handlers can adjust behavior if needed.
             window.isDemoUpload = true;
+
+            // automatically set the pending image directory and parameters for demo, 
+            // if your uploadFn relies on them.
+            // pendingImageDir = d.image_name
+            // pendingParams = defaultParams()
+            // openSettingsModal('demo.jpg')
             uploadFn(file);
-          } catch (e) {
-            console.error('Demo image load failed:', e);
+
+          } catch (err) {
+            console.error('Demo image load failed:', err);
+            window.isDemoUpload = false;
             alert('Failed to load demo image.');
+          } finally {
+            /*
+            * uploadFn 會啟動非同步 fetch，但目前沒有 return Promise，
+            * 因此這裡稍微延遲解除按鈕，避免快速連點。
+            */
+            setTimeout(() => {
+              $demoBtn.prop('disabled', false);
+            }, 1000);
           }
         });
 
