@@ -44,22 +44,8 @@
           <img class="app-logo logo-light" src="{% static 'logo/konva_control/logo_light.png' %}">
         </a>
       </div>
-      <!-- Global Images Processed -->
-      <div class="processed-stats-wrapper processed-stats-header">
-        <div class="processed-stats-label">Platform Images Processed</div>
-        <div class="processed-stats-value" id="global-images-processed-count">0</div>
-      </div>
+
       <!-- Login info -->
-      <!-- <div id="viewer-account-container" class="viewer-account-container viewer-hidden">
-        <div id="viewer-account-card" class="viewer-account-card">
-          <img
-            src="{% static 'logo/account_icon_w.png' %}"
-            alt="account"
-            class="viewer-account-avatar"
-          />
-          <span id="viewer-account-name" class="viewer-account-name"></span>
-        </div>
-      </div> -->
       <div id="viewer-account-container" class="viewer-account-container">
         <button
           id="viewer-account-card"
@@ -168,6 +154,12 @@
         <div class="processed-stats-label">Your Images Processed</div>
         <div class="processed-stats-value" id="user-images-processed-count">0</div>
       </div>
+      <!-- Global Images Processed -->
+      <div class="processed-stats-wrapper processed-stats-header">
+        <div class="processed-stats-label">Platform Images Processed</div>
+        <div class="processed-stats-value" id="global-images-processed-count">0</div>
+      </div>
+      <!-- Theme Toggle -->
       <div class="theme-toggle-wrapper">
         <span id="theme-mode-text">Dark Mode</span>
         <label class="theme-switch">

@@ -160,7 +160,6 @@ if REDIS_URL:
         }
     }
 else:
-    # 本機或未設 REDIS_URL：避免去連 127.0.0.1
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",

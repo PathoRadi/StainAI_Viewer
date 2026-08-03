@@ -26,44 +26,14 @@ urlpatterns = [
     path("api/save-global-rois/", views.save_global_rois, name="save_global_rois"),
     path("api/get-global-rois/", views.get_global_rois, name="get_global_rois"),
     path("download-project-folder/", views.download_project_folder, name="download_project_folder"),
-    path(
-        "api/download-selected-with-rois/",
-        views.download_selected_images_with_rois,
-        name="download_selected_images_with_rois"
-    ),
-    path(
-        "download-single-project/",
-        views.download_single_project,
-        name="download_single_project"
-    ),
-    path(
-        "download-selected-project/",
-        views.download_selected_project,
-        name="download_selected_project"
-    ),
+    path("api/download-selected-with-rois/", views.download_selected_images_with_rois, name="download_selected_images_with_rois"),
+    path("download-single-project/", views.download_single_project, name="download_single_project"),
+    path("download-selected-project/", views.download_selected_project, name="download_selected_project"),
     path("processing-stats/", views.processing_stats, name="processing_stats"),
     path("grayscale_preview_meta/", views.grayscale_preview_meta, name="grayscale_preview_meta"),
     path("grayscale_preview_tile/", views.grayscale_preview_tile, name="grayscale_preview_tile"),
-    path(
-        "api/viewer-logout/",
-        views.viewer_logout_silent,
-        name="viewer_logout_silent",
-    ),
-    path(
-        "auth/login-bridge/",
-        views.viewer_login_bridge,
-        name="viewer_login_bridge",
-    ),
-
-    path(
-        "auth/logout-silent/",
-        views.viewer_logout_silent,
-        name="viewer_logout_silent",
-    ),
-
-    path(
-        "auth/logout-bridge/",
-        views.viewer_logout_bridge,
-        name="viewer_logout_bridge",
-    ),
+    path("api/viewer-logout/", views.viewer_logout_silent, name="viewer_logout_silent"),
+    path("auth/login-bridge/", views.viewer_login_bridge, name="viewer_login_bridge"),
+    path("auth/logout-silent/", views.viewer_logout_silent, name="viewer_logout_silent"),
+    path("auth/logout-bridge/", views.viewer_logout_bridge, name="viewer_logout_bridge"),
 ]
