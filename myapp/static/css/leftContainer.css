@@ -155,7 +155,6 @@
 
   border: none;
   border-radius: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 
   background: transparent;
   color: #ffffff;
@@ -303,7 +302,6 @@
 /* Light mode */
 [data-theme="light"] .viewer-account-card {
   color: #ffffff;
-  border-bottom-color: rgba(255, 255, 255, 0.25);
 }
 
 [data-theme="light"] .viewer-account-card:hover,
@@ -454,8 +452,6 @@
 
     padding: 8px 6px 6px;
     box-sizing: border-box;
-
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
 /* Individual button */
 .left-bottom-action-btn {
@@ -576,9 +572,6 @@
     text-overflow: ellipsis;
 }
 /* Light mode button/count appearance */
-[data-theme="light"] .left-bottom-actions {
-    border-top-color: rgba(255, 255, 255, 0.2);
-}
 [data-theme="light"] .left-bottom-action-btn {
     color: white;
 }
