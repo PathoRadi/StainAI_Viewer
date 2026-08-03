@@ -515,24 +515,31 @@
 .bottom-action-icon {
     display: block;
 
-    max-width: 38px;
-    max-height: 38px;
-
-    width: auto;
-    height: auto;
+    width: 38px;
+    height: 38px;
 
     object-fit: contain;
+    object-position: center;
 
     pointer-events: none;
     user-select: none;
 }
 /* The second theme icon occupies the same location */
-.bottom-action-icon.bottom-icon-light {
+.bottom-action-icon {
     position: absolute;
     top: 50%;
     left: 50%;
 
+    width: 38px;
+    height: 38px;
+
     transform: translate(-50%, -50%);
+
+    object-fit: contain;
+    object-position: center;
+
+    pointer-events: none;
+    user-select: none;
 }
 /* Default: dark mode icons */
 .bottom-icon-dark {
@@ -822,10 +829,4 @@ ReadMe Page
     width: 124.8px;
     height: 40px;
     margin: 0px 37.6px 10px 37.6px;
-}
-#demo-preview-img {
-    width: 120px;
-    height: 176px;
-    margin: 0 40px 20px 40px;
-    cursor: pointer;
 }
