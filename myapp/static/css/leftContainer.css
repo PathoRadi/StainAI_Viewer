@@ -57,6 +57,26 @@
     background: var(--bg-left);
     box-sizing: border-box;
 }
+/* Chrome, Edge, Safari */
+.left-container::-webkit-scrollbar {
+    width: 5px;
+}
+.left-container::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+.left-container::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 10px;
+    border: 1px solid var(--scrollbar-track);
+}
+.left-container::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+/* Firefox */
+.left-container {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
 
 
 
