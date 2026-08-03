@@ -38,18 +38,20 @@
         Left Container
 ########################### */ 
 .left-container {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    display: flex;
+    flex-direction: column;
+
     position: fixed;
     top: 0;
     left: 0;
+
     width: 200px;
     height: 100vh;
     height: 100dvh;
 
     z-index: 3000;
 
-    overflow: hidden;
+    overflow-x: hidden;
     overflow-y: auto;
 
     background: var(--bg-left);
@@ -72,6 +74,9 @@
     background: var(--bg-left-header);
     z-index: 20;
     position: relative;
+
+    flex: 0 0 auto;
+    flex-shrink: 0;
 }
 /* -----App Logo----- */
 .logo-container {
@@ -318,12 +323,17 @@
 
 /* Main Settings */
 .image-history-container {
+    flex: 1 0 120px;
     min-height: 120px;
+
     overflow-y: auto;
     overflow-x: hidden;
 
+    position: relative;
+    z-index: 1;
+
     background: var(--bg-left-middle);
-    padding: 12px 0 12px 0;
+    padding: 12px 0;
     box-sizing: border-box;
 }
 /* Scrollbar Styles */
@@ -400,9 +410,14 @@
     display: flex;
     flex-direction: column;
     width: 100%;
+
+    flex: 0 0 auto;
+    flex-shrink: 0;
+
     background: var(--bg-left-bottom);
-    z-index: 20;
+
     position: relative;
+    z-index: 1;
 }
 /* -----Processed Stats----- */
 .processed-stats-header {
