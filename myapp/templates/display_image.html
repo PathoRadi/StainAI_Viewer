@@ -138,34 +138,122 @@
       </div>
     </div>
 
-    <!-- Left Container Lowwer Part -->
+    <!-- Left Container Lower Part -->
     <div class="left-container-bottom">
-      <!-- <img class="try-icon" id="try-icon1" src="{% static 'logo/try_icon.png' %}">
-      <img class="try-icon" id="try-icon2" src="{% static 'logo/try_icon1.png' %}"> -->
-      <!-- <img id="demo-preview-img" src="{% static 'demo/demo.jpg' %}" 
-      data-demo-url="{% static 'demo/demo.jpg' %}" alt="demo preview"> -->
+      <!-- Bottom action buttons -->
+      <div class="left-bottom-actions">
+        <!-- User Images Processed -->
+        <button
+          class="left-bottom-action-btn processed-count-btn"
+          type="button"
+          aria-label="Your images processed"
+          title="Your images processed"
+        >
+          <span class="bottom-action-icon-wrapper">
+            <img
+              class="bottom-action-icon bottom-icon-dark"
+              src="{% static 'logo/user_counts_b.png' %}"
+              alt=""
+            >
+            <img
+              class="bottom-action-icon bottom-icon-light"
+              src="{% static 'logo/user_counts_w.png' %}"
+              alt=""
+            >
+          </span>
 
-      <!-- ReadMe -->
-      <!-- <button class="readme-btn">
-        <img class="readme-btn-icon" src="{% static 'logo/readme_icon.png' %}">
-      </button> -->
-      <!-- Dark/Light Mode Toggle -->
-      <div class="processed-stats-wrapper processed-stats-bottom">
-        <div class="processed-stats-label">Your Images Processed</div>
-        <div class="processed-stats-value" id="user-images-processed-count">0</div>
+          <span
+            class="bottom-action-count"
+            id="user-images-processed-count"
+          >
+            0
+          </span>
+        </button>
+
+
+        <!-- Global Images Processed -->
+        <button
+          class="left-bottom-action-btn processed-count-btn"
+          type="button"
+          aria-label="Platform images processed"
+          title="Platform images processed"
+        >
+          <span class="bottom-action-icon-wrapper">
+            <img
+              class="bottom-action-icon bottom-icon-dark"
+              src="{% static 'logo/image_counts_b.png' %}"
+              alt=""
+            >
+            <img
+              class="bottom-action-icon bottom-icon-light"
+              src="{% static 'logo/image_counts_w.png' %}"
+              alt=""
+            >
+          </span>
+
+          <span
+            class="bottom-action-count"
+            id="global-images-processed-count"
+          >
+            0
+          </span>
+        </button>
+
+
+        <!-- Demo -->
+        <button
+          class="left-bottom-action-btn demo-btn"
+          type="button"
+          aria-label="Open demo image"
+          title="Demo"
+        >
+          <span class="bottom-action-icon-wrapper">
+            <img
+              id="demo-preview-img"
+              class="bottom-action-icon bottom-icon-dark"
+              src="{% static 'logo/demo_b.png' %}"
+              data-demo-url="{% static 'demo/demo.jpg' %}"
+              alt=""
+            >
+
+            <img
+              class="bottom-action-icon bottom-icon-light"
+              src="{% static 'logo/demo_w.png' %}"
+              alt=""
+            >
+          </span>
+        </button>
+
+
+        <!-- ReadMe -->
+        <button
+          class="left-bottom-action-btn readme-btn"
+          type="button"
+          aria-label="Open ReadMe"
+          title="ReadMe"
+        >
+          <span class="bottom-action-icon-wrapper">
+            <img
+              class="bottom-action-icon bottom-icon-dark"
+              src="{% static 'logo/readme_b.png' %}"
+              alt=""
+            >
+            <img
+              class="bottom-action-icon bottom-icon-light"
+              src="{% static 'logo/readme_w.png' %}"
+              alt=""
+            >
+          </span>
+        </button>
+
       </div>
-      <!-- Global Images Processed -->
-      <div class="processed-stats-wrapper processed-stats-header">
-        <div class="processed-stats-label">Platform Images Processed</div>
-        <div class="processed-stats-value" id="global-images-processed-count">0</div>
-      </div>
+
       <!-- Theme Toggle -->
       <div class="theme-toggle-wrapper">
         <span id="theme-mode-text">Dark Mode</span>
         <label class="theme-switch">
-          <input type="checkbox" id="theme-toggle" />
-          <span class="slider">
-          </span>
+          <input type="checkbox" id="theme-toggle">
+          <span class="slider"></span>
         </label>
       </div>
     </div>

@@ -425,63 +425,173 @@
         3rd Part: Bottom
 ########################### */
 
-/* Main Settings */
+/* Bottom container */
 .left-container-bottom {
     display: flex;
     flex-direction: column;
-    width: 100%;
 
+    width: 100%;
     flex: 0 0 auto;
     flex-shrink: 0;
 
-    background: var(--bg-left-bottom);
+    margin-top: auto;
 
     position: relative;
     z-index: 1;
-}
-/* -----Processed Stats----- */
-.processed-stats-header {
-    width: calc(100% - 24px);
-    margin: 0 12px 12px 12px;
-    padding: 8px 4px 10px 4px;
 
-    border-top: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-}
-.processed-stats-header .processed-stats-label {
-    font-size: 11px;
-}
-.processed-stats-header .processed-stats-value {
-    font-size: 18px;
-}
-.processed-stats-bottom {
-    width: 190px;
-    margin: 0 0 4px 0;
-}
-.processed-stats-wrapper {
-    width: 190px;
-    margin: 0 0 4px 0;
-    padding: 10px 14px 8px 14px;
+    background: var(--bg-left-bottom);
     box-sizing: border-box;
+}
+/* ===================================
+   Four bottom action buttons
+=================================== */
+.left-bottom-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+    width: 100%;
+    min-height: 82px;
+
+    padding: 8px 6px 6px;
+    box-sizing: border-box;
+
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+/* Individual button */
+.left-bottom-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+
+    min-width: 0;
+    height: 68px;
+
+    margin: 0;
+    padding: 5px 2px 3px;
 
     font-family: 'PingFangHKWeb', sans-serif;
     color: white;
 
-    border-top: 1px solid rgba(255, 255, 255, 0.12);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
+    border: none;
+    border-radius: 7px;
+
+    cursor: pointer;
+    box-sizing: border-box;
+
+    transition:
+        background-color 0.15s ease,
+        opacity 0.15s ease,
+        transform 0.15s ease;
 }
-.processed-stats-label {
-    font-size: 12px;
-    opacity: 0.72;
-    line-height: 1.2;
-    margin-bottom: 4px;
+/* Hover effect */
+.left-bottom-action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
 }
-.processed-stats-value {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.1;
-    letter-spacing: 0.3px;
+/* Mouse click effect */
+.left-bottom-action-btn:active {
+    transform: scale(0.95);
 }
+/* Keyboard focus */
+.left-bottom-action-btn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.75);
+    outline-offset: -2px;
+}
+/* Icon container */
+.bottom-action-icon-wrapper {
+    position: relative;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 40px;
+    height: 39px;
+
+    flex: 0 0 auto;
+}
+/* All bottom icons */
+.bottom-action-icon {
+    display: block;
+
+    max-width: 38px;
+    max-height: 38px;
+
+    width: auto;
+    height: auto;
+
+    object-fit: contain;
+
+    pointer-events: none;
+    user-select: none;
+}
+/* The second theme icon occupies the same location */
+.bottom-action-icon.bottom-icon-light {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+
+    transform: translate(-50%, -50%);
+}
+/* Default: dark mode icons */
+.bottom-icon-dark {
+    display: block;
+}
+.bottom-icon-light {
+    display: none;
+}
+/* Light mode icons */
+[data-theme="light"] .bottom-icon-dark {
+    display: none;
+}
+[data-theme="light"] .bottom-icon-light {
+    display: block;
+}
+/* Count below icon */
+.bottom-action-count {
+    display: block;
+
+    width: 100%;
+    min-height: 18px;
+
+    margin-top: 1px;
+
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 18px;
+    text-align: center;
+
+    color: white;
+
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+/* Light mode button/count appearance */
+[data-theme="light"] .left-bottom-actions {
+    border-top-color: rgba(255, 255, 255, 0.2);
+}
+[data-theme="light"] .left-bottom-action-btn {
+    color: white;
+}
+[data-theme="light"] .left-bottom-action-btn:hover {
+    background: rgba(255, 255, 255, 0.13);
+}
+[data-theme="light"] .bottom-action-count {
+    color: white;
+}
+/* Demo and ReadMe only contain icons */
+.demo-btn,
+.readme-btn {
+    justify-content: center;
+}
+/* Reset previous Demo image styles */
+#demo-preview-img {
+    margin: 0;
+    cursor: pointer;
+}
+
 /* -----Dark/Light Mode Toggle----- */
 .theme-toggle-wrapper {
     display: flex;
