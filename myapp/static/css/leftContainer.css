@@ -502,7 +502,7 @@
     position: fixed;
 
     top: var(--tooltip-y);
-    left: calc(var(--tooltip-x) + 40px);
+    left: calc(var(--tooltip-x) + 100px);
 
     display: block;
 
