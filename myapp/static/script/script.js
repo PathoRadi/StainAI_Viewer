@@ -248,7 +248,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     $(document).on('mouseenter mousemove', '.history-item, .project-folder, .project-image-item', function () {
       const rect = this.getBoundingClientRect();
       this.style.setProperty('--tooltip-y', `${rect.top + rect.height / 2}px`);
-      this.style.setProperty('--tooltip-x',`${rect.right + 20}px`);
+      this.style.setProperty('--tooltip-x',`${rect.right}px`);
     });
 
     // Theme toggle
