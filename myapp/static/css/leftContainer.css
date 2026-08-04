@@ -460,6 +460,9 @@
     align-items: center;
     justify-content: flex-start;
 
+    position: relative;
+    overflow: visible;
+
     min-width: 0;
     height: 68px;
 
@@ -493,6 +496,46 @@
 .left-bottom-action-btn:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.75);
     outline-offset: -2px;
+}
+/* Bottom button tooltip */
+.bottom-action-tooltip {
+    position: fixed;
+
+    top: var(--tooltip-y);
+    left: var(--tooltip-x);
+
+    display: block;
+
+    width: max-content;
+    max-width: 220px;
+
+    padding: 7px 11px;
+
+    background: rgb(112, 112, 112);
+    color: white;
+
+    border-radius: 7px;
+
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.2;
+    white-space: nowrap;
+
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+
+    z-index: 10000;
+
+    transform: translateY(-50%);
+    transition:
+        opacity 0.15s ease,
+        visibility 0.15s ease;
+}
+.left-bottom-action-btn:hover .bottom-action-tooltip {
+    opacity: 1;
+    visibility: visible;
 }
 /* Icon container */
 .bottom-action-icon-wrapper {
@@ -591,6 +634,7 @@
     margin: 0;
     cursor: pointer;
 }
+
 
 /* -----Dark/Light Mode Toggle----- */
 .theme-toggle-wrapper {
