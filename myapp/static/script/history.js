@@ -6,6 +6,8 @@ import { addBarChart } from './process.js';
 import { getMoveToProjectMenuHtml, moveImageToImages, moveImageToProject, updateProjectsUI } from './project.js';
 import { loadGlobalROIs } from './roi.js';
 
+let historyLoadRequestId = 0;
+let historyViewerLoading = false;
 
 function handleAuthExpired(message = 'Session expired. Please sign in again.') {
   alert(message);
