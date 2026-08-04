@@ -51,8 +51,6 @@
 
     z-index: 3000;
 
-    /* overflow-x: hidden;
-    overflow-y: auto; */
     overflow: hidden;
 
     background: var(--bg-left);
