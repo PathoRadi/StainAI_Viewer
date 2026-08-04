@@ -24,7 +24,7 @@
     --text-app-title:      rgb(47, 47, 47);
     --bg-upload-new-img-btn: rgb(97, 136, 155);
     --text-upload-new-img-btn: rgb(255, 255, 255);
-    --border-upload-new-img-btn: none;
+    --border-upload-new-img-btn: 1px solid rgb(97, 136, 155);
     /* Model Box */
     --bg-modal-box: rgb(190,190,190);
     --text-modal-box: rgb(0,0,0);
