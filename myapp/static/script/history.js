@@ -274,9 +274,12 @@ export function initHistoryHandlers(historyStack) {
     };
   }
 
-  function openImageWithFallback(item) {
+  async function openImageWithFallback(item, requestId) {
     const viewer = window.viewer;
-    if (!viewer) return false;
+
+    if (!viewer) {
+      throw new Error('OpenSeadragon viewer is unavailable.');
+    }
 
     const dziUrl =
       item.displayDziUrl ||
@@ -290,122 +293,320 @@ export function initHistoryHandlers(historyStack) {
       item.original_url ||
       '';
 
-    const openSingleImage = () => {
+    /*
+    * OpenSeadragon open() is asynchronous, but it does not return a Promise.
+    * We wrap it in a Promise to handle success/failure and timeout.
+    */
+    function openTileSource(tileSource, typeLabel) {
+      return new Promise((resolve, reject) => {
+        let finished = false;
+
+        const cleanup = () => {
+          viewer.removeHandler('open', handleOpen);
+          viewer.removeHandler('open-failed', handleOpenFailed);
+          clearTimeout(timeoutId);
+        };
+
+        const handleOpen = () => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+
+          /*
+          * If the user has already clicked another history item, we should not resolve this old request.
+          */
+          if (requestId !== historyLoadRequestId) {
+            reject(new Error('History load was replaced by a newer request.'));
+            return;
+          }
+
+          resolve(typeLabel);
+        };
+
+        const handleOpenFailed = (event) => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+
+          reject(
+            new Error(
+              `${typeLabel} open failed: ${
+                event?.message ||
+                event?.eventSource?.source ||
+                'unknown error'
+              }`
+            )
+          );
+        };
+
+        /*
+        * OpenSeadragon open() may hang indefinitely if the tile source is unreachable.
+        */
+        const timeoutId = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          cleanup();
+
+          reject(new Error(`${typeLabel} open timed out.`));
+        }, 20000);
+
+        viewer.addHandler('open', handleOpen);
+        viewer.addHandler('open-failed', handleOpenFailed);
+
+        try {
+          viewer.open(tileSource);
+        } catch (error) {
+          if (finished) return;
+          finished = true;
+          cleanup();
+          reject(error);
+        }
+      });
+    }
+
+    /*
+    * If DZI exists, try to open it first. If it fails, fallback to display image.
+    */
+    if (dziUrl) {
+      try {
+        console.log('[OSD OPEN] HISTORY BUILD DZI:', dziUrl);
+
+        const tileSource = await buildAzureDziTileSource(dziUrl);
+
+        /*
+        * If the user has already clicked another history item, 
+        * we should not proceed with this old request.
+        */
+        if (requestId !== historyLoadRequestId) {
+          return {
+            success: false,
+            stale: true,
+            openedWithDzi: false
+          };
+        }
+
+        console.log('[OSD OPEN] HISTORY OPEN DZI:', dziUrl);
+
+        await openTileSource(tileSource, 'DZI');
+
+        item.__openedWithDzi = true;
+
+        return {
+          success: true,
+          stale: false,
+          openedWithDzi: true
+        };
+
+      } catch (error) {
+        /*
+        * If the user has already clicked another history item,
+        * we should not proceed with this old request.
+        */
+        if (requestId !== historyLoadRequestId) {
+          return {
+            success: false,
+            stale: true,
+            openedWithDzi: false
+          };
+        }
+
+        console.warn(
+          '[OSD OPEN FAILED] DZI failed, fallback to display image:',
+          error
+        );
+      }
+    }
+
+    /*
+    * If no DZI or DZI failed, fallback to display image.
+    */
+    if (!displayUrl) {
       item.__openedWithDzi = false;
 
-      if (!displayUrl) {
-        console.error('[OSD OPEN] missing displayUrl:', item);
-        $('#progress-overlay1').hide().removeClass('active');
-        alert('This history item has no display image URL.');
-        return false;
-      }
+      throw new Error('This history item has no display image URL.');
+    }
 
-      console.log('[OSD OPEN] HISTORY SINGLE IMAGE:', displayUrl);
+    if (requestId !== historyLoadRequestId) {
+      return {
+        success: false,
+        stale: true,
+        openedWithDzi: false
+      };
+    }
 
-      viewer.addOnceHandler('open-failed', (ev) => {
-        console.error('[OSD OPEN FAILED] single image failed:', ev);
-        $('#progress-overlay1').hide().removeClass('active');
-        alert('Failed to load image result.');
-      });
+    console.log('[OSD OPEN] HISTORY SINGLE IMAGE:', displayUrl);
 
-      viewer.open({
+    await openTileSource(
+      {
         type: 'image',
         url: displayUrl,
         buildPyramid: false
-      });
+      },
+      'Display image'
+    );
 
-      return true;
+    item.__openedWithDzi = false;
+
+    return {
+      success: true,
+      stale: false,
+      openedWithDzi: false
     };
-
-    if (dziUrl) {
-      console.log('[OSD OPEN] HISTORY TRY AZURE DZI:', dziUrl);
-
-      buildAzureDziTileSource(dziUrl)
-        .then(tileSource => {
-          item.__openedWithDzi = true;
-
-          viewer.addOnceHandler('open-failed', (ev) => {
-            console.warn('[OSD OPEN FAILED] DZI failed, fallback to display image:', ev);
-            item.__openedWithDzi = false;
-            openSingleImage();
-          });
-
-          viewer.open(tileSource);
-        })
-        .catch(err => {
-          console.warn('[OSD OPEN FAILED] build DZI tileSource failed:', err);
-          item.__openedWithDzi = false;
-          openSingleImage();
-        });
-
-      return true;
-    }
-
-    return openSingleImage();
   }
 
   // Public: load a history item by index (used by Demo button, etc.)
-  function loadHistoryItemByIndex(idx) {
+  async function loadHistoryItemByIndex(idx) {
     const item = historyStack[idx];
     if (!item) return;
 
-    console.log('Loading history item:', idx);
+    /*
+    * Increment the requestId for each new load request.
+    */
+    const requestId = ++historyLoadRequestId;
 
-    // hide upload UI / show main viewer
+    console.log('Loading history item:', idx, 'request:', requestId);
+
+    historyViewerLoading = true;
+
     $('#drop-zone').hide();
     $('.main-container').prop('hidden', false);
 
-    // show loading overlay
-    $('#progress-overlay1').show().addClass('active');
+    $('#progress-overlay1')
+      .show()
+      .addClass('active');
 
-    window.viewer.addOnceHandler('open', () => {
-      $('#progress-overlay1').hide().removeClass('active');
+    /*
+    * Clear the previous image's bounding boxes before loading the new image.
+    */
+    window.bboxData = [];
+
+    try {
+      clearBoxes();
+    } catch (error) {
+      console.warn('Failed to clear boxes before loading:', error);
+    }
+
+    /*
+    * Clear the previous image's ROI before loading the new image.
+    */
+    try {
+      window.layerManagerApi?.clearLayers?.();
+      window.konvaManager?.redrawPolygons?.();
+    } catch (error) {
+      console.warn('Failed to clear ROI before loading:', error);
+    }
+
+    /*
+    * Wait for the next animation frame to ensure the viewer has been resized 
+    * and layout has stabilized before opening the new image.
+    */
+    await new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+
+    /*
+    * If the user clicks on another image while waiting for the layout to stabilize,
+    * cancel this load request.
+    */
+    if (requestId !== historyLoadRequestId) {
+      return;
+    }
+
+    try {
+      const container = window.viewer?.container;
+
+      if (container && window.viewer?.viewport) {
+        window.viewer.viewport.resize(
+          new OpenSeadragon.Point(
+            Math.max(1, container.clientWidth),
+            Math.max(1, container.clientHeight)
+          ),
+          true
+        );
+      }
+    } catch (error) {
+      console.warn('Viewer resize before open failed:', error);
+    }
+
+    try {
+      const result = await openImageWithFallback(item, requestId);
+
+      if (
+        requestId !== historyLoadRequestId ||
+        result?.stale
+      ) {
+        return;
+      }
 
       const useOriginalScale =
-        item.__openedWithDzi === true &&
+        result.openedWithDzi === true &&
         Array.isArray(item.boxesOriginal) &&
-        item.boxesOriginal.length;
+        item.boxesOriginal.length > 0;
 
       const boxes = useOriginalScale
         ? item.boxesOriginal
         : (
             Array.isArray(item.boxesDisplay)
               ? item.boxesDisplay
-              : (Array.isArray(item.boxes) ? item.boxes : [])
+              : (
+                  Array.isArray(item.boxes)
+                    ? item.boxes
+                    : []
+                )
           );
 
       window.bboxData = boxes.slice();
 
-      const origSize = Array.isArray(item.origSize) ? item.origSize : [0, 0];
+      const origSize =
+        Array.isArray(item.origSize)
+          ? item.origSize
+          : [0, 0];
 
       window.currentImageMeta = {
-        imageName: item.imageName || item.name || item.dir || '',
+        imageName:
+          item.imageName ||
+          item.name ||
+          item.dir ||
+          '',
 
         origSize,
-        detectSize: Array.isArray(item.detectSize) ? item.detectSize : [0, 0],
-        dispSize: Array.isArray(item.dispSize) ? item.dispSize : [0, 0],
+
+        detectSize:
+          Array.isArray(item.detectSize)
+            ? item.detectSize
+            : [0, 0],
+
+        dispSize:
+          Array.isArray(item.dispSize)
+            ? item.dispSize
+            : [0, 0],
 
         totalPixels:
           origSize.length >= 2
-            ? (Number(origSize[0]) || 0) * (Number(origSize[1]) || 0)
+            ? (
+                (Number(origSize[0]) || 0) *
+                (Number(origSize[1]) || 0)
+              )
             : 0,
 
         resolution:
-          Number.isFinite(Number(item.resolution)) && Number(item.resolution) > 0
+          Number.isFinite(Number(item.resolution)) &&
+          Number(item.resolution) > 0
             ? Number(item.resolution)
             : null,
 
         scaleInfo: item.scaleInfo || null,
       };
 
-      try {
-        window.layerManagerApi.clearLayers?.();
-        window.konvaManager?.redrawPolygons?.();
-      } catch (e) {
-        console.warn('Failed to clear ROI layers before loading history item:', e);
-      }
-
+      /*
+      * Only start resizing, centering, drawing boxes, and updating the chart
+      * after the image has been successfully opened.
+      */
       stabilizeViewerAndRender(window.bboxData, async () => {
+        if (requestId !== historyLoadRequestId) return;
+
         if (window.chartRefs && window.chartRefs.length) {
           window.chartRefs.forEach((chart, i) => {
             if (!chart) return;
@@ -415,10 +616,18 @@ export function initHistoryHandlers(historyStack) {
 
               $('#Checkbox_CellCount').prop('checked', false);
               $('#checkbox_All').prop('checked', true);
-              $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-                .prop('checked', true);
+
+              $(
+                '#Checkbox_R, ' +
+                '#Checkbox_H, ' +
+                '#Checkbox_B, ' +
+                '#Checkbox_A, ' +
+                '#Checkbox_RD, ' +
+                '#Checkbox_HR'
+              ).prop('checked', true);
 
               updateChart(window.bboxData, chart);
+
             } else {
               chart.$rawCounts = [0, 0, 0, 0, 0, 0];
               chart.$areaPixels = 0;
@@ -427,13 +636,23 @@ export function initHistoryHandlers(historyStack) {
 
               const chartIdx = i + 1;
 
-              const areaEl = document.getElementById(`chart-area-value${chartIdx}`);
-              const totalEl = document.getElementById(`chart-total-value${chartIdx}`);
+              const areaEl =
+                document.getElementById(
+                  `chart-area-value${chartIdx}`
+                );
+
+              const totalEl =
+                document.getElementById(
+                  `chart-total-value${chartIdx}`
+                );
 
               if (areaEl) {
-                const resolution = Number(window.currentImageMeta?.resolution);
+                const resolution =
+                  Number(window.currentImageMeta?.resolution);
+
                 areaEl.textContent =
-                  Number.isFinite(resolution) && resolution > 0
+                  Number.isFinite(resolution) &&
+                  resolution > 0
                     ? '0 µm²'
                     : '0 px²';
               }
@@ -442,20 +661,24 @@ export function initHistoryHandlers(historyStack) {
                 totalEl.textContent = '0';
               }
 
-              const panel = document.getElementById(`roi-container${chartIdx}`);
+              const panel =
+                document.getElementById(
+                  `roi-container${chartIdx}`
+                );
+
               if (panel) {
-                $(panel).find('.roi-checkbox').prop('checked', false);
+                $(panel)
+                  .find('.roi-checkbox')
+                  .prop('checked', false);
               }
             }
           });
 
-          clearBoxes();
-          drawBbox(window.bboxData);
-          showAllBoxes();
-
-          await reloadGlobalROIsIntoViewer();
         } else {
-          document.querySelectorAll('.barChart-wrapper').forEach(w => w.remove());
+          document
+            .querySelectorAll('.barChart-wrapper')
+            .forEach(wrapper => wrapper.remove());
+
           window.chartRefs = [];
 
           const c1 = addBarChart('barChart-wrappers');
@@ -465,26 +688,72 @@ export function initHistoryHandlers(historyStack) {
           window.chartRefs.push(c2);
 
           initCheckboxes(window.bboxData, c1);
+
+          $('#Checkbox_CellCount').prop('checked', false);
           $('#checkbox_All').prop('checked', true);
-          $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
-            .prop('checked', true);
+
+          $(
+            '#Checkbox_R, ' +
+            '#Checkbox_H, ' +
+            '#Checkbox_B, ' +
+            '#Checkbox_A, ' +
+            '#Checkbox_RD, ' +
+            '#Checkbox_HR'
+          ).prop('checked', true);
 
           updateChart(window.bboxData, c1);
 
+          c2.$rawCounts = [0, 0, 0, 0, 0, 0];
+          c2.$areaPixels = 0;
           c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
           c2.update();
-
-          clearBoxes();
-          drawBbox(window.bboxData);
-          showAllBoxes();
-
-          await reloadGlobalROIsIntoViewer();
         }
-      });
-    });
 
-    // open image LAST
-    openImageWithFallback(item);
+        /*
+        * Clear the previous image's bounding boxes before drawing the new ones.
+        */
+        clearBoxes();
+        drawBbox(window.bboxData);
+        showAllBoxes();
+
+        await reloadGlobalROIsIntoViewer();
+
+        if (requestId !== historyLoadRequestId) return;
+
+        $('#progress-overlay1')
+          .hide()
+          .removeClass('active');
+
+        historyViewerLoading = false;
+      });
+
+    } catch (error) {
+      /*
+      * If the user clicks on another image while waiting for the image to load,
+      * cancel this load request.
+      */
+      if (requestId !== historyLoadRequestId) {
+        return;
+      }
+
+      console.error('Failed to load history item:', error);
+
+      historyViewerLoading = false;
+
+      $('#progress-overlay1')
+        .hide()
+        .removeClass('active');
+
+      try {
+        window.viewer?.close();
+        clearBoxes();
+      } catch (_) {}
+
+      alert(
+        error?.message ||
+        'Failed to load image result.'
+      );
+    }
   }
 
   // expose for other modules (e.g., demo thumbnail click)
