@@ -365,7 +365,7 @@ export function initCheckboxes(bboxData, barChart) {
       hideAllBoxes();
     }
 
-    updateChartForCurrentSelection();
+    // updateChartForCurrentSelection();
   });
 
   $(classSelector).off('change').on('change', function () {
@@ -380,7 +380,7 @@ export function initCheckboxes(bboxData, barChart) {
       hideAllBoxes();
     }
 
-    updateChartForCurrentSelection();
+    // updateChartForCurrentSelection();
   });
 
   const $menu = $('#filter-menu');

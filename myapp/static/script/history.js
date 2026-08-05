@@ -1,6 +1,6 @@
 // static/script/history.js
 import { clearBoxes, drawBbox, showAllBoxes } from './box.js';
-import { updateChart, initCheckboxes } from './visualization.js';
+import { updateChartAll, initCheckboxes } from './visualization.js';
 import { csrftoken } from './cookie.js';
 import { addBarChart } from './process.js';
 import { getMoveToProjectMenuHtml, moveImageToImages, moveImageToProject, updateProjectsUI } from './project.js';
@@ -418,7 +418,7 @@ export function initHistoryHandlers(historyStack) {
               $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
                 .prop('checked', true);
 
-              updateChart(window.bboxData, chart);
+              updateChartAll(window.bboxData, chart);
             } else {
               chart.$rawCounts = [0, 0, 0, 0, 0, 0];
               chart.$areaPixels = 0;
@@ -469,7 +469,7 @@ export function initHistoryHandlers(historyStack) {
           $('#Checkbox_R, #Checkbox_H, #Checkbox_B, #Checkbox_A, #Checkbox_RD, #Checkbox_HR')
             .prop('checked', true);
 
-          updateChart(window.bboxData, c1);
+          updateChartAll(window.bboxData, c1);
 
           c2.data.datasets[0].data = [0, 0, 0, 0, 0, 0];
           c2.update();
