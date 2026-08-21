@@ -48,10 +48,12 @@ function getAreaInfo(areaPixels) {
   const resolution = getResolution();
 
   if (resolution) {
+    const areaMm2 = (px * resolution * resolution) / 1_000_000;
+
     return {
-      value: px * resolution * resolution,
-      unit: 'µm²',
-      densityUnit: 'cells/µm²'
+      value: areaMm2,
+      unit: 'mm²',
+      densityUnit: 'cells/mm²'
     };
   }
 
