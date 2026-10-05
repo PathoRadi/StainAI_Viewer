@@ -282,6 +282,231 @@
     </div>
   </div>
 
+  <!-- =========================================================
+      STAINAI LANDING PAGE
+  ========================================================= -->
+  <div id="landing-page">
+    <div class="landing-content">
+      <!-- ================= HERO ================= -->
+      <section class="landing-hero">
+
+        <div class="landing-welcome-row">
+
+          <div class="landing-welcome-text">
+            <div class="landing-welcome-title">Welcome to</div>
+
+            <img
+              class="landing-homepage-logo"
+              src="{% static 'logo/homepage/homepage-logo.png' %}"
+              alt="StainAI-Web"
+            >
+          </div>
+
+          <img
+            class="landing-welcome-icon"
+            src="{% static 'logo/homepage/welcome-icon.png' %}"
+            alt=""
+          >
+
+        </div>
+
+
+        <div class="landing-tagline">
+          Making microglial analysis simple,<br>
+          from whole-slide quantification to specific regions.
+        </div>
+
+
+        <button id="start-stainai-btn" type="button">
+          Start StainAI
+        </button>
+
+
+        <p class="landing-description">
+          StainAI-Web classifies, quantifies, and visualizes microglial morphology
+          in immunohistochemistry images, such as Iba1-stained sections.
+          The platform converts raw microglial images into AI-generated morphology
+          maps, allowing users to select regions of interest (ROIs) and generate
+          quantitative data for whole-slide and regional analysis.
+        </p>
+
+      </section>
+
+
+      <!-- ================= WHOLE BRAIN GIF ================= -->
+      <section class="landing-brain-section">
+
+        <!--
+          GIF PLACEHOLDER
+
+          When whole-brain-animation.gif is ready,
+          replace this div with:
+
+          <img
+            class="landing-brain-gif"
+            src="{% static 'logo/homepage/whole-brain-animation.gif' %}"
+            alt="StainAI whole-slide morphology visualization"
+          >
+        -->
+
+        <div class="landing-brain-placeholder">
+          <span>Whole-brain animation</span>
+        </div>
+
+      </section>
+
+
+      <!-- ================= CORE FUNCTIONALITY ================= -->
+      <section class="landing-features-section">
+
+        <h2 class="landing-section-title">Core Functionality</h2>
+
+
+        <div class="landing-features-grid">
+
+          <!-- Background Correction -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/background-correction-icon.png' %}"
+              alt=""
+            >
+
+            <h3>Background Correction</h3>
+
+            <p>
+              Reduces uneven illumination and staining artifacts
+              to enhance cellular signals.
+            </p>
+
+          </div>
+
+
+          <!-- Whole Slide Inference -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/whole-slide-inference-icon.png' %}"
+              alt=""
+            >
+
+            <h3>Whole Slide Inference</h3>
+
+            <p>
+              Analyzes ultra-high-resolution images using
+              overlap-aware patch-based inference.
+            </p>
+
+          </div>
+
+
+          <!-- Morphology Classification -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/morphology-classification-icon.png' %}"
+              alt=""
+            >
+
+            <h3>Morphology Classification</h3>
+
+            <p>
+              Detects and classifies microglia into six morphological
+              types across both gray and white matter.
+            </p>
+
+          </div>
+
+
+          <!-- Interactive Visualization -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/interactive-visualization-icon.png' %}"
+              alt=""
+            >
+
+            <h3>Interactive Visualization</h3>
+
+            <p>
+              Provides high-resolution navigation and
+              morphology-resolved image overlays.
+            </p>
+
+          </div>
+
+
+          <!-- ROI Quantification -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/roi-quantification-icon.png' %}"
+              alt=""
+            >
+
+            <h3>ROI Quantification</h3>
+
+            <p>
+              Quantifies cell counts, morphology distributions,
+              and densities within user-defined regions.
+            </p>
+
+          </div>
+
+
+          <!-- Structured Data Export -->
+          <div class="landing-feature">
+
+            <img
+              class="landing-feature-icon"
+              src="{% static 'logo/homepage/structured-daat-export.png' %}"
+              alt=""
+            >
+
+            <h3>Structured Data Export</h3>
+
+            <p>
+              Exports detection results, quantitative data,
+              and ROI information for downstream analysis.
+            </p>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+      <!-- ================= FOOTER ================= -->
+      <footer class="landing-footer">
+
+        <div class="landing-footer-item landing-howard">
+          <strong>HOWARD<br>UNIVERSITY</strong>
+          <span class="landing-footer-divider"></span>
+          <span>Molecular Imaging<br>Laboratory</span>
+        </div>
+
+
+        <a
+          class="landing-footer-item landing-footer-link"
+          href="#"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Github<br>Repository
+        </a>
+
+        <div class="landing-footer-item">
+          <strong>Contact Us</strong>
+        </div>
+      </footer>
+    </div>
+  </div>
 
   <!-- ───── Drag & Drop / Click Upload Area ───── -->
   <div id="drop-zone">

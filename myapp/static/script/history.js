@@ -113,10 +113,16 @@ function stabilizeViewerAndRender(bboxData, afterRender) {
 export function initHistoryHandlers(historyStack) {
   // Hard reset to homepage (no history items)
   function hardResetToHomepage() {
-    // 1) UI: show homepage, hide viewer
+    // 1) UI: return to the new StainAI landing page
     $('.main-container').prop('hidden', true);
-    $('#drop-zone').show();
+    $('#drop-zone').hide();
 
+    if (typeof window.showLandingPage === 'function') {
+      window.showLandingPage();
+    } else {
+      $('#landing-page').show();
+    }
+    
     // 2) Clear OpenSeadragon viewer
     try { window.viewer?.close(); } catch(e) {}
 

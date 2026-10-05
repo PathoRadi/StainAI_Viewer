@@ -86,6 +86,67 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   }
   initViewerUserCard(auth.user);
 
+  // ========================================================
+  // PAGE STATE CONTROLLER
+  // ========================================================
+
+  function showLandingPage() {
+    const landing = document.getElementById('landing-page');
+    const dropZone = document.getElementById('drop-zone');
+    const mainContainer = document.querySelector('.main-container');
+
+    if (landing) {
+      landing.style.display = 'block';
+      landing.scrollTop = 0;
+    }
+
+    if (dropZone) {
+      dropZone.style.display = 'none';
+    }
+
+    if (mainContainer) {
+      mainContainer.hidden = true;
+    }
+  }
+
+
+  function showUploadPage() {
+    const landing = document.getElementById('landing-page');
+    const dropZone = document.getElementById('drop-zone');
+    const mainContainer = document.querySelector('.main-container');
+
+    if (landing) {
+      landing.style.display = 'none';
+    }
+
+    if (dropZone) {
+      dropZone.style.display = 'flex';
+    }
+
+    if (mainContainer) {
+      mainContainer.hidden = true;
+    }
+  }
+
+
+  // Make them accessible to other modules
+  window.showLandingPage = showLandingPage;
+  window.showUploadPage = showUploadPage;
+
+
+  // Start StainAI button
+  const startStainAIBtn = document.getElementById('start-stainai-btn');
+
+  startStainAIBtn?.addEventListener('click', () => {
+    showUploadPage();
+  });
+
+
+  // Initial page
+  showLandingPage();
+
+
+
     // ──────── Globals ────────
     window.bboxData     = [];
     window.barChart     = null;

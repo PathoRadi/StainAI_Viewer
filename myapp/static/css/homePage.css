@@ -91,6 +91,406 @@ body {
   --text-settings-start-btn: rgb(110,156,176);
 }
 
+/* ########################################################
+   STAINAI LANDING PAGE
+######################################################## */
+#landing-page {
+    position: fixed;
+
+    top: 0;
+    left: 200px;
+
+    width: calc(100vw - 200px);
+    height: 100vh;
+    height: 100dvh;
+
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    background: #000;
+    color: #fff;
+
+    font-family: 'PingFangHKWeb', sans-serif;
+
+    z-index: 10;
+
+    box-sizing: border-box;
+}
+
+
+/* Main centered content */
+.landing-content {
+    width: min(100%, 1100px);
+
+    margin: 0 auto;
+
+    padding:
+        clamp(55px, 7vh, 90px)
+        clamp(40px, 6vw, 90px)
+        45px;
+
+    box-sizing: border-box;
+}
+
+
+/* ========================================================
+   HERO
+======================================================== */
+
+.landing-hero {
+    text-align: center;
+}
+
+
+/* Welcome + icon */
+.landing-welcome-row {
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    gap: 30px;
+}
+
+
+.landing-welcome-text {
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;
+}
+
+
+.landing-welcome-title {
+    font-size: clamp(30px, 3vw, 45px);
+    font-weight: 300;
+
+    line-height: 1.1;
+
+    color: rgba(255, 255, 255, 0.78);
+
+    margin-bottom: 8px;
+}
+
+
+/* StainAI-Web logo */
+.landing-homepage-logo {
+    width: clamp(220px, 25vw, 340px);
+    height: auto;
+
+    object-fit: contain;
+}
+
+
+/* Welcome microglia icon */
+.landing-welcome-icon {
+    width: clamp(130px, 14vw, 190px);
+    height: auto;
+
+    object-fit: contain;
+}
+
+
+/* Tagline */
+.landing-tagline {
+    margin-top: 25px;
+
+    font-size: clamp(17px, 1.5vw, 23px);
+    font-weight: 400;
+
+    line-height: 1.25;
+
+    color: rgba(255, 255, 255, 0.85);
+}
+
+
+/* ========================================================
+   START STAINAI BUTTON
+   Same size / radius as #drop-upload-btn
+======================================================== */
+
+#start-stainai-btn {
+    display: flex;
+
+    justify-content: center;
+    align-items: center;
+
+    width: 200px;
+    height: 35px;
+
+    margin: 28px auto;
+
+    padding: 0;
+
+    background: rgb(97, 136, 155);
+
+    color: #fff;
+
+    border: none;
+    border-radius: 15px;
+
+    font-family: 'PingFangHKWeb', sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+
+    cursor: pointer;
+
+    transition:
+        background 0.18s ease,
+        transform 0.18s ease;
+}
+
+
+#start-stainai-btn:hover {
+    background: rgb(112, 153, 172);
+}
+
+
+#start-stainai-btn:active {
+    transform: scale(0.98);
+}
+
+
+/* Description */
+.landing-description {
+    width: min(100%, 850px);
+
+    margin: 0 auto;
+
+    font-size: clamp(14px, 1.2vw, 18px);
+
+    line-height: 1.5;
+
+    color: rgba(255, 255, 255, 0.76);
+}
+
+
+/* ========================================================
+   WHOLE BRAIN ANIMATION
+======================================================== */
+
+.landing-brain-section {
+    display: flex;
+
+    justify-content: center;
+    align-items: center;
+
+    margin: 55px 0 45px;
+}
+
+
+/* Temporary placeholder */
+.landing-brain-placeholder {
+    width: min(80%, 700px);
+    aspect-ratio: 2.1 / 1;
+
+    display: flex;
+
+    justify-content: center;
+    align-items: center;
+
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+
+    color: rgba(255, 255, 255, 0.25);
+
+    font-size: 14px;
+}
+
+
+/* Use this after GIF is ready */
+.landing-brain-gif {
+    display: block;
+
+    width: min(80%, 700px);
+    height: auto;
+
+    object-fit: contain;
+}
+
+
+/* ========================================================
+   CORE FUNCTIONALITY
+======================================================== */
+
+.landing-features-section {
+    width: 100%;
+}
+
+
+.landing-section-title {
+    margin: 0 0 45px;
+
+    text-align: center;
+
+    font-size: clamp(27px, 2.5vw, 38px);
+    font-weight: 500;
+
+    color: rgb(126, 170, 190);
+}
+
+
+.landing-features-grid {
+    display: grid;
+
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    column-gap: clamp(35px, 5vw, 75px);
+    row-gap: 55px;
+}
+
+
+/* Individual feature */
+.landing-feature {
+    min-width: 0;
+
+    text-align: left;
+}
+
+
+.landing-feature-icon {
+    display: block;
+
+    width: 55px;
+    height: 55px;
+
+    object-fit: contain;
+
+    margin-bottom: 10px;
+}
+
+
+.landing-feature h3 {
+    margin: 0 0 10px;
+
+    font-size: 17px;
+    font-weight: 600;
+
+    line-height: 1.25;
+
+    color: #fff;
+}
+
+
+.landing-feature p {
+    margin: 0;
+
+    font-size: 14px;
+
+    line-height: 1.35;
+
+    color: rgba(255, 255, 255, 0.68);
+}
+
+
+/* ========================================================
+   FOOTER
+======================================================== */
+
+.landing-footer {
+    display: grid;
+
+    grid-template-columns: 1.3fr 1fr 1fr;
+
+    align-items: center;
+
+    gap: 35px;
+
+    margin-top: 85px;
+
+    padding: 35px 0 5px;
+
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+
+.landing-footer-item {
+    display: flex;
+
+    align-items: center;
+
+    color: rgba(255, 255, 255, 0.88);
+
+    font-size: 14px;
+
+    line-height: 1.2;
+}
+
+
+.landing-footer-link {
+    color: rgba(255, 255, 255, 0.88);
+
+    text-decoration: none;
+}
+
+
+.landing-footer-link:hover {
+    color: #fff;
+
+    text-decoration: none;
+}
+
+
+.landing-footer-divider {
+    width: 1px;
+    height: 42px;
+
+    margin: 0 15px;
+
+    background: rgba(255, 255, 255, 0.35);
+}
+
+
+/* ========================================================
+   RESPONSIVE
+======================================================== */
+
+@media (max-width: 1000px) {
+
+    .landing-features-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+}
+
+
+@media (max-width: 700px) {
+
+    .landing-content {
+        padding-left: 25px;
+        padding-right: 25px;
+    }
+
+
+    .landing-welcome-row {
+        flex-direction: column;
+
+        gap: 15px;
+    }
+
+
+    .landing-welcome-text {
+        align-items: center;
+    }
+
+
+    .landing-welcome-icon {
+        width: 130px;
+    }
+
+
+    .landing-features-grid {
+        grid-template-columns: 1fr;
+    }
+
+
+    .landing-footer {
+        grid-template-columns: 1fr;
+
+        gap: 25px;
+    }
+
+}
+
 /* #########################
          Drop Zone
 ######################### */
@@ -111,7 +511,7 @@ body {
     background: var(--bg-drop-zone);
     color: var(--text-drop-zone);
 
-    display: flex;
+    display: none;
     flex-direction: column;
     justify-content: center;
     align-items: center;
