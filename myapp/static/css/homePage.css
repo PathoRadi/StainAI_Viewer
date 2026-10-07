@@ -639,18 +639,6 @@ body {
         transform 0.15s ease;
 }
 
-.landing-contact-btn:hover {
-    color: var(--landing-text);
-    text-decoration: none;
-
-    background: var(--landing-back-hover-bg);
-    border-color: var(--landing-text-muted);
-}
-
-.landing-contact-btn:active {
-    transform: scale(0.97);
-}
-
 .landing-cookie-note {
     margin: 5px 0 0 0;
 
