@@ -966,20 +966,34 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         document.documentElement.style.overflow = 'hidden';
       });
 
-      // Close overlay
-      closeBtn.addEventListener('click', () => {
+      function closeReadme() {
         readmePage.setAttribute('hidden', true);
+
         // Release PDF (optional)
         // readmeIframe.src = '';
+
         document.documentElement.style.overflow = '';
+      }
+
+      // Close button
+      closeBtn.addEventListener('click', closeReadme);
+
+      // Click blurred background to close
+      readmePage.addEventListener('click', (e) => {
+        // Only close when clicking the overlay/background itself
+        // Clicking the PDF/readme box will NOT close it
+        if (e.target === readmePage) {
+          closeReadme();
+        }
       });
 
       // ESC to close (optional)
       document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !readmePage.hasAttribute('hidden')) {
-          readmePage.setAttribute('hidden', true);
-          // readmeIframe.src = '';
-          document.documentElement.style.overflow = '';
+        if (
+          e.key === 'Escape' &&
+          !readmePage.hasAttribute('hidden')
+        ) {
+          closeReadme();
         }
       });
     } else {
