@@ -507,6 +507,8 @@ body {
     object-fit: contain;
 
     flex-shrink: 0;
+
+    transform: translateY(-6px);
 }
 
 
@@ -570,6 +572,20 @@ body {
     object-fit: contain;
 
     flex-shrink: 0;
+}
+/* Dark mode: white GitHub logo */
+.github-logo-dark {
+    display: block;
+}
+.github-logo-light {
+    display: none;
+}
+/* Light mode: black GitHub logo */
+[data-theme="light"] .github-logo-dark {
+    display: none;
+}
+[data-theme="light"] .github-logo-light {
+    display: block;
 }
 
 
