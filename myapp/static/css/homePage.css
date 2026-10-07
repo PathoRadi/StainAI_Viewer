@@ -275,10 +275,12 @@ body {
 .landing-brain-gif {
     display: block;
 
-    width: min(80%, 700px);
+    width: min(100%, 900px);
     height: auto;
 
     object-fit: contain;
+
+    background: transparent;
 }
 
 

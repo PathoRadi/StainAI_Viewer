@@ -327,11 +327,19 @@
       <!-- ================= WHOLE BRAIN ANIMATION ================= -->
       <section class="landing-brain-section">
 
-        <img
+        <video
           class="landing-brain-gif"
-          src="{% static 'logo/homepage/StainAI_comparison_HD_transparent 1.webp' %}"
-          alt="StainAI whole-slide morphology comparison"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
         >
+          <source
+            src="{% static 'logo/homepage/StainAI_comparison.webm' %}"
+            type="video/webm"
+          >
+        </video>
 
       </section>
 
