@@ -280,7 +280,7 @@ body {
 
     padding: 0;
 
-    background: rgb(97, 136, 155);
+    background: linear-gradient(90deg, rgb(82, 102, 111) 0%, rgb(43, 55, 61) 100%);
 
     color: #fff;
 
