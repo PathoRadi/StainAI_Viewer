@@ -178,7 +178,7 @@ body {
 
 /* Left Welcome to StainAI-Web image */
 .landing-welcome-icon {
-    width: clamp(300px, 32vw, 420px);
+    width: clamp(280px, 30vw, 400px);
     height: auto;
 
     object-fit: contain;
