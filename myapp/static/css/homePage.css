@@ -263,7 +263,6 @@ body {
 /* ========================================================
    WHOLE BRAIN ANIMATION
 ======================================================== */
-
 .landing-brain-section {
     display: flex;
 
@@ -272,6 +271,16 @@ body {
 
     margin: 55px 0 45px;
 }
+
+.landing-brain-gif {
+    display: block;
+
+    width: min(80%, 700px);
+    height: auto;
+
+    object-fit: contain;
+}
+
 
 
 /* Temporary placeholder */
