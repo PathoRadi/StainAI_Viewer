@@ -384,20 +384,21 @@ body {
 .landing-footer {
     display: grid;
 
-    grid-template-columns: 1.3fr 1fr 1fr;
+    grid-template-columns: 1.5fr 1fr 1fr;
 
     align-items: center;
 
-    gap: 35px;
+    gap: 45px;
 
     margin-top: 85px;
 
-    padding: 35px 0 5px;
+    padding: 35px 0 20px;
 
     border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 
+/* Common footer item */
 .landing-footer-item {
     display: flex;
 
@@ -406,10 +407,59 @@ body {
     color: rgba(255, 255, 255, 0.88);
 
     font-size: 14px;
-
     line-height: 1.2;
+
+    min-width: 0;
 }
 
+
+/* ==========================
+   Howard University
+========================== */
+
+.landing-howard {
+    display: flex;
+    align-items: center;
+}
+
+
+/* Howard official logo */
+.landing-howard-logo {
+    display: block;
+
+    width: 150px;
+    height: auto;
+
+    object-fit: contain;
+
+    flex-shrink: 0;
+}
+
+
+/* Divider */
+.landing-footer-divider {
+    width: 1px;
+    height: 46px;
+
+    margin: 0 20px;
+
+    background: rgba(255, 255, 255, 0.35);
+
+    flex-shrink: 0;
+}
+
+
+.landing-lab-name {
+    white-space: nowrap;
+
+    font-size: 14px;
+    line-height: 1.25;
+}
+
+
+/* ==========================
+   GitHub
+========================== */
 
 .landing-footer-link {
     color: rgba(255, 255, 255, 0.88);
@@ -425,13 +475,36 @@ body {
 }
 
 
-.landing-footer-divider {
-    width: 1px;
-    height: 42px;
+.landing-github {
+    display: inline-flex;
 
-    margin: 0 15px;
+    align-items: center;
 
-    background: rgba(255, 255, 255, 0.35);
+    gap: 16px;
+
+    width: max-content;
+}
+
+
+/* Official GitHub mark */
+.landing-github-logo {
+    display: block;
+
+    width: 40px;
+    height: 40px;
+
+    object-fit: contain;
+
+    flex-shrink: 0;
+}
+
+
+/* ==========================
+   Contact
+========================== */
+
+.landing-contact {
+    justify-content: flex-start;
 }
 
 

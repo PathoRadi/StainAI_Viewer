@@ -476,25 +476,53 @@
       <!-- ================= FOOTER ================= -->
       <footer class="landing-footer">
 
+        <!-- Howard University -->
         <div class="landing-footer-item landing-howard">
-          <strong>HOWARD<br>UNIVERSITY</strong>
+
+          <img
+            class="landing-howard-logo"
+            src="{% static 'logo/homepage/Howard-logo.png' %}"
+            alt="Howard University"
+          >
+
           <span class="landing-footer-divider"></span>
-          <span>Molecular Imaging<br>Laboratory</span>
+
+          <span class="landing-lab-name">
+            Molecular Imaging<br>
+            Laboratory
+          </span>
+
         </div>
 
 
+        <!-- GitHub Repository -->
         <a
-          class="landing-footer-item landing-footer-link"
-          href="#"
+          class="landing-footer-item landing-footer-link landing-github"
+          href="https://github.com/PathoRadi/StainAI_Viewer"
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="View StainAI Viewer repository on GitHub"
         >
-          Github<br>Repository
+
+          <img
+            class="landing-github-logo"
+            src="{% static 'logo/homepage/github-mark-white.svg' %}"
+            alt=""
+          >
+
+          <span>
+            GitHub<br>
+            Repository
+          </span>
+
         </a>
 
-        <div class="landing-footer-item">
+
+        <!-- Contact -->
+        <div class="landing-footer-item landing-contact">
           <strong>Contact Us</strong>
         </div>
+
       </footer>
     </div>
   </div>
