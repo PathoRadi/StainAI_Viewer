@@ -145,19 +145,12 @@ body {
 /* Welcome + icon */
 .landing-welcome-row {
     display: flex;
+    flex-direction: row;
 
     align-items: center;
     justify-content: center;
 
     gap: 30px;
-}
-
-
-.landing-welcome-text {
-    display: flex;
-    flex-direction: column;
-
-    align-items: flex-start;
 }
 
 
@@ -466,12 +459,6 @@ body {
 
         gap: 15px;
     }
-
-
-    .landing-welcome-text {
-        align-items: center;
-    }
-
 
     .landing-welcome-icon {
         width: 130px;
