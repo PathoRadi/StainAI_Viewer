@@ -27,6 +27,24 @@ body {
   --text-start-detect-btn: rgb(255,255,255);
   --border-start-detect-btn: 1px solid rgb(255, 255, 255);
 
+  /* Landing Page */
+  --landing-bg: #000;
+  --landing-text: #fff;
+  --landing-text-soft: rgba(255,255,255,0.85);
+  --landing-text-muted: rgba(255,255,255,0.68);
+
+  --landing-footer-border: rgba(255,255,255,0.08);
+  --landing-divider: rgba(255,255,255,0.35);
+
+  --landing-scroll-track: #000;
+  --landing-scroll-thumb: rgb(65,65,65);
+  --landing-scroll-thumb-hover: rgb(90,90,90);
+
+  --landing-back-text: rgba(255,255,255,0.85);
+  --landing-back-hover-text: #fff;
+  --landing-back-hover-bg: rgba(255,255,255,0.08);
+  --landing-back-active-bg: rgba(255,255,255,0.14);
+
   /* Grayscale Setting Modal */
   --bg-settings-modal: rgb(0,0,0);
   --bg-settings-close-btn: rgb(0,0,0);
@@ -64,6 +82,24 @@ body {
   --bg-start-detect-btn: rgb(97, 136, 155);
   --text-start-detect-btn: rgb(255, 255, 255);
   --border-start-detect-btn: none;
+
+  /* Landing Page */
+  --landing-bg: #fff;
+  --landing-text: #000;
+  --landing-text-soft: rgba(0,0,0,0.85);
+  --landing-text-muted: rgba(0,0,0,0.68);
+
+  --landing-footer-border: rgba(0,0,0,0.10);
+  --landing-divider: rgba(0,0,0,0.35);
+
+  --landing-scroll-track: #fff;
+  --landing-scroll-thumb: rgb(170,170,170);
+  --landing-scroll-thumb-hover: rgb(130,130,130);
+
+  --landing-back-text: #000;
+  --landing-back-hover-text: #000;
+  --landing-back-hover-bg: rgba(0,0,0,0.08);
+  --landing-back-active-bg: rgba(0,0,0,0.14);
 
   /* Grayscale Setting Modal */
   --bg-settings-modal: rgb(255,255,255);
@@ -107,8 +143,8 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
 
-    background: #000;
-    color: #fff;
+    background: var(--landing-bg);
+    color: var(--landing-text);
 
     font-family: 'PingFangHKWeb', sans-serif;
 
@@ -124,25 +160,23 @@ body {
 #landing-page::-webkit-scrollbar {
     width: 8px;
 }
-
 #landing-page::-webkit-scrollbar-track {
-    background: #000;
+    background: var(--landing-scroll-track);
 }
-
 #landing-page::-webkit-scrollbar-thumb {
-    background: rgb(65, 65, 65);
+    background: var(--landing-scroll-thumb);
     border-radius: 999px;
-
-    border: 2px solid #000;
+    border: 2px solid var(--landing-scroll-track);
 }
-
 #landing-page::-webkit-scrollbar-thumb:hover {
-    background: rgb(90, 90, 90);
+    background: var(--landing-scroll-thumb-hover);
 }
 /* Firefox */
 #landing-page {
     scrollbar-width: thin;
-    scrollbar-color: rgb(65, 65, 65) #000;
+    scrollbar-color:
+        var(--landing-scroll-thumb)
+        var(--landing-scroll-track);
 }
 
 
@@ -224,7 +258,7 @@ body {
 
     line-height: 1.25;
 
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--landing-text-soft);
 }
 
 
@@ -285,7 +319,7 @@ body {
 
     line-height: 1.5;
 
-    color: rgba(255, 255, 255, 0.76);
+    color: var(--landing-text-soft);
 }
 
 
@@ -402,7 +436,7 @@ body {
 
     line-height: 1.25;
 
-    color: #fff;
+    color: var(--landing-text);
 }
 
 
@@ -413,7 +447,7 @@ body {
 
     line-height: 1.35;
 
-    color: rgba(255, 255, 255, 0.68);
+    color: var(--landing-text-muted);
 }
 
 
@@ -434,7 +468,7 @@ body {
 
     padding: 35px 0 20px;
 
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid var(--landing-footer-border);
 }
 
 
@@ -444,7 +478,7 @@ body {
 
     align-items: center;
 
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--landing-text);
 
     font-size: 14px;
     line-height: 1.2;
@@ -483,7 +517,7 @@ body {
 
     margin: 0 20px;
 
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--landing-divider);
 
     flex-shrink: 0;
 }
@@ -502,14 +536,14 @@ body {
 ========================== */
 
 .landing-footer-link {
-    color: rgba(255, 255, 255, 0.88);
+    color: var(--landing-text);
 
     text-decoration: none;
 }
 
 
 .landing-footer-link:hover {
-    color: #fff;
+    color: var(--landing-text);
 
     text-decoration: none;
 }
@@ -567,7 +601,7 @@ body {
     font-weight: 400;
     line-height: 1.2;
 
-    color: rgba(255, 255, 255, 0.55);
+    color: var(--landing-text-muted);
 }
 
 
@@ -695,7 +729,7 @@ body {
     padding: 8px 14px;
 
     background: transparent;
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--landing-back-text);
 
     border: none;
     border-radius: 8px;
@@ -711,11 +745,11 @@ body {
         color 0.15s ease;
 }
 #back-to-landing-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    background: var(--landing-back-hover-bg);
+    color: var(--landing-back-hover-text);
 }
 #back-to-landing-btn:active {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--landing-back-active-bg);
 }
 #back-to-landing-btn .back-arrow {
     font-size: 22px;
