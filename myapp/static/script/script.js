@@ -53,104 +53,126 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     }
   }
   $(document).ready(async function(){
+    // ========================================================
+    // PAGE STATE CONTROLLER
+    // ========================================================
+
+    function showLandingPage() {
+      const landing = document.getElementById('landing-page');
+      const dropZone = document.getElementById('drop-zone');
+      const mainContainer = document.querySelector('.main-container');
+
+      if (landing) {
+        landing.style.display = 'block';
+        landing.scrollTop = 0;
+      }
+
+      if (dropZone) {
+        dropZone.style.display = 'none';
+      }
+
+      if (mainContainer) {
+        mainContainer.hidden = true;
+      }
+    }
+
+    function showUploadPage() {
+      const landing = document.getElementById('landing-page');
+      const dropZone = document.getElementById('drop-zone');
+      const mainContainer = document.querySelector('.main-container');
+
+      if (landing) {
+        landing.style.display = 'none';
+      }
+
+      if (dropZone) {
+        dropZone.style.display = 'flex';
+      }
+
+      if (mainContainer) {
+        mainContainer.hidden = true;
+      }
+    }
+
+    function showAnalysisPage() {
+      const landing = document.getElementById('landing-page');
+      const dropZone = document.getElementById('drop-zone');
+      const mainContainer = document.querySelector('.main-container');
+
+      if (landing) {
+        landing.style.display = 'none';
+      }
+
+      if (dropZone) {
+        dropZone.style.display = 'none';
+      }
+
+      if (mainContainer) {
+        mainContainer.hidden = false;
+      }
+    }
+
+    // Make them accessible to other modules
+    window.showLandingPage = showLandingPage;
+    window.showUploadPage = showUploadPage;
+    window.showAnalysisPage = showAnalysisPage;
+
+
     // ──────── Check Viewer Authentication ────────
     const auth = await getCurrentViewerUser();
 
-  if (!auth.authenticated) {
-    const dropZone = document.getElementById('drop-zone');
-    const mainContainer = document.querySelector('.main-container');
+    const startStainAIBtn = document.getElementById('start-stainai-btn');
 
-    initViewerUserCard(null);
+    startStainAIBtn?.addEventListener('click', () => {
 
-    if (dropZone) {
-      dropZone.innerHTML = `
-        <div style="text-align:center; color:white;">
-          <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
-            Please sign in to use StainAI Viewer
+      // Not logged in -> go to the same Sign In flow
+      if (!auth.authenticated) {
+        if (
+          typeof PRBASE_LOGIN_URL !== "undefined" &&
+          PRBASE_LOGIN_URL
+        ) {
+          window.location.replace(PRBASE_LOGIN_URL);
+        } else {
+          console.error("PRBASE_LOGIN_URL is not configured.");
+          alert("Login URL is not configured.");
+        }
+
+        return;
+      }
+
+      // Logged in -> normal Start StainAI behavior
+      showUploadPage();
+    });
+
+    if (!auth.authenticated) {
+      const dropZone = document.getElementById('drop-zone');
+      const mainContainer = document.querySelector('.main-container');
+
+      initViewerUserCard(null);
+
+      if (dropZone) {
+        dropZone.innerHTML = `
+          <div style="text-align:center; color:white;">
+            <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
+              Please sign in to use StainAI Viewer
+            </div>
+
+            <div style="font-size:14px; opacity:0.85;">
+              Click the account menu in the upper-left corner to log in.
+            </div>
           </div>
+        `;
 
-          <div style="font-size:14px; opacity:0.85;">
-            Click the account menu in the upper-left corner to log in.
-          </div>
-        </div>
-      `;
+        dropZone.style.display = 'flex';
+      }
 
-      dropZone.style.display = 'flex';
+      if (mainContainer) {
+        mainContainer.hidden = true;
+      }
+
+      return;
     }
-
-    if (mainContainer) {
-      mainContainer.hidden = true;
-    }
-
-    return;
-  }
-  initViewerUserCard(auth.user);
-
-  // ========================================================
-  // PAGE STATE CONTROLLER
-  // ========================================================
-
-  function showLandingPage() {
-    const landing = document.getElementById('landing-page');
-    const dropZone = document.getElementById('drop-zone');
-    const mainContainer = document.querySelector('.main-container');
-
-    if (landing) {
-      landing.style.display = 'block';
-      landing.scrollTop = 0;
-    }
-
-    if (dropZone) {
-      dropZone.style.display = 'none';
-    }
-
-    if (mainContainer) {
-      mainContainer.hidden = true;
-    }
-  }
-
-
-  function showUploadPage() {
-    const landing = document.getElementById('landing-page');
-    const dropZone = document.getElementById('drop-zone');
-    const mainContainer = document.querySelector('.main-container');
-
-    if (landing) {
-      landing.style.display = 'none';
-    }
-
-    if (dropZone) {
-      dropZone.style.display = 'flex';
-    }
-
-    if (mainContainer) {
-      mainContainer.hidden = true;
-    }
-  }
-
-  function showAnalysisPage() {
-    const landing = document.getElementById('landing-page');
-    const dropZone = document.getElementById('drop-zone');
-    const mainContainer = document.querySelector('.main-container');
-
-    if (landing) {
-      landing.style.display = 'none';
-    }
-
-    if (dropZone) {
-      dropZone.style.display = 'none';
-    }
-
-    if (mainContainer) {
-      mainContainer.hidden = false;
-    }
-  }
-
-
-  // Make them accessible to other modules
-  window.showLandingPage = showLandingPage;
-  window.showUploadPage = showUploadPage;
-  window.showAnalysisPage = showAnalysisPage;
+    initViewerUserCard(auth.user);
 
 
   // Logo: return to new StainAI homepage
@@ -159,14 +181,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   homeLogo?.addEventListener('click', (e) => {
     e.preventDefault();
     showLandingPage();
-  });
-
-
-  // Start StainAI button
-  const startStainAIBtn = document.getElementById('start-stainai-btn');
-
-  startStainAIBtn?.addEventListener('click', () => {
-    showUploadPage();
   });
 
   // Back button: Upload Page -> Landing Page
