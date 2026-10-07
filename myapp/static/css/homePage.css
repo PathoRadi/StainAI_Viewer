@@ -552,35 +552,45 @@ body {
 
 
 .landing-github {
-    display: inline-flex;
-
+    display: flex;
     align-items: center;
 
-    gap: 16px;
-
-    width: max-content;
+    width: 120px;
 }
+/* Fixed visual box for both SVG versions */
+.landing-github-logo-wrapper {
+    position: relative;
 
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
-/* Official GitHub mark */
+    width: 120px;
+    height: 45px;
+
+    flex-shrink: 0;
+}
 .landing-github-logo {
-    display: block;
+    position: absolute;
+
+    left: 50%;
+    top: 50%;
 
     width: 120px;
     height: auto;
 
-    object-fit: contain;
+    transform: translate(-50%, -50%);
 
-    flex-shrink: 0;
+    object-fit: contain;
 }
-/* Dark mode: white GitHub logo */
+/* Dark mode */
 .github-logo-dark {
     display: block;
 }
 .github-logo-light {
     display: none;
 }
-/* Light mode: black GitHub logo */
+/* Light mode */
 [data-theme="light"] .github-logo-dark {
     display: none;
 }
