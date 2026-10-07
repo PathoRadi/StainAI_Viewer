@@ -141,6 +141,13 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     showUploadPage();
   });
 
+  // Back button: Upload Page -> Landing Page
+  const backToLandingBtn = document.getElementById('back-to-landing-btn');
+
+  backToLandingBtn?.addEventListener('click', () => {
+    showLandingPage();
+  });
+
 
   // Initial page
   showLandingPage();
