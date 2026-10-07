@@ -602,24 +602,20 @@ body {
 /* ==========================
    Contact
 ========================== */
-
 .landing-contact {
     justify-content: flex-start;
     align-items: flex-start;
 }
-
 .landing-contact-content {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
 }
-
 .landing-contact-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: inline-block;
 
-    padding: 7px 14px;
+    padding: 0;
+    margin: 0;
 
     font-size: 14px;
     font-weight: 600;
@@ -632,13 +628,15 @@ body {
 
     text-decoration: none;
     cursor: pointer;
-
-    transition:
-        background 0.15s ease,
-        border-color 0.15s ease,
-        transform 0.15s ease;
 }
-
+.landing-contact-btn:hover,
+.landing-contact-btn:focus,
+.landing-contact-btn:active {
+    color: var(--landing-text);
+    background: transparent;
+    text-decoration: none;
+    outline: none;
+}
 .landing-cookie-note {
     margin: 5px 0 0 0;
 
