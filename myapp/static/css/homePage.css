@@ -168,19 +168,21 @@ body {
 
 /* StainAI-Web logo */
 .landing-homepage-logo {
-    width: clamp(220px, 25vw, 340px);
+    width: clamp(140px, 15vw, 190px);
     height: auto;
 
     object-fit: contain;
+    display: block;
 }
 
 
-/* Welcome microglia icon */
+/* Left Welcome to StainAI-Web image */
 .landing-welcome-icon {
-    width: clamp(130px, 14vw, 190px);
+    width: clamp(300px, 32vw, 420px);
     height: auto;
 
     object-fit: contain;
+    display: block;
 }
 
 
@@ -460,8 +462,13 @@ body {
     }
 
     .landing-welcome-icon {
-        width: 556.8px;
-        height: 195.4px;
+        width: min(85vw, 360px);
+        height: auto;
+    }
+
+    .landing-homepage-logo {
+        width: 150px;
+        height: auto;
     }
 
 
