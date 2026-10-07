@@ -357,9 +357,14 @@ export function initHistoryHandlers(historyStack) {
 
     console.log('Loading history item:', idx);
 
-    // hide upload UI / show main viewer
-    $('#drop-zone').hide();
-    $('.main-container').prop('hidden', false);
+    // switch to analysis page
+    if (typeof window.showAnalysisPage === 'function') {
+      window.showAnalysisPage();
+    } else {
+      $('#landing-page').hide();
+      $('#drop-zone').hide();
+      $('.main-container').prop('hidden', false);
+    }
 
     // show loading overlay
     $('#progress-overlay1').show().addClass('active');

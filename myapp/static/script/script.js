@@ -128,10 +128,29 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     }
   }
 
+  function showAnalysisPage() {
+    const landing = document.getElementById('landing-page');
+    const dropZone = document.getElementById('drop-zone');
+    const mainContainer = document.querySelector('.main-container');
+
+    if (landing) {
+      landing.style.display = 'none';
+    }
+
+    if (dropZone) {
+      dropZone.style.display = 'none';
+    }
+
+    if (mainContainer) {
+      mainContainer.hidden = false;
+    }
+  }
+
 
   // Make them accessible to other modules
   window.showLandingPage = showLandingPage;
   window.showUploadPage = showUploadPage;
+  window.showAnalysisPage = showAnalysisPage;
 
 
   // Start StainAI button
