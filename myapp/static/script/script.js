@@ -153,6 +153,15 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
   window.showAnalysisPage = showAnalysisPage;
 
 
+  // Logo: return to new StainAI homepage
+  const homeLogo = document.getElementById('stainai-home-logo');
+
+  homeLogo?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLandingPage();
+  });
+
+
   // Start StainAI button
   const startStainAIBtn = document.getElementById('start-stainai-btn');
 
