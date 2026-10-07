@@ -614,10 +614,42 @@ body {
     align-items: flex-start;
 }
 
-.landing-contact-content strong {
+.landing-contact-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 7px 14px;
+
     font-size: 14px;
     font-weight: 600;
     line-height: 1.2;
+
+    color: var(--landing-text);
+    background: transparent;
+
+    border: 1px solid var(--landing-divider);
+    border-radius: 8px;
+
+    text-decoration: none;
+    cursor: pointer;
+
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        transform 0.15s ease;
+}
+
+.landing-contact-btn:hover {
+    color: var(--landing-text);
+    text-decoration: none;
+
+    background: var(--landing-back-hover-bg);
+    border-color: var(--landing-text-muted);
+}
+
+.landing-contact-btn:active {
+    transform: scale(0.97);
 }
 
 .landing-cookie-note {
