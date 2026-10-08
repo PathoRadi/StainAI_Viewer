@@ -826,14 +826,10 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
           $demoBtn.prop('disabled', true);
 
           try {
-            /*
-            * 1) Hide main-container (if any) and show drop-zone
-            * 2) Fetch demo image as Blob
-            * 3) Create a File object and pass to uploadFn (which handles preview + upload)
-            */
-            window.hideMain?.();
-            $('#drop-zone').show();
+            // 1. Switch from New Homepage to Upload Page
+            window.showUploadPage();
 
+            // 2. Fetch demo image
             const resp = await fetch(DEMO_URL, {
               credentials: 'same-origin',
               cache: 'no-store'
@@ -843,28 +839,18 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
               throw new Error(`Demo fetch failed: HTTP ${resp.status}`);
             }
 
+            // 3. Convert demo image to File
             const blob = await resp.blob();
 
             const file = new File(
               [blob],
               'demo.jpg',
-              {
-                type: blob.type || 'image/jpeg'
-              }
+              { type: blob.type || 'image/jpeg' }
             );
 
-            // Clear any previous pending upload (preview + temp upload) before starting a new one
-            window.resetPendingUpload?.();
-
-            // Set a global flag to indicate that this is a demo upload, 
-            // so that downstream handlers can adjust behavior if needed.
-            window.isDemoUpload = true;
-
-            // automatically set the pending image directory and parameters for demo, 
-            // if your uploadFn relies on them.
-            // pendingImageDir = d.image_name
-            // pendingParams = defaultParams()
-            // openSettingsModal('demo.jpg')
+            // 4. Use existing upload pipeline
+            // handleFileUpload will automatically open
+            // Grayscale Parameter Settings after upload.
             uploadFn(file);
 
           } catch (err) {
@@ -872,10 +858,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
             window.isDemoUpload = false;
             alert('Failed to load demo image.');
           } finally {
-            /*
-            * uploadFn 會啟動非同步 fetch，但目前沒有 return Promise，
-            * 因此這裡稍微延遲解除按鈕，避免快速連點。
-            */
             setTimeout(() => {
               $demoBtn.prop('disabled', false);
             }, 1000);
