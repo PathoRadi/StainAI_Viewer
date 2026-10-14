@@ -53,6 +53,28 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     }
   }
   $(document).ready(async function(){
+    document.querySelector('.landing-reference-citation')?.addEventListener('click', function(event) {
+      const landing = document.getElementById('landing-page');
+      const reference = document.getElementById('landing-reference');
+
+      if (!landing || !reference) return;
+
+      event.preventDefault();
+
+      const top = landing.scrollTop
+        + reference.getBoundingClientRect().top
+        - landing.getBoundingClientRect().top
+        - (landing.clientHeight - reference.offsetHeight) / 2;
+
+      landing.scrollTo({
+        top: Math.max(0, top),
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'auto'
+          : 'smooth'
+      });
+
+      reference.focus({ preventScroll: true });
+    });
     // ========================================================
     // PAGE STATE CONTROLLER
     // ========================================================

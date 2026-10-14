@@ -458,7 +458,7 @@ body {
 .landing-footer {
     display: grid;
 
-    grid-template-columns: 1.5fr 1fr 1fr;
+    grid-template-columns: minmax(340px, 1.5fr) minmax(120px, 0.65fr) minmax(145px, 0.8fr) minmax(200px, 1fr);
 
     align-items: center;
 
@@ -696,6 +696,61 @@ body {
         gap: 25px;
     }
 
+}
+
+/* Reference button */
+.landing-reference {
+    flex-direction: column;
+    align-items: flex-start;
+    text-decoration: none;
+    scroll-margin-block: 24px;
+}
+
+.landing-reference-title,
+.landing-reference-arrow {
+    color: #86b1cc;
+}
+
+[data-theme="light"] .landing-reference-title,
+[data-theme="light"] .landing-reference-arrow {
+    color: #356680;
+}
+
+.landing-reference-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.landing-reference-note {
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--landing-text-muted);
+}
+
+.landing-reference-arrow {
+    margin-top: 5px;
+    font-size: 16px;
+}
+
+/* Superscript 1 */
+.landing-reference-citation {
+    margin-left: 2px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.landing-reference:focus-visible,
+.landing-reference-citation:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 4px;
+}
+
+/* Footer layout on smaller screens */
+@media (min-width: 701px) and (max-width: 1200px) {
+    .landing-footer {
+        grid-template-columns: minmax(340px, 1.5fr) minmax(200px, 1fr);
+        gap: 25px;
+    }
 }
 
 /* #########################
