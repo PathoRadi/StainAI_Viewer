@@ -54,13 +54,18 @@ _PROCESSING_STATS_LOCK = threading.Lock()
 # Processing stats 
 # ---------------------------
 def _blob_name_for_processing_stats() -> str:
-    return "processing_stats.json"
+    # New statistics file: both counters start from zero.
+    # Keep this filename unchanged after deployment.
+    return "website_stats_v2.json"
+
 
 def _default_processing_stats() -> dict:
     return {
+        "page_views": 0,
         "images_processed": 0,
         "updated_at": None,
     }
+
 
 def load_processing_stats_from_blob() -> dict:
     data = _download_json_from_blob(_blob_name_for_processing_stats())
@@ -68,59 +73,59 @@ def load_processing_stats_from_blob() -> dict:
     if not isinstance(data, dict):
         return _default_processing_stats()
 
-    try:
-        images_processed = int(data.get("images_processed") or 0)
-    except Exception:
-        images_processed = 0
+    def clean_count(key):
+        try:
+            return max(0, int(data.get(key) or 0))
+        except (TypeError, ValueError):
+            return 0
 
     return {
-        "images_processed": max(0, images_processed),
+        "page_views": clean_count("page_views"),
+        "images_processed": clean_count("images_processed"),
         "updated_at": data.get("updated_at"),
     }
 
+
 def save_processing_stats_to_blob(stats: dict) -> dict:
     payload = {
-        "images_processed": int(stats.get("images_processed") or 0),
+        "page_views": max(0, int(stats.get("page_views") or 0)),
+        "images_processed": max(0, int(stats.get("images_processed") or 0)),
         "updated_at": datetime.utcnow().isoformat() + "Z",
     }
 
     _upload_json_to_blob(_blob_name_for_processing_stats(), payload)
     return payload
 
+
+def increment_page_views_count() -> dict:
+    with _PROCESSING_STATS_LOCK:
+        stats = load_processing_stats_from_blob()
+        stats["page_views"] += 1
+        return save_processing_stats_to_blob(stats)
+
+
 def increment_images_processed_count() -> dict:
     with _PROCESSING_STATS_LOCK:
         stats = load_processing_stats_from_blob()
-        stats["images_processed"] = int(stats.get("images_processed") or 0) + 1
+        stats["images_processed"] += 1
         return save_processing_stats_to_blob(stats)
-    
+
+
 @require_GET
 def processing_stats(request):
-    try:
-        user_id = _require_viewer_user(request)
-    except PermissionError:
-        return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
-
-    global_stats = load_processing_stats_from_blob()
-    user_state = load_viewer_state_from_blob(user_id)
-
-    try:
-        user_images_processed = int(user_state.get("images_processed") or 0)
-    except Exception:
-        user_images_processed = 0
+    # Public statistics: available to signed-in users and visitors.
+    stats = load_processing_stats_from_blob()
 
     resp = JsonResponse({
         "success": True,
+        "page_views": stats["page_views"],
+        "global_images_processed": stats["images_processed"],
 
-        # legacy key for backward compatibility; frontend should migrate to explicit keys below
-        "images_processed": int(global_stats.get("images_processed") or 0),
-
-        # new explicit keys
-        "global_images_processed": int(global_stats.get("images_processed") or 0),
-        "user_images_processed": max(0, user_images_processed),
-
-        "global_updated_at": global_stats.get("updated_at"),
-        "user_updated_at": user_state.get("images_processed_updated_at"),
+        # Preserve compatibility with existing frontend code.
+        "images_processed": stats["images_processed"],
+        "global_updated_at": stats["updated_at"],
     })
+
     resp["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp["Pragma"] = "no-cache"
     return resp
@@ -1245,9 +1250,17 @@ def get_global_rois(request):
 @ensure_csrf_cookie
 def display_image(request):
     """
-    Render Viewer page and ensure the browser receives a CSRF cookie.
+    Render Viewer page and count each GET page request.
     """
-    return render(request, 'display_image.html')
+    if request.method == "GET":
+        try:
+            increment_page_views_count()
+        except Exception:
+            logger.exception("Failed to increment website page views")
+
+    response = render(request, 'display_image.html')
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return response
 
 
 
@@ -2206,11 +2219,6 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
             increment_images_processed_count()
         except Exception:
             logger.exception("Failed to increment global images_processed count for image=%s", image_name)
-
-        try:
-            increment_user_images_processed_count(user_id)
-        except Exception:
-            logger.exception("Failed to increment user images_processed count for image=%s", image_name)
 
         _set_progress_stage(image_dir, "done")  # enter stage 5) done
 

@@ -714,8 +714,8 @@ export function initProcess(bboxData, historyStack, barChartRef) {
         );
 
         setCountText(
-          'user-images-processed-count',
-          d.user_images_processed
+          'website-page-views-count',
+          d.page_views
         );
       }
     } catch (err) {
