@@ -787,6 +787,31 @@ body {
     }
 }
 
+/* ==========================
+   Homepage light / dark icons
+========================== */
+/* Default: dark mode */
+#landing-page .homepage-icon-dark {
+    display: block;
+}
+
+#landing-page .homepage-icon-light {
+    display: none;
+}
+/* Light mode */
+[data-theme="light"] #landing-page .homepage-icon-dark {
+    display: none;
+}
+
+[data-theme="light"] #landing-page .homepage-icon-light {
+    display: block;
+}
+
+
+
+
+
+
 /* #########################
          Drop Zone
 ######################### */
