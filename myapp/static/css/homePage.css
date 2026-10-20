@@ -806,6 +806,26 @@ body {
 [data-theme="light"] #landing-page .homepage-icon-light {
     display: block;
 }
+[data-theme="light"] .landing-footer {
+    background: linear-gradient(
+        to bottom,
+        rgb(81, 102, 113) 0%,
+        rgb(69, 87, 95) 50%,
+        rgb(46, 60, 64) 100%
+    );
+
+    /* Footer-only colors */
+    --landing-text: #ffffff;
+    --landing-text-muted: #ffffff;
+    --landing-divider: rgba(255, 255, 255, 0.35);
+    --landing-footer-border: rgba(255, 255, 255, 0.15);
+
+    color: #ffffff;
+}
+[data-theme="light"] .landing-footer .landing-reference-title,
+[data-theme="light"] .landing-footer .landing-reference-arrow {
+    color: #ffffff;
+}
 
 
 
