@@ -806,7 +806,33 @@ body {
 [data-theme="light"] #landing-page .homepage-icon-light {
     display: block;
 }
+/* Light mode: full-width footer banner */
 [data-theme="light"] .landing-footer {
+    position: relative;
+    isolation: isolate;
+
+    background: transparent;
+    border-top: none;
+
+    --landing-text: #ffffff;
+    --landing-text-muted: #ffffff;
+    --landing-divider: rgba(255, 255, 255, 0.35);
+    --landing-footer-border: rgba(255, 255, 255, 0.15);
+
+    color: #ffffff;
+}
+/* Extend the gradient across the entire homepage width */
+[data-theme="light"] .landing-footer::before {
+    content: "";
+    position: absolute;
+
+    top: 0;
+    bottom: -45px;
+
+    left: 50%;
+    width: 200vw;
+    transform: translateX(-50%);
+
     background: linear-gradient(
         to bottom,
         rgb(81, 102, 113) 0%,
@@ -814,13 +840,8 @@ body {
         rgb(46, 60, 64) 100%
     );
 
-    /* Footer-only colors */
-    --landing-text: #ffffff;
-    --landing-text-muted: #ffffff;
-    --landing-divider: rgba(255, 255, 255, 0.35);
-    --landing-footer-border: rgba(255, 255, 255, 0.15);
-
-    color: #ffffff;
+    z-index: -1;
+    pointer-events: none;
 }
 [data-theme="light"] .landing-footer .landing-reference-title,
 [data-theme="light"] .landing-footer .landing-reference-arrow {
