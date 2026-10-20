@@ -88,6 +88,15 @@ body {
   --landing-text: #000;
   --landing-text-soft: rgba(0,0,0,0.85);
   --landing-text-muted: rgba(0,0,0,0.68);
+  /* Light mode：由上到下的漸層 */
+  --landing-logo-gradient: linear-gradient(
+      to bottom,
+      rgb(46, 60, 64) 0%,
+      rgb(52, 66, 71) 25%,
+      rgb(61, 77, 85) 50%,
+      rgb(73, 91, 100) 75%,
+      rgb(82, 103, 114) 100%
+  );
 
   --landing-footer-border: rgba(0,0,0,0.10);
   --landing-divider: rgba(0,0,0,0.35);
@@ -207,6 +216,9 @@ body {
 
 /* Welcome + icon */
 .landing-welcome-row {
+    position: relative;
+    isolation: isolate;
+
     display: flex;
     flex-direction: row;
 
@@ -214,6 +226,25 @@ body {
     justify-content: center;
 
     gap: 30px;
+}
+
+[data-theme="light"] .landing-welcome-row::before {
+    content: "";
+    position: absolute;
+
+    top: calc(-1 * clamp(55px, 7vh, 90px));
+
+    /* 背景結束於 logo 下方、標語上方 */
+    bottom: -12px;
+
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100vw - 200px);
+
+    background: var(--landing-logo-gradient);
+
+    z-index: -1;
+    pointer-events: none;
 }
 
 
