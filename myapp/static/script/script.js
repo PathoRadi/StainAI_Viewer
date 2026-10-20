@@ -143,32 +143,45 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     // ──────── Check Viewer Authentication ────────
     const auth = await getCurrentViewerUser();
 
+
     // ──────── Public Website Statistics ────────
     async function loadPublicStats() {
       try {
-        const response = await fetch("/api/processing-stats/", {
+        const response = await fetch(PROCESSING_STATS_URL, {
           credentials: "same-origin",
           cache: "no-store"
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          throw new Error(`Stats API HTTP ${response.status}`);
         }
 
         const data = await response.json();
 
-        if (!data.success) return;
+        console.log("Public stats:", data);
 
-        const pageViewsEl = document.getElementById("website-page-views-count");
-        const processedEl = document.getElementById("global-images-processed-count");
+        if (data.success !== true) {
+          console.error("Stats API unsuccessful:", data);
+          return;
+        }
+
+        const pageViewsEl = document.getElementById(
+          "website-page-views-count"
+        );
+
+        const processedEl = document.getElementById(
+          "global-images-processed-count"
+        );
 
         if (pageViewsEl) {
-          pageViewsEl.textContent = Number(data.page_views || 0).toLocaleString();
+          pageViewsEl.textContent = Number(
+            data.page_views ?? 0
+          ).toLocaleString();
         }
 
         if (processedEl) {
           processedEl.textContent = Number(
-            data.global_images_processed || 0
+            data.global_images_processed ?? 0
           ).toLocaleString();
         }
 
@@ -178,6 +191,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     }
 
     await loadPublicStats();
+
 
     const startStainAIBtn = document.getElementById('start-stainai-btn');
 
