@@ -427,6 +427,9 @@ body {
 
     color: rgb(126, 170, 190);
 }
+[data-theme="light"] .landing-section-title {
+    color: rgb(97, 140, 148);
+}
 
 
 .landing-features-grid {
