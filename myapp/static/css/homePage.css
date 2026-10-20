@@ -732,19 +732,10 @@ body {
     scroll-margin-block: 24px;
 }
 
-.landing-reference-title,
-.landing-reference-arrow {
-    color: #86b1cc;
-}
-
-/* Light mode: slightly deeper blue arrow */
-[data-theme="light"] .landing-reference-arrow {
-    color: #75a5c3;
-}
-
 .landing-reference-title {
     font-size: 14px;
     font-weight: 600;
+    color: rgb(138, 188, 219);
 }
 
 .landing-reference-note {
@@ -756,6 +747,7 @@ body {
 .landing-reference-arrow {
     margin-top: 5px;
     font-size: 16px;
+    color: rgb(138, 188, 219);
 }
 
 /* Superscript 1 */
