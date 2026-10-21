@@ -951,9 +951,6 @@
     window.RESET_MEDIA_URL = "{% url 'myapp:reset_media' %}";
     window.DOWNLOAD_SELECTED_WITH_ROIS_URL = "{% url 'myapp:download_selected_images_with_rois' %}";
 
-    window.addEventListener('beforeunload', () => {
-      navigator.sendBeacon("{% url 'myapp:reset_media' %}");
-    });
   </script>
   <script type="module" src="{% static 'script/script.js' %}"></script>
 </body>

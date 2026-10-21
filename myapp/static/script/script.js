@@ -256,78 +256,38 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     await loadPublicStats();
 
 
-    const startStainAIBtn = document.getElementById('start-stainai-btn');
+    const startStainAIBtn =
+      document.getElementById('start-stainai-btn');
 
+    // Entering upload page no matter whether the user is logged in or not.
     startStainAIBtn?.addEventListener('click', () => {
-
-      // Not logged in -> go to the same Sign In flow
-      if (!auth.authenticated) {
-        if (
-          typeof PRBASE_LOGIN_URL !== "undefined" &&
-          PRBASE_LOGIN_URL
-        ) {
-          window.location.replace(PRBASE_LOGIN_URL);
-        } else {
-          console.error("PRBASE_LOGIN_URL is not configured.");
-          alert("Login URL is not configured.");
-        }
-
-        return;
-      }
-
-      // Logged in -> normal Start StainAI behavior
       showUploadPage();
     });
 
-    if (!auth.authenticated) {
-      const dropZone = document.getElementById('drop-zone');
-      const mainContainer = document.querySelector('.main-container');
-
-      initViewerUserCard(null);
-
-      if (dropZone) {
-        dropZone.innerHTML = `
-          <div style="text-align:center; color:white;">
-            <div style="font-size:20px; font-weight:600; margin-bottom:10px;">
-              Please sign in to use StainAI Viewer
-            </div>
-
-            <div style="font-size:14px; opacity:0.85;">
-              Click the account menu in the upper-left corner to log in.
-            </div>
-          </div>
-        `;
-
-        dropZone.style.display = 'flex';
-      }
-
-      if (mainContainer) {
-        mainContainer.hidden = true;
-      }
-
-      return;
-    }
-    initViewerUserCard(auth.user);
+    // Keep functionality for the user card (login/logout) even if the user is not logged in.
+    initViewerUserCard(
+      auth.authenticated ? auth.user : null
+    );
 
 
-  // Logo: return to new StainAI homepage
-  const homeLogo = document.getElementById('stainai-home-logo');
+    // Logo: return to new StainAI homepage
+    const homeLogo = document.getElementById('stainai-home-logo');
 
-  homeLogo?.addEventListener('click', (e) => {
-    e.preventDefault();
+    homeLogo?.addEventListener('click', (e) => {
+      e.preventDefault();
+      showLandingPage();
+    });
+
+    // Back button: Upload Page -> Landing Page
+    const backToLandingBtn = document.getElementById('back-to-landing-btn');
+
+    backToLandingBtn?.addEventListener('click', () => {
+      showLandingPage();
+    });
+
+
+    // Initial page
     showLandingPage();
-  });
-
-  // Back button: Upload Page -> Landing Page
-  const backToLandingBtn = document.getElementById('back-to-landing-btn');
-
-  backToLandingBtn?.addEventListener('click', () => {
-    showLandingPage();
-  });
-
-
-  // Initial page
-  showLandingPage();
 
 
 

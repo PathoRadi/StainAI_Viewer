@@ -9,6 +9,7 @@ import logging
 import gc
 import numpy as np
 import tifffile as tiff
+import uuid
 import time
 import threading
 import jwt
@@ -160,7 +161,7 @@ def progress(request):
     but blob _detect_result.json already exists, report done.
     """
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -309,11 +310,85 @@ def _viewer_user_id(request):
     user = _viewer_user(request)
     return str(user.get("userid") or "").strip()
 
-def _user_root(request):
+# ---------------------------
+# Guest workspace helpers
+# ---------------------------
+def _guest_owner_id(guest_id):
+    if not re.fullmatch(r"[0-9a-f]{32}", guest_id or ""):
+        raise PermissionError("Invalid guest workspace")
+
+    return f"signed out/{guest_id}"
+
+
+def _data_owner_id(request):
+    """
+    Signed-in user: use the existing userid.
+    Guest: use a temporary workspace created on page load.
+    """
     user_id = _viewer_user_id(request)
-    if not user_id:
-        return None
-    return os.path.join(settings.MEDIA_ROOT, user_id)
+    if user_id:
+        return user_id
+
+    guest_id = request.session.get("viewer_guest_id")
+    if not guest_id:
+        raise PermissionError("Please reload the viewer")
+
+    return _guest_owner_id(guest_id)
+
+
+def _guest_expired_marker(user_id):
+    if not user_id.startswith("signed out/"):
+        raise ValueError("Not a guest workspace")
+
+    guest_id = user_id.split("/", 1)[1]
+    _guest_owner_id(guest_id)
+
+    return f"_guest_expired/{guest_id}.json"
+
+
+def _guest_is_expired(user_id):
+    if not user_id.startswith("signed out/"):
+        return False
+
+    if _blob_service_client() is None:
+        raise RuntimeError("Azure Blob Storage is unavailable")
+
+    return _blob_exists(_guest_expired_marker(user_id))
+
+
+def _cleanup_guest_data(user_id):
+    if not user_id.startswith("signed out/"):
+        raise ValueError("Refusing to delete non-guest data")
+
+    guest_id = user_id.split("/", 1)[1]
+    _guest_owner_id(guest_id)
+
+    if _blob_service_client() is None:
+        raise RuntimeError("Azure Blob Storage is unavailable")
+
+    # Keep the trailing slash to restrict deletion to this workspace.
+    _delete_blob_prefix(f"{user_id}/")
+
+
+def _expire_guest_workspace(guest_id):
+    user_id = _guest_owner_id(guest_id)
+
+    if _blob_service_client() is None:
+        raise RuntimeError("Azure Blob Storage is unavailable")
+
+    # Keep the expiration marker outside the deleted workspace.
+    _upload_json_to_blob(
+        _guest_expired_marker(user_id),
+        {"expired": True},
+    )
+
+    _cleanup_guest_data(user_id)
+
+def _user_root(request):
+    return os.path.join(
+        settings.MEDIA_ROOT,
+        _data_owner_id(request),
+    )
 
 def _project_dir(request, project_name):
     return os.path.join(_user_root(request), project_name)
@@ -1147,7 +1222,7 @@ def _load_detect_result_for_state(user_id: str, image_name: str, location: str) 
 @require_GET
 def viewer_state(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1195,7 +1270,7 @@ def viewer_state(request):
 @require_POST
 def save_global_rois(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1224,7 +1299,7 @@ def save_global_rois(request):
 @require_GET
 def get_global_rois(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1250,16 +1325,43 @@ def get_global_rois(request):
 @ensure_csrf_cookie
 def display_image(request):
     """
-    Render Viewer page and count each GET page request.
+    On each viewer page load:
+    - expire the previous guest workspace;
+    - create a new workspace for signed-out visitors;
+    - preserve signed-in users' stored data.
     """
     if request.method == "GET":
+        old_guest_id = request.session.get("viewer_guest_id")
+
+        if old_guest_id:
+            try:
+                _expire_guest_workspace(old_guest_id)
+            except Exception:
+                logger.exception(
+                    "Failed to expire previous guest workspace"
+                )
+                return HttpResponse(
+                    "Could not clear the previous guest workspace. "
+                    "Please try again.",
+                    status=503,
+                )
+
+            request.session.pop("viewer_guest_id", None)
+
+        if not _viewer_user_id(request):
+            request.session["viewer_guest_id"] = uuid.uuid4().hex
+
         try:
             increment_page_views_count()
         except Exception:
-            logger.exception("Failed to increment website page views")
+            logger.exception(
+                "Failed to increment website page views"
+            )
 
-    response = render(request, 'display_image.html')
-    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response = render(request, "display_image.html")
+    response["Cache-Control"] = (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
     return response
 
 
@@ -1278,7 +1380,7 @@ def get_unique_image_name(request,image_name):
     candidate = image_name
     counter = 1
 
-    user_id = _viewer_user_id(request)
+    user_id = _data_owner_id(request)
     state = load_viewer_state_from_blob(user_id) if user_id else {"images": []}
     existing = {item.get("image_name") for item in state.get("images", []) if item.get("image_name")}
 
@@ -1295,6 +1397,17 @@ def upload_image(request):
     and immediately prepare a smaller preview/display image for frontend preview.
     """
     if request.method == 'POST' and request.FILES.get('image'):
+        try:
+            _data_owner_id(request)
+        except PermissionError:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "message": "Please reload the viewer",
+                },
+                status=401,
+            )
+
         images_dir = _images_root(request)
         os.makedirs(images_dir, exist_ok=True)
 
@@ -1357,7 +1470,7 @@ def upload_image(request):
 @require_POST
 def create_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1384,7 +1497,7 @@ def create_project(request):
 @require_GET
 def list_projects(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1404,7 +1517,7 @@ def list_projects(request):
 @require_POST
 def move_image_to_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1443,7 +1556,7 @@ def move_image_to_project(request):
 @require_POST
 def move_image_to_images(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1475,7 +1588,7 @@ def move_image_to_images(request):
 @require_GET
 def get_project_images(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1633,7 +1746,7 @@ def _get_or_create_grayscale_preview_meta(image_dir: str, image_path: str, param
 @require_POST
 def grayscale_preview_meta(request):
     try:
-        _require_viewer_user(request)
+        _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -1735,7 +1848,7 @@ def _extract_region_with_padding(image_path: str, x: int, y: int, w: int, h: int
 @require_GET
 def grayscale_preview_tile(request):
     try:
-        _require_viewer_user(request)
+        _data_owner_id(request)
     except PermissionError:
         return HttpResponse("Not authenticated", status=401)
 
@@ -1878,9 +1991,11 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
     image_dir = _image_dir_by_userid(user_id, image_name)
 
     try:
+        if _guest_is_expired(user_id):
+            return
+
         # ---------------------------
         # 0) Initialization
-        # ---------------------------
         image_dir = _image_dir_by_userid(user_id, image_name)
 
         orig_dir = os.path.join(image_dir, "original")
@@ -2195,6 +2310,9 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
         # ---------------------------
         # 6) Save to Azure Blob Storage
         # ---------------------------
+        if _guest_is_expired(user_id):
+            return
+
         try:
             upload_detection_outputs_to_blob(
                 user_id=user_id,
@@ -2202,13 +2320,16 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                 image_dir=image_dir,
                 orig_path=orig_path,
                 result_json_path=download_result_path,
-                # display_path=display_path,
                 detect_result_path=result_path,
                 grayscale_params_path=grayscale_params_path,
                 dzi_dir=dzi_dir,
             )
         except Exception:
-            logger.exception("Failed to upload detection outputs for image=%s", image_name)
+            logger.exception(
+                "Failed to upload detection outputs for image=%s",
+                image_name,
+            )
+            raise
 
         try:
             state_add_image(user_id, image_name, "images")
@@ -2245,8 +2366,26 @@ def _run_detection_job(user_id: str, image_name: str, params: dict):
                     format_hms(end - start))
 
     except Exception:
-        logger.exception("Detection job failed (project=%s)", image_name)
+        logger.exception(
+            "Detection job failed (project=%s)",
+            image_name,
+        )
         _set_progress_stage(image_dir, "error")
+
+    finally:
+        if user_id.startswith("signed out/"):
+            try:
+                if _guest_is_expired(user_id):
+                    _cleanup_guest_data(user_id)
+                    _delete_local_image_dir_by_userid(
+                        user_id,
+                        image_name,
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to clean expired guest job: %s",
+                    image_name,
+                )
 
 def extract_image_name_from_media_url(path: str):
     """
@@ -2288,7 +2427,7 @@ def detect_image(request):
     returns immediately and does not time out.
     """
     try:
-        _require_viewer_user(request)
+        _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
     
@@ -2323,9 +2462,7 @@ def detect_image(request):
     except FileNotFoundError:
         pass
     
-    user_id = _viewer_user_id(request)
-    if not user_id:
-        return JsonResponse({"error": "Not authenticated"}, status=401)
+    user_id = _data_owner_id(request)
 
     # Start background thread
     th = threading.Thread(
@@ -2345,7 +2482,7 @@ def detect_result(request):
     Prefer blob result after upload; fallback to local file while job is still finishing.
     """
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -2797,7 +2934,7 @@ def reset_media(request):
 @require_POST
 def delete_image(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -2836,7 +2973,7 @@ def delete_image(request):
 @require_POST
 def rename_image(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -2985,7 +3122,7 @@ def rename_image(request):
 @require_POST
 def rename_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id =  _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3020,7 +3157,7 @@ def rename_project(request):
 @require_POST
 def delete_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3233,7 +3370,7 @@ def combine_rgb_tiff_from_paths(
 @require_POST
 def download_project_with_rois(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3326,7 +3463,7 @@ def download_project_with_rois(request):
 @require_POST
 def download_project_folder(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3460,7 +3597,7 @@ def download_project_folder(request):
 @require_POST
 def download_selected_images_with_rois(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3591,7 +3728,7 @@ def download_selected_images_with_rois(request):
 @require_POST
 def download_single_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
@@ -3670,7 +3807,7 @@ def download_single_project(request):
 @require_POST
 def download_selected_project(request):
     try:
-        user_id = _require_viewer_user(request)
+        user_id = _data_owner_id(request)
     except PermissionError:
         return JsonResponse({"success": False, "message": "Not authenticated"}, status=401)
 
