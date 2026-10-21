@@ -139,6 +139,69 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
     window.showUploadPage = showUploadPage;
     window.showAnalysisPage = showAnalysisPage;
 
+    // ──────── Public Theme Toggle (Guest + Logged-in) ────────
+    const toggle = document.getElementById('theme-toggle');
+    const modeText = document.getElementById('theme-mode-text');
+
+    function refreshChartTheme() {
+      const tickColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--chart-tick-color').trim();
+
+      if (Array.isArray(window.chartRefs)) {
+        window.chartRefs.forEach(ch => {
+          if (!ch) return;
+
+          ch.options.color = tickColor;
+
+          if (ch.options.scales?.x?.ticks)
+            ch.options.scales.x.ticks.color = tickColor;
+
+          if (ch.options.scales?.y?.ticks)
+            ch.options.scales.y.ticks.color = tickColor;
+
+          if (ch.options.scales?.y?.title)
+            ch.options.scales.y.title.color = tickColor;
+
+          if (ch.options.plugins?.legend?.labels)
+            ch.options.plugins.legend.labels.color = tickColor;
+
+          if (ch.options.plugins?.datalabels)
+            ch.options.plugins.datalabels.color = tickColor;
+
+          ch.update('none');
+        });
+      }
+    }
+
+    function applyTheme(mode) {
+      const isLight = mode === 'light';
+
+      document.documentElement.setAttribute(
+        'data-theme',
+        isLight ? 'light' : ''
+      );
+
+      if (toggle) toggle.checked = isLight;
+
+      if (modeText) {
+        modeText.textContent = isLight ? 'Light Mode' : 'Dark Mode';
+      }
+
+      refreshChartTheme();
+    }
+
+    // Restore saved theme for all visitors
+    const savedTheme = localStorage.getItem('theme');
+    applyTheme(savedTheme === 'light' ? 'light' : 'dark');
+
+    // Allow all visitors to switch themes
+    toggle?.addEventListener('change', () => {
+      const mode = toggle.checked ? 'light' : 'dark';
+
+      localStorage.setItem('theme', mode);
+      applyTheme(mode);
+    });
+
 
     // ──────── Check Viewer Authentication ────────
     const auth = await getCurrentViewerUser();
@@ -444,56 +507,6 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         );
       }
     );
-
-    // Theme toggle
-    const toggle = document.getElementById('theme-toggle');
-    const modeText = document.getElementById('theme-mode-text');
-    // On load, restore:
-    const saved = localStorage.getItem('theme');
-    if (saved === 'light') {
-      toggle.checked = true;
-      document.documentElement.setAttribute('data-theme', 'light');
-      modeText.textContent = 'White Mode';
-      setTimeout(refreshChartTheme, 0);
-    } else {
-      modeText.textContent = 'Dark Mode';
-    }
-
-    function refreshChartTheme() {
-      const tickColor = getComputedStyle(document.documentElement)
-      .getPropertyValue('--chart-tick-color').trim();
-
-      if (Array.isArray(window.chartRefs)) {
-        window.chartRefs.forEach(ch => {
-          if (!ch) return;
-
-          ch.options.color = tickColor;
-
-          if (ch.options.scales?.x?.ticks) ch.options.scales.x.ticks.color = tickColor;
-          if (ch.options.scales?.y?.ticks) ch.options.scales.y.ticks.color = tickColor;
-          if (ch.options.scales?.y?.title) ch.options.scales.y.title.color = tickColor;
-
-          if (ch.options.plugins?.legend?.labels) {
-            ch.options.plugins.legend.labels.color = tickColor;
-          }
-
-          if (ch.options.plugins?.datalabels) {
-            ch.options.plugins.datalabels.color = tickColor;
-          }
-
-          ch.update('none');
-        });
-      }
-    }
-
-    toggle.addEventListener('change', () => {
-      const mode = toggle.checked ? 'light' : '';
-      document.documentElement.setAttribute('data-theme', mode);
-      localStorage.setItem('theme', mode);
-      modeText.textContent = toggle.checked ? 'Light Mode' : 'Dark Mode';
-      
-      refreshChartTheme(); // Update chart colors
-    });
 
     function flashButtonFilter($btn) {
       const $icon = $btn.find('.zoom-icon');
