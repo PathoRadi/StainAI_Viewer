@@ -756,7 +756,7 @@ body {
 /* Superscript 1 */
 .landing-reference-citation {
     margin-left: 2px;
-    color: inherit;
+    color: rgb(138, 188, 219);
     text-decoration: none;
 }
 
