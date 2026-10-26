@@ -740,6 +740,9 @@ body {
     font-weight: 600;
     color: rgb(138, 188, 219);
 }
+[data-theme="light"] .landing-reference-title {
+    color: rgb(105, 153, 178)
+}
 
 .landing-reference-note {
     margin-top: 5px;
@@ -758,6 +761,9 @@ body {
     margin-left: 2px;
     color: rgb(138, 188, 219);
     text-decoration: none;
+}
+[data-theme="light"] .landing-reference-citation {
+    color: rgb(105, 153, 178)
 }
 
 .landing-reference:focus-visible,
