@@ -443,36 +443,40 @@
 =================================== */
 .left-bottom-actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-rows: repeat(3, 34px);
+    gap: 4px 10px;
 
     width: 100%;
-    min-height: 82px;
+    min-height: 0;
 
-    padding: 8px 6px 6px;
+    padding: 8px 14px 4px;
     box-sizing: border-box;
 }
-/* Individual button */
 .left-bottom-action-btn {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: flex-start;
 
     position: relative;
     overflow: visible;
 
+    width: 100%;
     min-width: 0;
-    height: 68px;
+    height: 34px;
 
     margin: 0;
-    padding: 5px 2px 3px;
+    padding: 0;
+    gap: 10px;
 
     font-family: 'PingFangHKWeb', sans-serif;
     color: white;
 
     background: transparent;
     border: none;
-    border-radius: 7px;
+    border-radius: 5px;
 
     cursor: pointer;
     box-sizing: border-box;
@@ -481,6 +485,28 @@
         background-color 0.15s ease,
         opacity 0.15s ease,
         transform 0.15s ease;
+}
+/* Website page view */
+.left-bottom-actions > .processed-count-btn:nth-child(1) {
+    grid-column: 1 / -1;
+    grid-row: 1;
+}
+/* Image processed count */
+.left-bottom-actions > .processed-count-btn:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+/* Demo button */
+.left-bottom-actions > .demo-btn {
+    grid-column: 1;
+    grid-row: 3;
+}
+/* Readme button */
+.left-bottom-actions > .readme-btn {
+    grid-column: 2;
+    grid-row: 3;
+
+    width: 36px;
 }
 /* Hover effect */
 .left-bottom-action-btn:hover {
@@ -535,6 +561,7 @@
     opacity: 1;
     visibility: visible;
 }
+
 /* Icon container */
 .bottom-action-icon-wrapper {
     position: relative;
@@ -543,32 +570,22 @@
     align-items: center;
     justify-content: center;
 
-    width: 40px;
-    height: 39px;
+    width: 36px;
+    height: 34px;
 
-    flex: 0 0 auto;
+    flex: 0 0 36px;
 }
-/* All bottom icons */
+
+/* Icon position and sizing */
 .bottom-action-icon {
     display: block;
-
-    width: 38px;
-    height: 38px;
-
-    object-fit: contain;
-    object-position: center;
-
-    pointer-events: none;
-    user-select: none;
-}
-/* The second theme icon occupies the same location */
-.bottom-action-icon {
     position: absolute;
+
     top: 50%;
     left: 50%;
 
-    width: 38px;
-    height: 38px;
+    width: 32px;
+    height: 32px;
 
     transform: translate(-50%, -50%);
 
@@ -578,33 +595,39 @@
     pointer-events: none;
     user-select: none;
 }
-/* Default: dark mode icons */
+
+/* Dark mode icon */
 .bottom-icon-dark {
     display: block;
 }
+
 .bottom-icon-light {
     display: none;
 }
-/* Light mode icons */
+
+/* Light mode icon */
 [data-theme="light"] .bottom-icon-dark {
     display: none;
 }
+
 [data-theme="light"] .bottom-icon-light {
     display: block;
 }
+
 /* Count below icon */
 .bottom-action-count {
     display: block;
 
-    width: 100%;
-    min-height: 18px;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
 
-    margin-top: 1px;
+    margin: 0;
 
     font-size: 15px;
     font-weight: 500;
-    line-height: 18px;
-    text-align: center;
+    line-height: 20px;
+    text-align: left;
 
     color: white;
 
@@ -612,6 +635,8 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 }
+
+
 /* Light mode button/count appearance */
 [data-theme="light"] .left-bottom-action-btn {
     color: white;
