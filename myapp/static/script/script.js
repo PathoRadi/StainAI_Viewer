@@ -1321,7 +1321,7 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         typeof PRBASE_LOGIN_URL !== "undefined" &&
         PRBASE_LOGIN_URL
       ) {
-        window.location.replace(PRBASE_LOGIN_URL);
+        window.location.assign(PRBASE_LOGIN_URL);
       } else {
         console.error("PRBASE_LOGIN_URL is not configured.");
         alert("Login URL is not configured.");
