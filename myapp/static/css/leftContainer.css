@@ -502,6 +502,8 @@
     width: 36px;
     justify-self: start;
     justify-content: flex-start;
+
+    left: -1px;
 }
 
 /* Website Page Views */
