@@ -130,7 +130,7 @@
           <img src="{% static 'logo/folder_icon.png' %}" class="btn-icon">
           Projects
         </span>
-        <span class="sidebar-section-chevron">▼</span>
+        <span class="sidebar-section-chevron">▾</span>
       </button>
       <div id="projects-container-wrapper" class="expanded">
         <div id="projects-container"></div>
@@ -142,7 +142,7 @@
           <img src="{% static 'logo/file_icon.png' %}" class="btn-icon">
           Images
         </span>
-        <span class="sidebar-section-chevron">▼</span>
+        <span class="sidebar-section-chevron">▾</span>
       </button>
       <div id="history-container-wrapper" class="expanded">
         <div id="history-container"></div>
@@ -153,67 +153,28 @@
     <div class="left-container-bottom">
       <!-- Bottom action buttons -->
       <div class="left-bottom-actions">
-        <!-- User Images Processed -->
+        <!-- ReadMe -->
         <button
-          class="left-bottom-action-btn processed-count-btn"
+          class="left-bottom-action-btn readme-btn"
           type="button"
-          aria-label="Your images processed"
-          title="Your images processed"
+          aria-label="Open ReadMe"
+          title="ReadMe"
         >
           <span class="bottom-action-icon-wrapper">
             <img
               class="bottom-action-icon bottom-icon-dark"
-              src="{% static 'logo/user_counts_b.png' %}"
+              src="{% static 'logo/readme_b.png' %}"
               alt=""
             >
             <img
               class="bottom-action-icon bottom-icon-light"
-              src="{% static 'logo/user_counts_w.png' %}"
+              src="{% static 'logo/readme_w.png' %}"
               alt=""
             >
-          </span>
-
-          <span
-            class="bottom-action-count"
-            id="website-page-views-count"
-          >
-            0
           </span>
 
           <span class="bottom-action-tooltip">
-            Website Page Views (Tracked Since October 2026)
-          </span>
-        </button>
-
-        <!-- Global Images Processed -->
-        <button
-          class="left-bottom-action-btn processed-count-btn"
-          type="button"
-          aria-label="Platform images processed"
-          title="Platform images processed"
-        >
-          <span class="bottom-action-icon-wrapper">
-            <img
-              class="bottom-action-icon bottom-icon-dark"
-              src="{% static 'logo/image_counts_b.png' %}"
-              alt=""
-            >
-            <img
-              class="bottom-action-icon bottom-icon-light"
-              src="{% static 'logo/image_counts_w.png' %}"
-              alt=""
-            >
-          </span>
-
-          <span
-            class="bottom-action-count"
-            id="global-images-processed-count"
-          >
-            0
-          </span>
-
-          <span class="bottom-action-tooltip">
-            Platform Images Processed
+            Read Documentation
           </span>
         </button>
 
@@ -245,28 +206,67 @@
           </span>
         </button>
 
-        <!-- ReadMe -->
+        <!-- Website Page Views -->
         <button
-          class="left-bottom-action-btn readme-btn"
+          class="left-bottom-action-btn processed-count-btn"
           type="button"
-          aria-label="Open ReadMe"
-          title="ReadMe"
+          aria-label="Your images processed"
+          title="Your images processed"
         >
           <span class="bottom-action-icon-wrapper">
             <img
               class="bottom-action-icon bottom-icon-dark"
-              src="{% static 'logo/readme_b.png' %}"
+              src="{% static 'logo/user_counts_b.png' %}"
               alt=""
             >
             <img
               class="bottom-action-icon bottom-icon-light"
-              src="{% static 'logo/readme_w.png' %}"
+              src="{% static 'logo/user_counts_w.png' %}"
               alt=""
             >
           </span>
 
+          <span
+            class="bottom-action-count"
+            id="website-page-views-count"
+          >
+            0
+          </span>
+
           <span class="bottom-action-tooltip">
-            Read Documentation
+            Website Page Views (Tracked Since October 2026)
+          </span>
+        </button>
+
+        <!-- Images Processed Count-->
+        <button
+          class="left-bottom-action-btn processed-count-btn"
+          type="button"
+          aria-label="Platform images processed"
+          title="Platform images processed"
+        >
+          <span class="bottom-action-icon-wrapper">
+            <img
+              class="bottom-action-icon bottom-icon-dark"
+              src="{% static 'logo/image_counts_b.png' %}"
+              alt=""
+            >
+            <img
+              class="bottom-action-icon bottom-icon-light"
+              src="{% static 'logo/image_counts_w.png' %}"
+              alt=""
+            >
+          </span>
+
+          <span
+            class="bottom-action-count"
+            id="global-images-processed-count"
+          >
+            0
+          </span>
+
+          <span class="bottom-action-tooltip">
+            Platform Images Processed
           </span>
         </button>
       </div>

@@ -203,7 +203,7 @@
 /* Dropdown arrow */
 .viewer-account-chevron {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 15px;
   line-height: 1;
   opacity: 0.75;
   flex-shrink: 0;
@@ -405,7 +405,7 @@
     pointer-events: none;
 }
 .sidebar-section-chevron{
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1;
     transition: transform 0.2s ease;
     pointer-events: none;
@@ -443,14 +443,12 @@
 =================================== */
 .left-bottom-actions {
     display: grid;
-
     grid-template-columns: 36px minmax(0, 1fr);
     grid-template-rows: repeat(3, 34px);
     gap: 4px 10px;
 
     width: 100%;
     min-height: 0;
-
     padding: 8px 14px 4px;
     box-sizing: border-box;
 }
@@ -486,27 +484,49 @@
         opacity 0.15s ease,
         transform 0.15s ease;
 }
-/* Website page view */
-.left-bottom-actions > .processed-count-btn:nth-child(1) {
-    grid-column: 1 / -1;
+/* ReadMe */
+.left-bottom-actions > .readme-btn {
+    grid-column: 1;
     grid-row: 1;
+
+    width: 36px;
+    justify-self: start;
+    justify-content: flex-start;
 }
-/* Image processed count */
-.left-bottom-actions > .processed-count-btn:nth-child(2) {
+
+/* Demo */
+.left-bottom-actions > .demo-btn {
+    grid-column: 2;
+    grid-row: 1;
+
+    width: 36px;
+    justify-self: start;
+    justify-content: flex-start;
+}
+
+/* Website Page Views */
+.left-bottom-actions > .processed-count-btn:nth-child(3) {
     grid-column: 1 / -1;
     grid-row: 2;
 }
-/* Demo button */
-.left-bottom-actions > .demo-btn {
-    grid-column: 1;
+
+/* Images Processed Count */
+.left-bottom-actions > .processed-count-btn:nth-child(4) {
+    grid-column: 1 / -1;
     grid-row: 3;
 }
-/* Readme button */
-.left-bottom-actions > .readme-btn {
-    grid-column: 2;
-    grid-row: 3;
 
+/* Spacing between the statistics icon and number matches the grid column gap */
+.left-bottom-actions > .processed-count-btn {
+    justify-content: flex-start;
+    gap: 10px;
+}
+
+/* Icon container width matches the first Grid column */
+.left-bottom-actions .bottom-action-icon-wrapper {
     width: 36px;
+    height: 34px;
+    flex: 0 0 36px;
 }
 /* Hover effect */
 .left-bottom-action-btn:hover {
