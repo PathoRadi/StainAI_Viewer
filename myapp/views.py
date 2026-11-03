@@ -253,8 +253,11 @@ def viewer_logout_bridge(request):
     """
     request.session.flush()
 
+    # response = redirect(
+    #     "https://imaging.howard.edu/stainai?logged_out=1"
+    # )
     response = redirect(
-        "https://imaging.howard.edu/stainai?logged_out=1"
+        "https://stainai.net/?logged_out=1"
     )
 
     response["Cache-Control"] = (
