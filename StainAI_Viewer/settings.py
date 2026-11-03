@@ -17,7 +17,6 @@ DEBUG = True
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
-    '.azurewebsites.net',
     'stainai.net',
     'www.stainai.net',
 ]
