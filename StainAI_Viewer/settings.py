@@ -7,16 +7,27 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # ===== Security =====
-# keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-!x%ed1b=0sr!#@wln(01vec%rrvl23*jaadib+s0l_-=t89swy'
-# don't run with debug turned on in production!
-DEBUG = True
-# Add your domain names or IP addresses here when deploying aaa
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.azurewebsites.net']
 
-ALLOWED_HOSTS += ['169.254.130.1', '169.254.130.2', '169.254.130.3', '169.254.130.4']
+SECRET_KEY = 'django-insecure-!x%ed1b=0sr!#@wln(01vec%rrvl23*jaadib+s0l_-=t89swy'
+
+DEBUG = False
+
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    '.azurewebsites.net',
+    'stainai.net',
+    'www.stainai.net',
+]
+
+ALLOWED_HOSTS += [
+    '169.254.130.1',
+    '169.254.130.2',
+    '169.254.130.3',
+    '169.254.130.4',
+]
+
 
 # SSO
 SSO_SHARED_SECRET = os.getenv("SSO_SHARED_SECRET", "")
@@ -43,6 +54,21 @@ SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_SECURE = True
+
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://stainai.net',
+    'https://www.stainai.net',
+    'https://stainaiviewer.azurewebsites.net',
+    'https://imaging.howard.edu',
+]
+
+
+# ===== Azure HTTPS =====
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+SECURE_SSL_REDIRECT = not DEBUG
 
 
 
