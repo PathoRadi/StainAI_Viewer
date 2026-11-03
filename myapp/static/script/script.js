@@ -1260,20 +1260,9 @@ import html2canvas from 'https://cdn.skypack.dev/html2canvas';
         );
       }
 
-      /*
-        1) If PRBASE_LOGOUT_URL is defined, redirect to that URL (e.g., for SSO logout).
-        2) Otherwise, redirect to the homepage with a query parameter indicating logout.
-      */
-      if (
-        typeof PRBASE_LOGOUT_URL !== "undefined" &&
-        PRBASE_LOGOUT_URL
-      ) {
-        window.location.replace(PRBASE_LOGOUT_URL);
-      } else {
-        window.location.replace(
-          `/?logged_out=1&t=${Date.now()}`
-        );
-      }
+      window.location.replace(
+        `https://stainai.net/?logged_out=1&t=${Date.now()}`
+      );
     } catch (error) {
       console.error("Viewer logout failed:", error);
       alert(error.message || "Log out failed. Please try again.");
