@@ -1973,11 +1973,11 @@ export function initProcess(bboxData, historyStack, barChartRef) {
 
   // Reset button: go back to upload screen
   resetBtn.addEventListener('click', () => {
-    document.querySelector('.main-container').hidden = true;
-    dropZone.style.display         = 'flex';
+    window.showUploadPage();
+
     resetPendingUpload();
     closeSettingsModal();
-    window.imgPath                 = '';
+    window.imgPath = '';
 
     const demoCard = document.getElementById('demo-preview-card');
     if (demoCard) demoCard.setAttribute('hidden', true);
