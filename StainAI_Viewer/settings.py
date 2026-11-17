@@ -19,6 +19,7 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     'stainai.net',
     'www.stainai.net',
+    'stainaiviewer.azurewebsites.net'
 ]
 
 
@@ -64,7 +65,10 @@ INSTALLED_APPS = [
     'whitenoise.runserver_nostatic',
 ]
 
+
 MIDDLEWARE = [
+    'myapp.middleware.RedirectOldDomainMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -74,6 +78,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
 
 ROOT_URLCONF = 'StainAI_Viewer.urls'
 
