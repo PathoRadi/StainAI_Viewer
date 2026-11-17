@@ -1,5 +1,4 @@
-
-from django.http import HttpResponseRedirect
+from django.http import HttpResponsePermanentRedirect
 
 
 class RedirectOldDomainMiddleware:
@@ -19,6 +18,6 @@ class RedirectOldDomainMiddleware:
                 return self.get_response(request)
 
             new_url = self.NEW_DOMAIN + request.get_full_path()
-            return HttpResponseRedirect(new_url)
+            return HttpResponsePermanentRedirect(new_url)
 
         return self.get_response(request)
